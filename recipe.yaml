@@ -1,0 +1,13 @@
+---
+templateVersion: '2020-01-25'
+componentName: aws.greengrass.logManager
+description: AWS Greengrass Log Manager
+publisher: AWS
+version: '0.0.0'
+componentType: plugin
+manifests:
+  - platform:
+      os: linux
+    parameters:
+    artifacts:
+      - uri: s3://gg-dev-artifacts/$componentName/$platform.os/$version/aws.greengrass.logManager.jar

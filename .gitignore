@@ -1,0 +1,12 @@
+/target/
+.DS_Store
+._*
+*.class
+**/*.jar
+*~
+*.log*
+*.metrics
+.idea
+coverage
+*.iml
+bin

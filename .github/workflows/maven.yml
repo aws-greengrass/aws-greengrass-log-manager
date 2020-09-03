@@ -78,7 +78,7 @@ jobs:
         with:
           java-version: 1.8
       - name: Publish with Maven
-          run: mvn -ntp package -DskipTests
+        run: mvn -ntp package -DskipTests
       #- run: mkdir -p target/artifacts && cp target/LogManager.jar target/artifacts/aws.greengrass.logManager.jar
       #     - uses: ./.github/actions/aws-greengrass-component-upload-action
       #     name: Upload to GCS

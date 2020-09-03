@@ -5,5 +5,11 @@
 
 package com.aws.iot.evergreen.logmanager;
 
-public class LogManagerService {
+import com.aws.iot.evergreen.config.Topics;
+import com.aws.iot.evergreen.kernel.EvergreenService;
+
+public class LogManagerService extends EvergreenService {
+    public LogManagerService(Topics topics) {
+        super(topics);
+    }
 }

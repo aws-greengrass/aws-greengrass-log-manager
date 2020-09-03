@@ -67,12 +67,12 @@ jobs:
     if: github.event_name == 'push'
     steps:
       - uses: actions/checkout@v2
-        - - name: Checkout Private Action
-              uses: daspn/private-actions-checkout@v2
-              with:
-                actions_list: '["aws/aws-greengrass-component-upload-action@master"]'
-                checkout_base_path: ./.github/actions
-                ssh_private_key: ${{ secrets.COMPONENT_UPLOAD_ACTION_PRIVATE_KEY }}
+      - name: Checkout Private Action
+        uses: daspn/private-actions-checkout@v2
+        with:
+          actions_list: '["aws/aws-greengrass-component-upload-action@master"]'
+          checkout_base_path: ./.github/actions
+          ssh_private_key: ${{ secrets.COMPONENT_UPLOAD_ACTION_PRIVATE_KEY }}
       - name: Set up JDK 1.8
         uses: actions/setup-java@v1
         with:
@@ -81,10 +81,7 @@ jobs:
       - name: Build with Maven
           run: mvn -ntp package -DskipTests
       - name: Publish with Maven
-        run: mvn -ntp --settings settings.xml deploy -DskipTests -Dstargate-snapshot-repository-url=${{ secrets.stargate_dev_snapshot_repository_url }}
-      - run: sudo apt-get install -y awscli
-      #- name: Upload to S3
-      #  run: aws s3 cp target/LogManager.jar s3://gg-evergreen-releases/${{github.repository}}/${{github.ref}}/evergreen-log-manager-${{github.sha}}.jar
+        run: mvn package -DskipTests
       #- run: mkdir -p target/artifacts && cp target/LogManager.jar target/artifacts/aws.greengrass.logManager.jar
       #     - uses: ./.github/actions/aws-greengrass-component-upload-action
       #     name: Upload to GCS

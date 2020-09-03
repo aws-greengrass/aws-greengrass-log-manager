@@ -7,7 +7,5 @@ version: '0.0.0'
 componentType: plugin
 manifests:
   - platform:
-      os: linux
-    parameters:
     artifacts:
       - uri: s3://gg-dev-artifacts/$componentName/$platform.os/$version/aws.greengrass.logManager.jar

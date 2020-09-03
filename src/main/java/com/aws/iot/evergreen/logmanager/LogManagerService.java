@@ -50,9 +50,9 @@ import static com.aws.iot.evergreen.deployment.bootstrap.BootstrapSuccessCode.RE
 import static com.aws.iot.evergreen.logmanager.LogManagerService.LOGS_UPLOADER_SERVICE_TOPICS;
 import static com.aws.iot.evergreen.packagemanager.KernelConfigResolver.PARAMETERS_CONFIG_KEY;
 
-@ImplementsService(name = LOGS_UPLOADER_SERVICE_TOPICS, version = "1.0.0")
+@ImplementsService(name = LOGS_UPLOADER_SERVICE_TOPICS, autostart = true)
 public class LogManagerService extends EvergreenService {
-    public static final String LOGS_UPLOADER_SERVICE_TOPICS = "LogsUploaderService";
+    public static final String LOGS_UPLOADER_SERVICE_TOPICS = "aws.greengrass.logManager";
     public static final String LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC = "logsUploaderPeriodicUpdateIntervalSec";
     public static final String LOGS_UPLOADER_CONFIGURATION_TOPIC = "logsUploaderConfigurationJson";
     public static final String SYSTEM_LOGS_COMPONENT_NAME = "System";

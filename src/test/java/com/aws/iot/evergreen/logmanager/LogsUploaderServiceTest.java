@@ -280,7 +280,6 @@ public class LogsUploaderServiceTest extends EGServiceTestUtil {
             assertEquals(Level.INFO, componentLogFileInformation.getDesiredLogLevel());
             assertNotNull(componentLogFileInformation.getLogFileInformationList());
             assertThat(componentLogFileInformation.getLogFileInformationList(), IsNot.not(IsEmptyCollection.empty()));
-            System.out.println(componentLogFileInformation);
             assertTrue(componentLogFileInformation.getLogFileInformationList().size() >= 2);
             componentLogFileInformation.getLogFileInformationList().forEach(logFileInformation -> {
                 if (logFileInformation.getFile().getAbsolutePath().equals(currentProcessingFile.getAbsolutePath())) {

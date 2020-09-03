@@ -10,6 +10,7 @@ import com.aws.iot.evergreen.logmanager.model.ComponentLogFileInformation;
 import com.aws.iot.evergreen.logmanager.model.ComponentType;
 import com.aws.iot.evergreen.testcommons.testutilities.EGExtension;
 import com.aws.iot.evergreen.testcommons.testutilities.EGServiceTestUtil;
+import com.fasterxml.jackson.databind.exc.MismatchedInputException;
 import org.hamcrest.collection.IsEmptyCollection;
 import org.hamcrest.core.IsNot;
 import org.junit.jupiter.api.AfterAll;
@@ -18,6 +19,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.extension.ExtensionContext;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
 import org.mockito.Mock;
@@ -34,11 +36,9 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Instant;
 import java.util.Arrays;
-import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -48,9 +48,9 @@ import static com.aws.iot.evergreen.logmanager.LogManagerService.LOGS_UPLOADER_C
 import static com.aws.iot.evergreen.logmanager.LogManagerService.LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC;
 import static com.aws.iot.evergreen.logmanager.LogManagerService.SYSTEM_LOGS_COMPONENT_NAME;
 import static com.aws.iot.evergreen.packagemanager.KernelConfigResolver.PARAMETERS_CONFIG_KEY;
+import static com.aws.iot.evergreen.testcommons.testutilities.ExceptionLogProtector.ignoreExceptionOfType;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -65,9 +65,9 @@ public class LogsUploaderServiceTest extends EGServiceTestUtil {
     @Mock
     private CloudWatchLogsUploader mockUploader;
     @Mock
-    private CloudWatchLogsMerger mockMerger;
+    private CloudWatchAttemptLogsProcessor mockMerger;
     @Captor
-    private ArgumentCaptor<Set<ComponentLogFileInformation>> componentLogsInformationCaptor;
+    private ArgumentCaptor<ComponentLogFileInformation> componentLogsInformationCaptor;
     @Captor
     private ArgumentCaptor<Consumer<CloudWatchAttempt>> callbackCaptor;
 
@@ -130,7 +130,7 @@ public class LogsUploaderServiceTest extends EGServiceTestUtil {
         Topic periodicUpdateIntervalMsTopic = Topic.of(context, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC, "3");
         when(config.lookup(PARAMETERS_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC))
                 .thenReturn(periodicUpdateIntervalMsTopic);
-        when(mockMerger.performKWayMerge(componentLogsInformationCaptor.capture())).thenReturn(new CloudWatchAttempt());
+        when(mockMerger.processLogFiles(componentLogsInformationCaptor.capture())).thenReturn(new CloudWatchAttempt());
 
         String configuration =
                 "{\"ComponentLogInformation\": " +
@@ -144,24 +144,46 @@ public class LogsUploaderServiceTest extends EGServiceTestUtil {
         Topic configTopic = Topic.of(context, LOGS_UPLOADER_CONFIGURATION_TOPIC, configuration);
         when(config.lookup(PARAMETERS_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC))
                 .thenReturn(configTopic);
+        doNothing().when(mockUploader).registerAttemptStatus(anyString(), callbackCaptor.capture());
 
         logsUploaderService = new LogManagerService(config, mockUploader, mockMerger);
         logsUploaderService.startup();
 
         TimeUnit.SECONDS.sleep(5);
+        callbackCaptor.getValue().accept(new CloudWatchAttempt());
+        TimeUnit.SECONDS.sleep(5);
 
         assertNotNull(componentLogsInformationCaptor.getValue());
-        Collection<ComponentLogFileInformation> componentLogFileInformationList = componentLogsInformationCaptor.getValue();
-        assertFalse(componentLogFileInformationList.isEmpty());
-        componentLogFileInformationList.iterator().forEachRemaining(componentLogFileInformation -> {
-            assertEquals("System", componentLogFileInformation.getName());
-            assertEquals(ComponentType.GreenGrassSystemComponent, componentLogFileInformation.getComponentType());
-            assertEquals(Level.INFO, componentLogFileInformation.getDesiredLogLevel());
-            assertNotNull(componentLogFileInformation.getLogFileInformationList());
-            assertThat(componentLogFileInformation.getLogFileInformationList(), IsNot.not(IsEmptyCollection.empty()));
-            assertTrue(componentLogFileInformation.getLogFileInformationList().size() >= 5);
-        });
+        ComponentLogFileInformation componentLogFileInformation = componentLogsInformationCaptor.getValue();
+        assertNotNull(componentLogFileInformation);
+        assertEquals("System", componentLogFileInformation.getName());
+        assertEquals(ComponentType.GreengrassSystemComponent, componentLogFileInformation.getComponentType());
+        assertEquals(Level.INFO, componentLogFileInformation.getDesiredLogLevel());
+        assertNotNull(componentLogFileInformation.getLogFileInformationList());
+        assertThat(componentLogFileInformation.getLogFileInformationList(), IsNot.not(IsEmptyCollection.empty()));
+        assertTrue(componentLogFileInformation.getLogFileInformationList().size() >= 5);
         verify(mockUploader, times(1)).upload(any(CloudWatchAttempt.class));
+    }
+
+    @Test
+    public void GIVEN_invalid_config_WHEN_config_is_processed_THEN_no_component_config_is_added(
+            ExtensionContext context1) throws InterruptedException {
+        ignoreExceptionOfType(context1, MismatchedInputException.class);
+        Topic periodicUpdateIntervalMsTopic = Topic.of(context, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC, "3");
+        when(config.lookup(PARAMETERS_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC))
+                .thenReturn(periodicUpdateIntervalMsTopic);
+        String configuration =
+                "{\"ComponentLogInformation\": {}" +
+                        "\"SystemLogsConfiguration\":{\"UploadToCloudWatch\": true,\"MinimumLogLevel\": \"INFO\"," +
+                        "\"DiskSpaceLimit\": \"25\"," +
+                        "\"DiskSpaceLimitUnit\": \"MB\"}}";
+        Topic configTopic = Topic.of(context, LOGS_UPLOADER_CONFIGURATION_TOPIC, configuration);
+        when(config.lookup(PARAMETERS_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC))
+                .thenReturn(configTopic);
+
+        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger);
+        logsUploaderService.startup();
+        assertThat(logsUploaderService.componentCurrentProcessingLogFile.values(), IsEmptyCollection.empty());
     }
 
     @Test
@@ -235,7 +257,7 @@ public class LogsUploaderServiceTest extends EGServiceTestUtil {
         Topic periodicUpdateIntervalMsTopic = Topic.of(context, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC, "3");
         when(config.lookup(PARAMETERS_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC))
                 .thenReturn(periodicUpdateIntervalMsTopic);
-        when(mockMerger.performKWayMerge(componentLogsInformationCaptor.capture())).thenReturn(new CloudWatchAttempt());
+        when(mockMerger.processLogFiles(componentLogsInformationCaptor.capture())).thenReturn(new CloudWatchAttempt());
 
         String configuration =
                 "{\"ComponentLogInformation\": " +
@@ -263,22 +285,20 @@ public class LogsUploaderServiceTest extends EGServiceTestUtil {
         TimeUnit.SECONDS.sleep(5);
 
         assertNotNull(componentLogsInformationCaptor.getValue());
-        Collection<ComponentLogFileInformation> componentLogFileInformationList = componentLogsInformationCaptor.getValue();
-        assertFalse(componentLogFileInformationList.isEmpty());
-        componentLogFileInformationList.iterator().forEachRemaining(componentLogFileInformation -> {
-            assertEquals("System", componentLogFileInformation.getName());
-            assertEquals(ComponentType.GreenGrassSystemComponent, componentLogFileInformation.getComponentType());
-            assertEquals(Level.INFO, componentLogFileInformation.getDesiredLogLevel());
-            assertNotNull(componentLogFileInformation.getLogFileInformationList());
-            assertThat(componentLogFileInformation.getLogFileInformationList(), IsNot.not(IsEmptyCollection.empty()));
-            assertTrue(componentLogFileInformation.getLogFileInformationList().size() >= 2);
-            componentLogFileInformation.getLogFileInformationList().forEach(logFileInformation -> {
-                if (logFileInformation.getFile().getAbsolutePath().equals(currentProcessingFile.getAbsolutePath())) {
-                    assertEquals(2, logFileInformation.getStartPosition());
-                } else {
-                    assertEquals(0, logFileInformation.getStartPosition());
-                }
-            });
+        ComponentLogFileInformation componentLogFileInformation = componentLogsInformationCaptor.getValue();
+        assertNotNull(componentLogFileInformation);
+        assertEquals("System", componentLogFileInformation.getName());
+        assertEquals(ComponentType.GreengrassSystemComponent, componentLogFileInformation.getComponentType());
+        assertEquals(Level.INFO, componentLogFileInformation.getDesiredLogLevel());
+        assertNotNull(componentLogFileInformation.getLogFileInformationList());
+        assertThat(componentLogFileInformation.getLogFileInformationList(), IsNot.not(IsEmptyCollection.empty()));
+        assertTrue(componentLogFileInformation.getLogFileInformationList().size() >= 2);
+        componentLogFileInformation.getLogFileInformationList().forEach(logFileInformation -> {
+            if (logFileInformation.getFile().getAbsolutePath().equals(currentProcessingFile.getAbsolutePath())) {
+                assertEquals(2, logFileInformation.getStartPosition());
+            } else {
+                assertEquals(0, logFileInformation.getStartPosition());
+            }
         });
         verify(mockUploader, times(1)).upload(any(CloudWatchAttempt.class));
     }
@@ -289,7 +309,7 @@ public class LogsUploaderServiceTest extends EGServiceTestUtil {
         Topic periodicUpdateIntervalMsTopic = Topic.of(context, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC, "3");
         when(config.lookup(PARAMETERS_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC))
                 .thenReturn(periodicUpdateIntervalMsTopic);
-        when(mockMerger.performKWayMerge(componentLogsInformationCaptor.capture())).thenReturn(new CloudWatchAttempt());
+        when(mockMerger.processLogFiles(componentLogsInformationCaptor.capture())).thenReturn(new CloudWatchAttempt());
 
         String configuration =
                 "{\"ComponentLogInformation\": " +
@@ -317,18 +337,16 @@ public class LogsUploaderServiceTest extends EGServiceTestUtil {
         TimeUnit.SECONDS.sleep(5);
 
         assertNotNull(componentLogsInformationCaptor.getValue());
-        Collection<ComponentLogFileInformation> componentLogFileInformationList = componentLogsInformationCaptor.getValue();
-        assertFalse(componentLogFileInformationList.isEmpty());
-        componentLogFileInformationList.iterator().forEachRemaining(componentLogFileInformation -> {
-            assertEquals("System", componentLogFileInformation.getName());
-            assertEquals(ComponentType.GreenGrassSystemComponent, componentLogFileInformation.getComponentType());
-            assertEquals(Level.INFO, componentLogFileInformation.getDesiredLogLevel());
-            assertNotNull(componentLogFileInformation.getLogFileInformationList());
-            assertThat(componentLogFileInformation.getLogFileInformationList(), IsNot.not(IsEmptyCollection.empty()));
-            assertTrue(componentLogFileInformation.getLogFileInformationList().size() >= 2);
-            componentLogFileInformation.getLogFileInformationList().forEach(logFileInformation -> {
-                assertEquals(0, logFileInformation.getStartPosition());
-            });
+        ComponentLogFileInformation componentLogFileInformation = componentLogsInformationCaptor.getValue();
+        assertNotNull(componentLogFileInformation);
+        assertEquals("System", componentLogFileInformation.getName());
+        assertEquals(ComponentType.GreengrassSystemComponent, componentLogFileInformation.getComponentType());
+        assertEquals(Level.INFO, componentLogFileInformation.getDesiredLogLevel());
+        assertNotNull(componentLogFileInformation.getLogFileInformationList());
+        assertThat(componentLogFileInformation.getLogFileInformationList(), IsNot.not(IsEmptyCollection.empty()));
+        assertTrue(componentLogFileInformation.getLogFileInformationList().size() >= 2);
+        componentLogFileInformation.getLogFileInformationList().forEach(logFileInformation -> {
+            assertEquals(0, logFileInformation.getStartPosition());
         });
         verify(mockUploader, times(1)).upload(any(CloudWatchAttempt.class));
     }

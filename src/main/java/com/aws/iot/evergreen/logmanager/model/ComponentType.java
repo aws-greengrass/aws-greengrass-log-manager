@@ -6,5 +6,5 @@
 package com.aws.iot.evergreen.logmanager.model;
 
 public enum ComponentType {
-    GreenGrassSystemComponent, UserComponent
+    GreengrassSystemComponent, UserComponent
 }

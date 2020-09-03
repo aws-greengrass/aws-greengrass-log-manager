@@ -16,6 +16,6 @@ import lombok.Setter;
 @NoArgsConstructor
 @AllArgsConstructor
 public class SystemLogsConfiguration extends CommonLogsConfiguration {
-    @JsonProperty(value = "UploadToCloudWatch", required = true)
+    @JsonProperty(required = true)
     private boolean uploadToCloudWatch;
 }

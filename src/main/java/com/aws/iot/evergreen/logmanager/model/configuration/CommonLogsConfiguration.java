@@ -16,12 +16,10 @@ import lombok.Setter;
 @NoArgsConstructor
 @AllArgsConstructor
 public class CommonLogsConfiguration {
-    @JsonProperty(value = "MinimumLogLevel", defaultValue = "INFO")
+    @JsonProperty(defaultValue = "INFO")
     private String minimumLogLevel;
-    @JsonProperty("DiskSpaceLimit")
     private String diskSpaceLimit;
-    @JsonProperty("DiskSpaceLimitUnit")
     private String diskSpaceLimitUnit;
-    @JsonProperty(value = "DeleteLogFileAfterCloudUpload", defaultValue = "false")
+    @JsonProperty(defaultValue = "false")
     private String deleteLogFileAfterCloudUpload;
 }

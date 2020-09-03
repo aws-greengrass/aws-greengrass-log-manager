@@ -20,7 +20,7 @@ import java.util.concurrent.ConcurrentHashMap;
 @Setter
 public class CloudWatchAttempt {
     // TODO: Need to implement retry mechanism.
-    protected static final int MAX_RETRYS = 5;
+    protected static final int MAX_RETRIES = 5;
     private Map<String, Map<String, CloudWatchAttemptLogInformation>> logGroupsToLogStreamsMap;
 
     /**

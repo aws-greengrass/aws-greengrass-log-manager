@@ -16,12 +16,12 @@ import lombok.Setter;
 @NoArgsConstructor
 @AllArgsConstructor
 public class ComponentsLogConfiguration extends CommonLogsConfiguration {
-    @JsonProperty(value = "ComponentName", required = true)
+    @JsonProperty(required = true)
     private String componentName;
-    @JsonProperty(value = "LogFileRegex", required = true)
+    @JsonProperty(required = true)
     private String logFileRegex;
-    @JsonProperty(value = "LogFileDirectoryPath", required = true)
+    @JsonProperty(required = true)
     private String logFileDirectoryPath;
-    @JsonProperty(value = "MultiLineStartPattern", defaultValue = "\"^[^\\\\s]+(\\\\s+[^\\\\s]+)*$\"")
+    @JsonProperty(defaultValue = "\"^[^\\\\s]+(\\\\s+[^\\\\s]+)*$\"")
     private String multiLineStartPattern;
 }

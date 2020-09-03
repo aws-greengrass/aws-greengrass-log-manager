@@ -5,7 +5,6 @@
 
 package com.aws.iot.evergreen.logmanager.model.configuration;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -18,8 +17,6 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 public class LogsUploaderConfiguration {
-    @JsonProperty(value = "ComponentLogInformation",required = false)
     private List<ComponentsLogConfiguration> componentLogInformation;
-    @JsonProperty(value = "SystemLogsConfiguration", required = false)
-    private SystemLogsConfiguration systemLogConfiguration;
+    private SystemLogsConfiguration systemLogsConfiguration;
 }

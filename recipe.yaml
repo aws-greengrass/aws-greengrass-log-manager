@@ -6,5 +6,5 @@ publisher: AWS
 version: '0.0.0'
 componentType: plugin
 manifests:
-    artifacts:
-      - uri: s3://gg-dev-artifacts/$componentName/$version/aws.greengrass.logManager.jar
+    - artifacts:
+        - uri: s3://gg-dev-artifacts/$componentName/$version/aws.greengrass.logManager.jar

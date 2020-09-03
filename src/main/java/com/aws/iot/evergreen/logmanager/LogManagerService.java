@@ -10,7 +10,7 @@ import com.aws.iot.evergreen.dependency.ImplementsService;
 import com.aws.iot.evergreen.kernel.EvergreenService;
 
 
-@ImplementsService(name = "aws.greengrass.logManager", autostart = true)
+@ImplementsService(name = "aws.greengrass.logManager")
 public class LogManagerService extends EvergreenService {
     public LogManagerService(Topics topics) {
         super(topics);

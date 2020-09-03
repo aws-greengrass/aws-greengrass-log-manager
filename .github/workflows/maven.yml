@@ -26,40 +26,40 @@ jobs:
         continue-on-error: true
       - name: Build with Maven
         run: mvn -ntp -U clean verify
-      #- name: Upload Failed Test Report
-      #  uses: actions/upload-artifact@v1.0.0
-      #  if: failure()
-      #  with:
-      #    name: Failed Test Report
-      #    path: target/surefire-reports
-      #- name: Upload Coverage
-      #  uses: actions/upload-artifact@v1.0.0
-      #  if: always()
-      #  with:
-      #    name: Coverage Report
-      #    path: target/jacoco-report
-      #- name: Convert Jacoco unit test report to Cobertura
-      #  run: python3 .github/scripts/cover2cover.py target/jacoco-report/jacoco.xml src/main/java > target/jacoco-report/cobertura.xml
-      #- name: cobertura-report-unit-test
-      #  uses: shaguptashaikh/cobertura-action@master
-      #  continue-on-error: true
-      #  with:
-      #    # The GITHUB_TOKEN for this repo
-      #    repo_token: ${{ github.token }}
-      #    # Path to the cobertura file.
-      #    path: target/jacoco-report/cobertura.xml
-      #    # If files with 100% should be skipped from report.
-      #    skip_covered: false
-      #    # Minimum allowed coverage percentage as an integer.
-      #    minimum_coverage: 65
-      #    # Show line rate as specific column.
-      #    show_line: true
-      #    # Show branch rate as specific column.
-      #    show_branch: true
-      #    # Use class names instead of the filename
-      #    show_class_names: true
-      #    # Use a unique name for the report and comment
-      #    report_name: Unit Tests Coverage Report
+      - name: Upload Failed Test Report
+        uses: actions/upload-artifact@v1.0.0
+        if: failure()
+        with:
+          name: Failed Test Report
+          path: target/surefire-reports
+      - name: Upload Coverage
+        uses: actions/upload-artifact@v1.0.0
+        if: always()
+        with:
+          name: Coverage Report
+          path: target/jacoco-report
+      - name: Convert Jacoco unit test report to Cobertura
+        run: python3 .github/scripts/cover2cover.py target/jacoco-report/jacoco.xml src/main/java > target/jacoco-report/cobertura.xml
+      - name: cobertura-report-unit-test
+        uses: shaguptashaikh/cobertura-action@master
+        continue-on-error: true
+        with:
+          # The GITHUB_TOKEN for this repo
+          repo_token: ${{ github.token }}
+          # Path to the cobertura file.
+          path: target/jacoco-report/cobertura.xml
+          # If files with 100% should be skipped from report.
+          skip_covered: false
+          # Minimum allowed coverage percentage as an integer.
+          minimum_coverage: 65
+          # Show line rate as specific column.
+          show_line: true
+          # Show branch rate as specific column.
+          show_branch: true
+          # Use class names instead of the filename
+          show_class_names: true
+          # Use a unique name for the report and comment
+          report_name: Unit Tests Coverage Report
 
   publish:
     needs: build

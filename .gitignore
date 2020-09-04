@@ -4,7 +4,6 @@
 *.class
 **/*.jar
 *~
-*.log*
 *.metrics
 .idea
 coverage

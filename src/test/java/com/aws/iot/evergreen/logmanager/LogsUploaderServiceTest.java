@@ -37,7 +37,7 @@ import java.nio.file.Path;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.HashMap;
-import java.util.List;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -244,10 +244,8 @@ public class LogsUploaderServiceTest extends EGServiceTestUtil {
         logStreamsToLogInformationMap.put("testStream", attemptLogInformation1);
         logStreamsToLogInformationMap.put("testStream2", attemptLogInformation2);
         logGroupsToLogStreamsMap.put("testGroup", logStreamsToLogInformationMap);
-        Map<String, List<String>> logStreamUploadedMap = new HashMap<>();
-        logStreamUploadedMap.put("testGroup", Arrays.asList("testStream", "testStream2"));
-        attempt.setLogGroupsToLogStreamsMap(logGroupsToLogStreamsMap);
-        attempt.getLogStreamUploadedMap().putAll(logStreamUploadedMap);
+        attempt.setLogStreamsToLogEventsMap(logStreamsToLogInformationMap);
+        attempt.setLogStreamUploadedSet(new HashSet<>(Arrays.asList("testStream", "testStream2")));
         doNothing().when(mockUploader).registerAttemptStatus(anyString(), callbackCaptor.capture());
 
         logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, ses);

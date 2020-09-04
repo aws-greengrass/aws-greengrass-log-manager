@@ -48,6 +48,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Pattern;
 import javax.inject.Inject;
+import javax.naming.LimitExceededException;
 
 import static com.aws.iot.evergreen.logmanager.LogManagerService.LOGS_UPLOADER_SERVICE_TOPICS;
 import static com.aws.iot.evergreen.packagemanager.KernelConfigResolver.PARAMETERS_CONFIG_KEY;
@@ -160,19 +161,24 @@ public class LogManagerService extends PluginService {
      *     processing log file for the component and what is the starting position of the next log line.
      */
     private void handleCloudWatchAttemptStatus(CloudWatchAttempt cloudWatchAttempt) {
+        if (cloudWatchAttempt.getLastException() != null
+                && cloudWatchAttempt.getLastException() instanceof LimitExceededException) {
+            try {
+                TimeUnit.SECONDS.sleep(1);
+            } catch (InterruptedException ignored) { }
+        }
         Map<String, Set<String>> completedLogFilePerComponent = new ConcurrentHashMap<>();
         Map<String, CurrentProcessingFileInformation> currentProcessingLogFilePerComponent = new HashMap<>();
 
-        cloudWatchAttempt.getLogStreamUploadedMap().forEach((groupName, streamNames) ->
-                streamNames.forEach(streamName -> {
+        cloudWatchAttempt.getLogStreamUploadedSet().forEach((streamName) -> {
                     CloudWatchAttemptLogInformation attemptLogInformation =
-                            cloudWatchAttempt.getLogGroupsToLogStreamsMap().get(groupName).get(streamName);
+                            cloudWatchAttempt.getLogStreamsToLogEventsMap().get(streamName);
                     attemptLogInformation.getAttemptLogFileInformationList().forEach(
                             (fileName, cloudWatchAttemptLogFileInformation) ->
                                     processCloudWatchAttemptLogInformation(completedLogFilePerComponent,
                                             currentProcessingLogFilePerComponent, attemptLogInformation, fileName,
                                             cloudWatchAttemptLogFileInformation));
-                }));
+                });
 
         completedLogFilePerComponent.forEach((componentName, fileNames) ->
                 fileNames.stream().map(File::new).forEach(file -> {

@@ -10,9 +10,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-import java.util.List;
+import java.util.HashSet;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.Set;
 
 @NoArgsConstructor
 @Getter
@@ -20,17 +20,14 @@ import java.util.concurrent.ConcurrentHashMap;
 @Setter
 public class CloudWatchAttempt {
     // TODO: Need to implement retry mechanism.
-    protected static final int MAX_RETRIES = 5;
-    private Map<String, Map<String, CloudWatchAttemptLogInformation>> logGroupsToLogStreamsMap;
+    private Map<String, CloudWatchAttemptLogInformation> logStreamsToLogEventsMap;
+    private String logGroupName;
 
-    /**
-     * This will be used in the uploader to determine whether it is time to stop retrying to upload this attempt.
-     * TODO: Need to implement this.
-     */
-    private int retryCounts;
     /**
      * This will be used in the uploader to keep track of which log groups and log streams in an attempt have been
      * successfully uploaded to cloud.
      */
-    private final Map<String, List<String>> logStreamUploadedMap = new ConcurrentHashMap<>();
+    private Set<String> logStreamUploadedSet = new HashSet<>();
+
+    private Throwable lastException;
 }

@@ -37,7 +37,7 @@ import java.nio.file.Path;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.HashMap;
-import java.util.List;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -54,6 +54,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.times;
@@ -162,7 +163,7 @@ public class LogManagerServiceTest extends EGServiceTestUtil {
         assertNotNull(componentLogFileInformation.getLogFileInformationList());
         assertThat(componentLogFileInformation.getLogFileInformationList(), IsNot.not(IsEmptyCollection.empty()));
         assertTrue(componentLogFileInformation.getLogFileInformationList().size() >= 5);
-        verify(mockUploader, times(1)).upload(any(CloudWatchAttempt.class));
+        verify(mockUploader, times(1)).upload(any(CloudWatchAttempt.class), anyInt());
     }
 
     private void startServiceOnAnotherThread() {
@@ -253,10 +254,8 @@ public class LogManagerServiceTest extends EGServiceTestUtil {
         logStreamsToLogInformationMap.put("testStream", attemptLogInformation1);
         logStreamsToLogInformationMap.put("testStream2", attemptLogInformation2);
         logGroupsToLogStreamsMap.put("testGroup", logStreamsToLogInformationMap);
-        Map<String, List<String>> logStreamUploadedMap = new HashMap<>();
-        logStreamUploadedMap.put("testGroup", Arrays.asList("testStream", "testStream2"));
-        attempt.setLogGroupsToLogStreamsMap(logGroupsToLogStreamsMap);
-        attempt.getLogStreamUploadedMap().putAll(logStreamUploadedMap);
+        attempt.setLogStreamsToLogEventsMap(logStreamsToLogInformationMap);
+        attempt.setLogStreamUploadedSet(new HashSet<>(Arrays.asList("testStream", "testStream2")));
         doNothing().when(mockUploader).registerAttemptStatus(anyString(), callbackCaptor.capture());
 
         logsUploaderService = new LogManagerService(config, mockUploader, mockMerger);
@@ -323,7 +322,7 @@ public class LogManagerServiceTest extends EGServiceTestUtil {
                 assertEquals(0, logFileInformation.getStartPosition());
             }
         });
-        verify(mockUploader, times(1)).upload(any(CloudWatchAttempt.class));
+        verify(mockUploader, times(1)).upload(any(CloudWatchAttempt.class), anyInt());
     }
 
     @Test
@@ -371,6 +370,6 @@ public class LogManagerServiceTest extends EGServiceTestUtil {
         componentLogFileInformation.getLogFileInformationList().forEach(logFileInformation -> {
             assertEquals(0, logFileInformation.getStartPosition());
         });
-        verify(mockUploader, times(1)).upload(any(CloudWatchAttempt.class));
+        verify(mockUploader, times(1)).upload(any(CloudWatchAttempt.class), anyInt());
     }
 }

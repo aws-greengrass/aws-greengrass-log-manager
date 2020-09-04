@@ -155,16 +155,15 @@ public class LogManagerService extends PluginService {
         Map<String, Set<String>> completedLogFilePerComponent = new ConcurrentHashMap<>();
         Map<String, CurrentProcessingFileInformation> currentProcessingLogFilePerComponent = new HashMap<>();
 
-        cloudWatchAttempt.getLogStreamUploadedMap().forEach((groupName, streamNames) ->
-                streamNames.forEach(streamName -> {
+        cloudWatchAttempt.getLogStreamUploadedSet().forEach((streamName) -> {
                     CloudWatchAttemptLogInformation attemptLogInformation =
-                            cloudWatchAttempt.getLogGroupsToLogStreamsMap().get(groupName).get(streamName);
+                            cloudWatchAttempt.getLogStreamsToLogEventsMap().get(streamName);
                     attemptLogInformation.getAttemptLogFileInformationMap().forEach(
                             (fileName, cloudWatchAttemptLogFileInformation) ->
                                     processCloudWatchAttemptLogInformation(completedLogFilePerComponent,
                                             currentProcessingLogFilePerComponent, attemptLogInformation, fileName,
                                             cloudWatchAttemptLogFileInformation));
-                }));
+                });
 
         completedLogFilePerComponent.forEach((componentName, fileNames) ->
                 fileNames.stream().map(File::new).forEach(file -> {
@@ -313,7 +312,7 @@ public class LogManagerService extends PluginService {
             if (componentLogFileInformation.get().isPresent()) {
                 CloudWatchAttempt cloudWatchAttempt =
                         logsProcessor.processLogFiles(componentLogFileInformation.get().get());
-                uploader.upload(cloudWatchAttempt);
+                uploader.upload(cloudWatchAttempt, 1);
             } else {
                 TimeUnit.SECONDS.sleep(periodicUpdateIntervalSec);
                 isCurrentlyUploading.set(false);

@@ -251,11 +251,13 @@ public class LogManagerService extends PluginService {
      *     the last uploaded log file time for that component.
      */
     private void processLogsAndUpload() {
-        while (true) {
+        while (!Thread.currentThread().isInterrupted()) {
             // If there is already an upload ongoing, don't do anything. Wait for the next schedule to trigger to
             // upload new logs.
             if (!isCurrentlyUploading.compareAndSet(false, true)) {
-                return;
+                //TODO: Use a CountDownLatch so that we could await here instead of sleep?
+                sleepForUpdateInterval();
+                continue;
             }
             // TODO: Sleep here if we had received a throttling exception in the previous run.
             AtomicReference<Optional<ComponentLogFileInformation>> componentLogFileInformation =
@@ -329,12 +331,16 @@ public class LogManagerService extends PluginService {
                         logsProcessor.processLogFiles(componentLogFileInformation.get().get());
                 uploader.upload(cloudWatchAttempt);
             } else {
-                try {
-                    TimeUnit.SECONDS.sleep(periodicUpdateIntervalSec);
-                } catch (InterruptedException ignored) {
-                    break;
-                }
+                sleepForUpdateInterval();
             }
+        }
+    }
+
+    private void sleepForUpdateInterval() {
+        try {
+            TimeUnit.SECONDS.sleep(periodicUpdateIntervalSec);
+        } catch (InterruptedException e) {
+            logger.atDebug().log("Interrupted while running upload loop, exiting");
         }
     }
 

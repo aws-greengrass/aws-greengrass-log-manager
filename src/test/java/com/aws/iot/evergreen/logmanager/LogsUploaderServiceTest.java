@@ -151,8 +151,6 @@ public class LogsUploaderServiceTest extends EGServiceTestUtil {
         logsUploaderService.startup();
 
         TimeUnit.SECONDS.sleep(5);
-        callbackCaptor.getValue().accept(new CloudWatchAttempt());
-        TimeUnit.SECONDS.sleep(5);
 
         assertNotNull(componentLogsInformationCaptor.getValue());
         ComponentLogFileInformation componentLogFileInformation = componentLogsInformationCaptor.getValue();

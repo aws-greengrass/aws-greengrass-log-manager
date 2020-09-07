@@ -33,6 +33,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -58,7 +59,9 @@ public class LogManagerService extends PluginService {
     public static final String LOGS_UPLOADER_CONFIGURATION_TOPIC = "logsUploaderConfigurationJson";
     public static final String SYSTEM_LOGS_COMPONENT_NAME = "System";
     private static final int DEFAULT_PERIODIC_UPDATE_INTERVAL_SEC = 300;
-    private static final ObjectMapper DESERIALIZER = new ObjectMapper();
+    private static final String DEFAULT_FILE_REGEX = "^%s\\w*.log";
+    private static final ObjectMapper DESERIALIZER = new ObjectMapper()
+            .configure(MapperFeature.ACCEPT_CASE_INSENSITIVE_PROPERTIES, true);
 
     final Map<String, Instant> lastComponentUploadedLogFileInstantMap =
             Collections.synchronizedMap(new LinkedHashMap<>());
@@ -83,23 +86,23 @@ public class LogManagerService extends PluginService {
         super(topics);
         this.uploader = uploader;
         this.logsProcessor = merger;
-        DESERIALIZER.configure(MapperFeature.ACCEPT_CASE_INSENSITIVE_PROPERTIES, true);
 
         topics.lookup(PARAMETERS_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC)
                 .dflt(DEFAULT_PERIODIC_UPDATE_INTERVAL_SEC)
                 .subscribe((why, newv) -> {
                     periodicUpdateIntervalSec = Coerce.toInt(newv);
-                    if (periodicUpdateFuture != null) {
-                        schedulePeriodicLogsUploaderUpdate();
-                    }
+                    schedulePeriodicLogsUploaderUpdate();
                 });
-        schedulePeriodicLogsUploaderUpdate();
         this.uploader.registerAttemptStatus(LOGS_UPLOADER_SERVICE_TOPICS, this::handleCloudWatchAttemptStatus);
 
         //TODO: read configuration of components.
         topics.lookup(PARAMETERS_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC)
                 .subscribe((why, newv) -> {
                     try {
+                        if (newv == null || Coerce.toString(newv) == null) {
+                            //TODO: fail the deployment.
+                            return;
+                        }
                         LogsUploaderConfiguration config = DESERIALIZER.readValue(Coerce.toString(newv),
                                 LogsUploaderConfiguration.class);
                         processConfiguration(config);
@@ -129,14 +132,13 @@ public class LogManagerService extends PluginService {
     }
 
     private void addSystemLogsConfiguration(Set<ComponentLogConfiguration> newComponentLogConfigurations) {
-        Optional<Path> logsDirectoryPath = LogManager.getLoggerDirectoryPath();
-        logsDirectoryPath.ifPresent(path -> newComponentLogConfigurations.add(ComponentLogConfiguration.builder()
-                // TODO: Have a better way to get this.
-                .fileNameRegex(Pattern.compile("^evergreen.log\\w*"))
-                .directoryPath(path)
+        Path logsDirectoryPath = Paths.get(LogManager.getConfig().getStoreName()).getParent();
+        newComponentLogConfigurations.add(ComponentLogConfiguration.builder()
+                .fileNameRegex(Pattern.compile(String.format(DEFAULT_FILE_REGEX, LogManager.getConfig().getFileName())))
+                .directoryPath(logsDirectoryPath)
                 .name(SYSTEM_LOGS_COMPONENT_NAME)
                 .componentType(ComponentType.GreengrassSystemComponent)
-                .build()));
+                .build());
     }
 
     /**
@@ -156,7 +158,7 @@ public class LogManagerService extends PluginService {
      */
     private void handleCloudWatchAttemptStatus(CloudWatchAttempt cloudWatchAttempt) {
         Map<String, Set<String>> completedLogFilePerComponent = new ConcurrentHashMap<>();
-        Map<String, CurrentProcessingFileInformation> currentProcessingLogFilePerComponent = new ConcurrentHashMap<>();
+        Map<String, CurrentProcessingFileInformation> currentProcessingLogFilePerComponent = new HashMap<>();
 
         cloudWatchAttempt.getLogStreamUploadedMap().forEach((groupName, streamNames) ->
                 streamNames.forEach(streamName -> {
@@ -329,7 +331,9 @@ public class LogManagerService extends PluginService {
             } else {
                 try {
                     TimeUnit.SECONDS.sleep(periodicUpdateIntervalSec);
-                } catch (InterruptedException ignored) { }
+                } catch (InterruptedException ignored) {
+                    break;
+                }
             }
         }
     }

@@ -20,6 +20,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.extension.ExtensionContext;
+import org.junit.jupiter.api.io.TempDir;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
 import org.mockito.Mock;
@@ -33,7 +34,6 @@ import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -71,7 +71,8 @@ public class LogsUploaderServiceTest extends EGServiceTestUtil {
     @Captor
     private ArgumentCaptor<Consumer<CloudWatchAttempt>> callbackCaptor;
 
-    private static final Path directoryPath = Paths.get(System.getProperty("user.dir"));
+    @TempDir
+    static Path directoryPath;
     private LogManagerService logsUploaderService;
     private ScheduledThreadPoolExecutor ses;
 
@@ -81,7 +82,7 @@ public class LogsUploaderServiceTest extends EGServiceTestUtil {
         EvergreenLogConfig.getInstance().setStoreType(LogStore.FILE);
         EvergreenLogConfig.getInstance().setStorePath(directoryPath);
         for (int i = 0; i < 5; i++) {
-            File file = new File(directoryPath.resolve("evergreen.log_test-" + i).toUri());
+            File file = new File(directoryPath.resolve("evergreen_test_" + i + ".log").toUri());
             file.createNewFile();
             assertTrue(file.setReadable(true));
             assertTrue(file.setWritable(true));
@@ -187,6 +188,22 @@ public class LogsUploaderServiceTest extends EGServiceTestUtil {
     }
 
     @Test
+    public void GIVEN_null_config_WHEN_config_is_processed_THEN_no_component_config_is_added(
+            ExtensionContext context1) throws InterruptedException {
+        ignoreExceptionOfType(context1, MismatchedInputException.class);
+        Topic periodicUpdateIntervalMsTopic = Topic.of(context, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC, "3");
+        when(config.lookup(PARAMETERS_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC))
+                .thenReturn(periodicUpdateIntervalMsTopic);
+        Topic configTopic = Topic.of(context, LOGS_UPLOADER_CONFIGURATION_TOPIC, null);
+        when(config.lookup(PARAMETERS_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC))
+                .thenReturn(configTopic);
+
+        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger);
+        logsUploaderService.startup();
+        assertThat(logsUploaderService.componentCurrentProcessingLogFile.values(), IsEmptyCollection.empty());
+    }
+
+    @Test
     public void GIVEN_cloud_watch_attempt_handler_WHEN_attempt_completes_THEN_successfully_updates_states_for_each_component()
             throws InterruptedException, URISyntaxException {
         Topic periodicUpdateIntervalMsTopic = Topic.of(context, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC, "1000");
@@ -232,7 +249,7 @@ public class LogsUploaderServiceTest extends EGServiceTestUtil {
         Map<String, List<String>> logStreamUploadedMap = new HashMap<>();
         logStreamUploadedMap.put("testGroup", Arrays.asList("testStream", "testStream2"));
         attempt.setLogGroupsToLogStreamsMap(logGroupsToLogStreamsMap);
-        attempt.setLogStreamUploadedMap(logStreamUploadedMap);
+        attempt.getLogStreamUploadedMap().putAll(logStreamUploadedMap);
         doNothing().when(mockUploader).registerAttemptStatus(anyString(), callbackCaptor.capture());
 
         logsUploaderService = new LogManagerService(config, mockUploader, mockMerger);
@@ -271,8 +288,8 @@ public class LogsUploaderServiceTest extends EGServiceTestUtil {
         logsUploaderService = new LogManagerService(config, mockUploader, mockMerger);
         logsUploaderService.startup();
 
-        File file = new File(directoryPath.resolve("evergreen.log_test-2").toUri());
-        File currentProcessingFile = new File(directoryPath.resolve("evergreen.log_test-3").toUri());
+        File file = new File(directoryPath.resolve("evergreen_test_2.log").toUri());
+        File currentProcessingFile = new File(directoryPath.resolve("evergreen_test_3.log").toUri());
         logsUploaderService.lastComponentUploadedLogFileInstantMap.put(SYSTEM_LOGS_COMPONENT_NAME,
                 Instant.ofEpochMilli(file.lastModified()));
         logsUploaderService.componentCurrentProcessingLogFile.put(SYSTEM_LOGS_COMPONENT_NAME,
@@ -323,7 +340,7 @@ public class LogsUploaderServiceTest extends EGServiceTestUtil {
         logsUploaderService = new LogManagerService(config, mockUploader, mockMerger);
         logsUploaderService.startup();
 
-        File file = new File(directoryPath.resolve("evergreen.log_test-2").toUri());
+        File file = new File(directoryPath.resolve("evergreen.log_test_2").toUri());
         File currentProcessingFile = new File(directoryPath.resolve("evergreen.log_test-3").toUri());
         logsUploaderService.lastComponentUploadedLogFileInstantMap.put(SYSTEM_LOGS_COMPONENT_NAME,
                 Instant.ofEpochMilli(file.lastModified()));

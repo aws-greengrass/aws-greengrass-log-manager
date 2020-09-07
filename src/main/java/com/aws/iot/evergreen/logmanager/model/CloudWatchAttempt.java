@@ -32,5 +32,5 @@ public class CloudWatchAttempt {
      * This will be used in the uploader to keep track of which log groups and log streams in an attempt have been
      * successfully uploaded to cloud.
      */
-    private Map<String, List<String>> logStreamUploadedMap = new ConcurrentHashMap<>();
+    private final Map<String, List<String>> logStreamUploadedMap = new ConcurrentHashMap<>();
 }

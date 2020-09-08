@@ -41,8 +41,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -69,10 +69,10 @@ public class LogManagerService extends PluginService {
             new ConcurrentHashMap<>();
     private final CloudWatchLogsUploader uploader;
     private final CloudWatchAttemptLogsProcessor logsProcessor;
-    private final ScheduledExecutorService scheduledExecutorService;
+    private final ExecutorService executorService;
     private Set<ComponentLogConfiguration> componentLogConfigurations = new HashSet<>();
     private final AtomicBoolean isCurrentlyUploading = new AtomicBoolean(false);
-    private ScheduledFuture<?> periodicUpdateFuture;
+    private Future<?> periodicUpdateFuture;
     private int periodicUpdateIntervalSec;
 
     /**
@@ -84,11 +84,11 @@ public class LogManagerService extends PluginService {
      */
     @Inject
     LogManagerService(Topics topics, CloudWatchLogsUploader uploader, CloudWatchAttemptLogsProcessor merger,
-                      ScheduledExecutorService scheduledExecutorService) {
+                      ExecutorService executorService) {
         super(topics);
         this.uploader = uploader;
         this.logsProcessor = merger;
-        this.scheduledExecutorService = scheduledExecutorService;
+        this.executorService = executorService;
 
         topics.lookup(PARAMETERS_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC)
                 .dflt(DEFAULT_PERIODIC_UPDATE_INTERVAL_SEC)
@@ -236,8 +236,7 @@ public class LogManagerService extends PluginService {
             periodicUpdateFuture.cancel(true);
         }
 
-        this.periodicUpdateFuture = scheduledExecutorService.schedule(this::processLogsAndUpload,
-                periodicUpdateIntervalSec, TimeUnit.SECONDS);
+        this.periodicUpdateFuture = executorService.submit(this::processLogsAndUpload);
     }
 
     /**
@@ -254,7 +253,7 @@ public class LogManagerService extends PluginService {
      */
     private void processLogsAndUpload() {
         try {
-            while (!Thread.currentThread().isInterrupted()) {
+            while (!Thread.currentThread().isInterrupted() && !this.periodicUpdateFuture.isCancelled()) {
                 // If there is already an upload ongoing, don't do anything. Wait for the next schedule to trigger to
                 // upload new logs.
                 if (!isCurrentlyUploading.compareAndSet(false, true)) {
@@ -335,6 +334,7 @@ public class LogManagerService extends PluginService {
                     uploader.upload(cloudWatchAttempt);
                 } else {
                     TimeUnit.SECONDS.sleep(periodicUpdateIntervalSec);
+                    isCurrentlyUploading.set(false);
                 }
             }
         } catch (InterruptedException e) {

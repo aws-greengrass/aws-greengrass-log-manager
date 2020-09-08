@@ -39,7 +39,8 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
@@ -73,7 +74,7 @@ public class LogsUploaderServiceTest extends EGServiceTestUtil {
     @TempDir
     static Path directoryPath;
     private LogManagerService logsUploaderService;
-    private ScheduledThreadPoolExecutor ses;
+    ExecutorService executorService = Executors.newCachedThreadPool();
 
     @BeforeAll
     static void setupBefore() throws IOException, InterruptedException {
@@ -116,19 +117,18 @@ public class LogsUploaderServiceTest extends EGServiceTestUtil {
     public void setup() {
         serviceFullName = "LogsUploaderService";
         initializeMockedConfig();
-        ses = new ScheduledThreadPoolExecutor(4);
     }
 
     @AfterEach
     public void cleanup() {
-        ses.shutdownNow();
+        executorService.shutdownNow();
         logsUploaderService.shutdown();
     }
 
     @Test
     public void GIVEN_system_log_files_to_be_uploaded_WHEN_merger_merges_THEN_we_get_all_log_files()
             throws InterruptedException {
-        Topic periodicUpdateIntervalMsTopic = Topic.of(context, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC, "3");
+        Topic periodicUpdateIntervalMsTopic = Topic.of(context, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC, "1");
         when(config.lookup(PARAMETERS_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC))
                 .thenReturn(periodicUpdateIntervalMsTopic);
         when(mockMerger.processLogFiles(componentLogsInformationCaptor.capture())).thenReturn(new CloudWatchAttempt());
@@ -147,7 +147,7 @@ public class LogsUploaderServiceTest extends EGServiceTestUtil {
                 .thenReturn(configTopic);
         doNothing().when(mockUploader).registerAttemptStatus(anyString(), callbackCaptor.capture());
 
-        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, ses);
+        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executorService);
         logsUploaderService.startup();
 
         TimeUnit.SECONDS.sleep(5);
@@ -180,7 +180,7 @@ public class LogsUploaderServiceTest extends EGServiceTestUtil {
         when(config.lookup(PARAMETERS_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC))
                 .thenReturn(configTopic);
 
-        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, ses);
+        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executorService);
         logsUploaderService.startup();
         assertThat(logsUploaderService.componentCurrentProcessingLogFile.values(), IsEmptyCollection.empty());
     }
@@ -196,7 +196,7 @@ public class LogsUploaderServiceTest extends EGServiceTestUtil {
         when(config.lookup(PARAMETERS_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC))
                 .thenReturn(configTopic);
 
-        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, ses);
+        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executorService);
         logsUploaderService.startup();
         assertThat(logsUploaderService.componentCurrentProcessingLogFile.values(), IsEmptyCollection.empty());
     }
@@ -250,7 +250,7 @@ public class LogsUploaderServiceTest extends EGServiceTestUtil {
         attempt.getLogStreamUploadedMap().putAll(logStreamUploadedMap);
         doNothing().when(mockUploader).registerAttemptStatus(anyString(), callbackCaptor.capture());
 
-        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, ses);
+        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executorService);
         logsUploaderService.startup();
 
         callbackCaptor.getValue().accept(attempt);
@@ -283,7 +283,7 @@ public class LogsUploaderServiceTest extends EGServiceTestUtil {
         when(config.lookup(PARAMETERS_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC))
                 .thenReturn(configTopic);
 
-        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, ses);
+        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executorService);
         logsUploaderService.startup();
 
         File file = new File(directoryPath.resolve("evergreen_test_2.log").toUri());
@@ -335,7 +335,7 @@ public class LogsUploaderServiceTest extends EGServiceTestUtil {
         when(config.lookup(PARAMETERS_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC))
                 .thenReturn(configTopic);
 
-        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, ses);
+        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executorService);
         logsUploaderService.startup();
 
         File file = new File(directoryPath.resolve("evergreen.log_test_2").toUri());

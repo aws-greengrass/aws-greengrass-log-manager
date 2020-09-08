@@ -39,7 +39,6 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
@@ -100,6 +99,8 @@ public class LogsUploaderServiceTest extends EGServiceTestUtil {
 
     @AfterAll
     static void cleanUpAfter() {
+        EvergreenLogConfig.getInstance().setLevel(Level.INFO);
+        EvergreenLogConfig.getInstance().setStoreType(LogStore.CONSOLE);
         final File folder = new File(directoryPath.toUri());
         final File[] files = folder.listFiles();
         if (files != null) {
@@ -116,7 +117,6 @@ public class LogsUploaderServiceTest extends EGServiceTestUtil {
         serviceFullName = "LogsUploaderService";
         initializeMockedConfig();
         ses = new ScheduledThreadPoolExecutor(4);
-        when(context.get(ScheduledExecutorService.class)).thenReturn(ses);
     }
 
     @AfterEach
@@ -147,7 +147,7 @@ public class LogsUploaderServiceTest extends EGServiceTestUtil {
                 .thenReturn(configTopic);
         doNothing().when(mockUploader).registerAttemptStatus(anyString(), callbackCaptor.capture());
 
-        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger);
+        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, ses);
         logsUploaderService.startup();
 
         TimeUnit.SECONDS.sleep(5);
@@ -180,7 +180,7 @@ public class LogsUploaderServiceTest extends EGServiceTestUtil {
         when(config.lookup(PARAMETERS_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC))
                 .thenReturn(configTopic);
 
-        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger);
+        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, ses);
         logsUploaderService.startup();
         assertThat(logsUploaderService.componentCurrentProcessingLogFile.values(), IsEmptyCollection.empty());
     }
@@ -196,7 +196,7 @@ public class LogsUploaderServiceTest extends EGServiceTestUtil {
         when(config.lookup(PARAMETERS_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC))
                 .thenReturn(configTopic);
 
-        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger);
+        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, ses);
         logsUploaderService.startup();
         assertThat(logsUploaderService.componentCurrentProcessingLogFile.values(), IsEmptyCollection.empty());
     }
@@ -250,7 +250,7 @@ public class LogsUploaderServiceTest extends EGServiceTestUtil {
         attempt.getLogStreamUploadedMap().putAll(logStreamUploadedMap);
         doNothing().when(mockUploader).registerAttemptStatus(anyString(), callbackCaptor.capture());
 
-        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger);
+        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, ses);
         logsUploaderService.startup();
 
         callbackCaptor.getValue().accept(attempt);
@@ -283,7 +283,7 @@ public class LogsUploaderServiceTest extends EGServiceTestUtil {
         when(config.lookup(PARAMETERS_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC))
                 .thenReturn(configTopic);
 
-        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger);
+        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, ses);
         logsUploaderService.startup();
 
         File file = new File(directoryPath.resolve("evergreen_test_2.log").toUri());
@@ -335,7 +335,7 @@ public class LogsUploaderServiceTest extends EGServiceTestUtil {
         when(config.lookup(PARAMETERS_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC))
                 .thenReturn(configTopic);
 
-        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger);
+        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, ses);
         logsUploaderService.startup();
 
         File file = new File(directoryPath.resolve("evergreen.log_test_2").toUri());

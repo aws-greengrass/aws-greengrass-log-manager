@@ -61,7 +61,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith({MockitoExtension.class, EGExtension.class})
-public class LogsUploaderServiceTest extends EGServiceTestUtil {
+public class LogManagerServiceTest extends EGServiceTestUtil {
     @Mock
     private CloudWatchLogsUploader mockUploader;
     @Mock
@@ -106,7 +106,7 @@ public class LogsUploaderServiceTest extends EGServiceTestUtil {
         final File[] files = folder.listFiles();
         if (files != null) {
             for (final File file : files) {
-                if (file.getName().startsWith("evergreen.log") && !file.delete()) {
+                if (file.getName().startsWith("evergreen") && !file.delete()) {
                     System.err.println("Can't remove " + file.getAbsolutePath());
                 }
             }
@@ -115,12 +115,14 @@ public class LogsUploaderServiceTest extends EGServiceTestUtil {
 
     @BeforeEach
     public void setup() {
-        serviceFullName = "LogsUploaderService";
+        serviceFullName = "aws.greengrass.logmanager";
         initializeMockedConfig();
     }
 
     @AfterEach
     public void cleanup() {
+        logsUploaderService.componentCurrentProcessingLogFile.clear();
+        logsUploaderService.lastComponentUploadedLogFileInstantMap.clear();
         executorService.shutdownNow();
         logsUploaderService.shutdown();
     }

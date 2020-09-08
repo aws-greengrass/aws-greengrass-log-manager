@@ -10,7 +10,7 @@ import com.aws.iot.evergreen.logmanager.model.ComponentLogFileInformation;
 
 public class CloudWatchAttemptLogsProcessor {
     /**
-     * Gets logs from the component which need to be uploaded to CloudWatch.
+     * Gets logs from the component which processLogFiles need to be uploaded to CloudWatch.
      *
      * @param componentLogFileInformation log files information for a component to read logs from.
      * @return CloudWatch attempt containing information needed to upload logs from the component to the cloud.

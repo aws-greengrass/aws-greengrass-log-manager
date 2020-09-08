@@ -22,6 +22,6 @@ import java.util.Map;
 public class CloudWatchAttemptLogInformation {
     private List<InputLogEvent> logEvents;
     @Builder.Default
-    private Map<String, CloudWatchAttemptLogFileInformation> attemptLogFileInformationList = new HashMap<>();
+    private Map<String, CloudWatchAttemptLogFileInformation> attemptLogFileInformationMap = new HashMap<>();
     private String componentName;
 }

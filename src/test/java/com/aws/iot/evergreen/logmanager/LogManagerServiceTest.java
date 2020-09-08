@@ -244,11 +244,11 @@ public class LogManagerServiceTest extends EGServiceTestUtil {
 
         CloudWatchAttemptLogInformation attemptLogInformation1 = CloudWatchAttemptLogInformation.builder()
                 .componentName("TestComponent")
-                .attemptLogFileInformationList(attemptLogFileInformationMap1)
+                .attemptLogFileInformationMap(attemptLogFileInformationMap1)
                 .build();
         CloudWatchAttemptLogInformation attemptLogInformation2 = CloudWatchAttemptLogInformation.builder()
                 .componentName("TestComponent2")
-                .attemptLogFileInformationList(attemptLogFileInformationMap2)
+                .attemptLogFileInformationMap(attemptLogFileInformationMap2)
                 .build();
         logStreamsToLogInformationMap.put("testStream", attemptLogInformation1);
         logStreamsToLogInformationMap.put("testStream2", attemptLogInformation2);

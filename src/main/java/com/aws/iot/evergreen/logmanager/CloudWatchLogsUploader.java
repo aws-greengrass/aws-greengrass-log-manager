@@ -33,6 +33,6 @@ public class CloudWatchLogsUploader {
      *
      * @param name      The unique name for the service subscribing.
      */
-    public void unRegisterAttemptStatus(String name) {
+    public void unregisterAttemptStatus(String name) {
     }
 }

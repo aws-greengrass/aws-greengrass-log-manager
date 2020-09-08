@@ -21,6 +21,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class CloudWatchAttempt {
     // TODO: Need to implement retry mechanism.
     protected static final int MAX_RETRIES = 5;
+    //TODO: Check if we can consolidate logStreamUploadedMap here.
     private Map<String, Map<String, CloudWatchAttemptLogInformation>> logGroupsToLogStreamsMap;
 
     /**

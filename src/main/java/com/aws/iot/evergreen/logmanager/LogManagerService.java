@@ -30,7 +30,6 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -53,8 +52,8 @@ import static com.aws.iot.evergreen.packagemanager.KernelConfigResolver.PARAMETE
 @ImplementsService(name = LOGS_UPLOADER_SERVICE_TOPICS, version = "1.0.0")
 public class LogManagerService extends PluginService {
     public static final String LOGS_UPLOADER_SERVICE_TOPICS = "aws.greengrass.logmanager";
-    public static final String LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC = "logsUploaderPeriodicUpdateIntervalSec";
-    public static final String LOGS_UPLOADER_CONFIGURATION_TOPIC = "logsUploaderConfigurationJson";
+    public static final String LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC = "periodicUploadIntervalSec";
+    public static final String LOGS_UPLOADER_CONFIGURATION_TOPIC = "logsUploaderConfiguration";
     public static final String SYSTEM_LOGS_COMPONENT_NAME = "System";
     private static final int DEFAULT_PERIODIC_UPDATE_INTERVAL_SEC = 300;
     private static final String DEFAULT_FILE_REGEX = "^%s\\w*.log";
@@ -74,15 +73,14 @@ public class LogManagerService extends PluginService {
     /**
      * Constructor.
      *
-     * @param topics              The configuration coming from  kernel
+     * @param topics              The configuration coming from the kernel.
      * @param uploader            {@link CloudWatchLogsUploader}
-     * @param deviceConfiguration {@link DeviceConfiguration}
      */
     @Inject
-    LogManagerService(Topics topics, CloudWatchLogsUploader uploader, CloudWatchAttemptLogsProcessor merger) {
+    LogManagerService(Topics topics, CloudWatchLogsUploader uploader, CloudWatchAttemptLogsProcessor logProcessor) {
         super(topics);
         this.uploader = uploader;
-        this.logsProcessor = merger;
+        this.logsProcessor = logProcessor;
 
         topics.lookup(PARAMETERS_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC)
                 .dflt(DEFAULT_PERIODIC_UPDATE_INTERVAL_SEC)
@@ -91,7 +89,6 @@ public class LogManagerService extends PluginService {
                 });
         this.uploader.registerAttemptStatus(LOGS_UPLOADER_SERVICE_TOPICS, this::handleCloudWatchAttemptStatus);
 
-        //TODO: read configuration of components.
         topics.lookup(PARAMETERS_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC)
                 .subscribe((why, newv) -> {
                     try {
@@ -124,7 +121,8 @@ public class LogManagerService extends PluginService {
             // TODO: handle the different optional cases.
             newComponentLogConfigurations.add(componentLogConfiguration);
         });
-        componentLogConfigurations = newComponentLogConfigurations;
+
+        this.componentLogConfigurations = newComponentLogConfigurations;
     }
 
     private void addSystemLogsConfiguration(Set<ComponentLogConfiguration> newComponentLogConfigurations) {
@@ -160,7 +158,7 @@ public class LogManagerService extends PluginService {
                 streamNames.forEach(streamName -> {
                     CloudWatchAttemptLogInformation attemptLogInformation =
                             cloudWatchAttempt.getLogGroupsToLogStreamsMap().get(groupName).get(streamName);
-                    attemptLogInformation.getAttemptLogFileInformationList().forEach(
+                    attemptLogInformation.getAttemptLogFileInformationMap().forEach(
                             (fileName, cloudWatchAttemptLogFileInformation) ->
                                     processCloudWatchAttemptLogInformation(completedLogFilePerComponent,
                                             currentProcessingLogFilePerComponent, attemptLogInformation, fileName,
@@ -206,10 +204,6 @@ public class LogManagerService extends PluginService {
                 }
             }
         } else {
-            if (completedLogFilePerComponent.containsKey(attemptLogInformation.getComponentName())
-                    && completedLogFilePerComponent.get(attemptLogInformation.getComponentName()).contains(fileName)) {
-                return;
-            }
             // Add the file to the current processing list for the component.
             // Note: There should always be only 1 file which will be in progress at any given time.
             CurrentProcessingFileInformation processingFileInformation =
@@ -248,7 +242,10 @@ public class LogManagerService extends PluginService {
             // TODO: Sleep here if we had received a throttling exception in the previous run.
             AtomicReference<Optional<ComponentLogFileInformation>> componentLogFileInformation =
                     new AtomicReference<>(Optional.empty());
-            for (ComponentLogConfiguration componentLogConfiguration : componentLogConfigurations) {
+            // Get the latest known configurations because the componentLogConfigurations can change if a new
+            // configuration is received from the customer.
+            final Set<ComponentLogConfiguration> currentComponentLogConfigurations = componentLogConfigurations;
+            for (ComponentLogConfiguration componentLogConfiguration : currentComponentLogConfigurations) {
                 if (componentLogFileInformation.get().isPresent()) {
                     continue;
                 }
@@ -260,8 +257,6 @@ public class LogManagerService extends PluginService {
                 try {
                     File[] files = folder.listFiles();
                     if (files != null) {
-                        // Sort the files by the last modified time.
-                        Arrays.sort(files, Comparator.comparingLong(File::lastModified));
                         for (File file : files) {
                             if (file.isFile()
                                     && lastUploadedLogFileTimeMs.isBefore(Instant.ofEpochMilli(file.lastModified()))
@@ -271,6 +266,8 @@ public class LogManagerService extends PluginService {
                             }
                         }
                     }
+                    // Sort the files by the last modified time.
+                    allFiles.sort(Comparator.comparingLong(File::lastModified));
                     // If there are no rotated log files for the component, then return.
                     if (allFiles.size() - 1 <= 0) {
                         continue;

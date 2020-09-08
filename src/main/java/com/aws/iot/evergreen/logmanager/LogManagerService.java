@@ -236,94 +236,90 @@ public class LogManagerService extends PluginService {
      *     It will then get all the log files which have not yet been uploaded to the cloud. This is done by checking
      *     the last uploaded log file time for that component.
      */
-    private void processLogsAndUpload() {
-        try {
-            while (!Thread.currentThread().isInterrupted()) {
-                // If there is already an upload ongoing, don't do anything. Wait for the next schedule to trigger to
-                // upload new logs.
-                if (!isCurrentlyUploading.compareAndSet(false, true)) {
-                    //TODO: Use a CountDownLatch so that we could await here instead of sleep?
-                    TimeUnit.SECONDS.sleep(periodicUpdateIntervalSec);
+    private void processLogsAndUpload() throws InterruptedException {
+        while (true) {
+            // If there is already an upload ongoing, don't do anything. Wait for the next schedule to trigger to
+            // upload new logs.
+            if (!isCurrentlyUploading.compareAndSet(false, true)) {
+                //TODO: Use a CountDownLatch so that we could await here instead of sleep?
+                TimeUnit.SECONDS.sleep(periodicUpdateIntervalSec);
+                continue;
+            }
+            // TODO: Sleep here if we had received a throttling exception in the previous run.
+            AtomicReference<Optional<ComponentLogFileInformation>> componentLogFileInformation =
+                    new AtomicReference<>(Optional.empty());
+            for (ComponentLogConfiguration componentLogConfiguration : componentLogConfigurations) {
+                if (componentLogFileInformation.get().isPresent()) {
                     continue;
                 }
-                // TODO: Sleep here if we had received a throttling exception in the previous run.
-                AtomicReference<Optional<ComponentLogFileInformation>> componentLogFileInformation =
-                        new AtomicReference<>(Optional.empty());
-                for (ComponentLogConfiguration componentLogConfiguration : componentLogConfigurations) {
-                    if (componentLogFileInformation.get().isPresent()) {
+                Instant lastUploadedLogFileTimeMs =
+                        lastComponentUploadedLogFileInstantMap.getOrDefault(componentLogConfiguration.getName(),
+                                Instant.EPOCH);
+                File folder = new File(componentLogConfiguration.getDirectoryPath().toUri());
+                List<File> allFiles = new ArrayList<>();
+                try {
+                    File[] files = folder.listFiles();
+                    if (files != null) {
+                        // Sort the files by the last modified time.
+                        Arrays.sort(files, Comparator.comparingLong(File::lastModified));
+                        for (File file : files) {
+                            if (file.isFile()
+                                    && lastUploadedLogFileTimeMs.isBefore(Instant.ofEpochMilli(file.lastModified()))
+                                    && componentLogConfiguration.getFileNameRegex().matcher(file.getName()).find()
+                                    && file.length() > 0) {
+                                allFiles.add(file);
+                            }
+                        }
+                    }
+                    // If there are no rotated log files for the component, then return.
+                    if (allFiles.size() - 1 <= 0) {
                         continue;
                     }
-                    Instant lastUploadedLogFileTimeMs =
-                            lastComponentUploadedLogFileInstantMap.getOrDefault(componentLogConfiguration.getName(),
-                                    Instant.EPOCH);
-                    File folder = new File(componentLogConfiguration.getDirectoryPath().toUri());
-                    List<File> allFiles = new ArrayList<>();
-                    try {
-                        File[] files = folder.listFiles();
-                        if (files != null) {
-                            // Sort the files by the last modified time.
-                            Arrays.sort(files, Comparator.comparingLong(File::lastModified));
-                            for (File file : files) {
-                                if (file.isFile()
-                                        && lastUploadedLogFileTimeMs.isBefore(Instant.ofEpochMilli(file.lastModified()))
-                                        && componentLogConfiguration.getFileNameRegex().matcher(file.getName()).find()
-                                        && file.length() > 0) {
-                                    allFiles.add(file);
-                                }
-                            }
-                        }
-                        // If there are no rotated log files for the component, then return.
-                        if (allFiles.size() - 1 <= 0) {
-                            continue;
-                        }
-                        // Don't consider the active log file.
-                        allFiles = allFiles.subList(0, allFiles.size() - 1);
+                    // Don't consider the active log file.
+                    allFiles = allFiles.subList(0, allFiles.size() - 1);
 
-                        componentLogFileInformation.set(Optional.of(
-                                ComponentLogFileInformation.builder()
-                                        .name(componentLogConfiguration.getName())
-                                        .multiLineStartPattern(componentLogConfiguration.getMultiLineStartPattern())
-                                        .desiredLogLevel(componentLogConfiguration.getMinimumLogLevel())
-                                        .componentType(componentLogConfiguration.getComponentType())
-                                        .logFileInformationList(new ArrayList<>())
-                                        .build()));
-                        allFiles.forEach(file -> {
-                            long startPosition = 0;
-                            // If the file was paritially read in the previous run, then get the starting position for
-                            // new log lines.
-                            // TODO: Add file last modified time information to make sure it is the same file.
-                            if (componentCurrentProcessingLogFile.containsKey(componentLogConfiguration.getName())) {
-                                CurrentProcessingFileInformation processingFileInformation =
-                                        componentCurrentProcessingLogFile
-                                                .get(componentLogConfiguration.getName());
-                                if (processingFileInformation.fileName.equals(file.getAbsolutePath())
-                                        && processingFileInformation.lastModifiedTime == file.lastModified()) {
-                                    startPosition = processingFileInformation.startPosition;
-                                }
+                    componentLogFileInformation.set(Optional.of(
+                            ComponentLogFileInformation.builder()
+                                    .name(componentLogConfiguration.getName())
+                                    .multiLineStartPattern(componentLogConfiguration.getMultiLineStartPattern())
+                                    .desiredLogLevel(componentLogConfiguration.getMinimumLogLevel())
+                                    .componentType(componentLogConfiguration.getComponentType())
+                                    .logFileInformationList(new ArrayList<>())
+                                    .build()));
+                    allFiles.forEach(file -> {
+                        long startPosition = 0;
+                        // If the file was paritially read in the previous run, then get the starting position for
+                        // new log lines.
+                        // TODO: Add file last modified time information to make sure it is the same file.
+                        if (componentCurrentProcessingLogFile.containsKey(componentLogConfiguration.getName())) {
+                            CurrentProcessingFileInformation processingFileInformation =
+                                    componentCurrentProcessingLogFile
+                                            .get(componentLogConfiguration.getName());
+                            if (processingFileInformation.fileName.equals(file.getAbsolutePath())
+                                    && processingFileInformation.lastModifiedTime == file.lastModified()) {
+                                startPosition = processingFileInformation.startPosition;
                             }
-                            LogFileInformation logFileInformation = LogFileInformation.builder()
-                                    .file(file)
-                                    .startPosition(startPosition)
-                                    .build();
-                            componentLogFileInformation.get().get().getLogFileInformationList().add(logFileInformation);
-                        });
-                        break;
-                    } catch (SecurityException e) {
-                        logger.atError().cause(e).log("Unable to get log files for {} from {}",
-                                componentLogConfiguration.getName(), componentLogConfiguration.getDirectoryPath());
-                    }
-                }
-                if (componentLogFileInformation.get().isPresent()) {
-                    CloudWatchAttempt cloudWatchAttempt =
-                            logsProcessor.processLogFiles(componentLogFileInformation.get().get());
-                    uploader.upload(cloudWatchAttempt);
-                } else {
-                    TimeUnit.SECONDS.sleep(periodicUpdateIntervalSec);
-                    isCurrentlyUploading.set(false);
+                        }
+                        LogFileInformation logFileInformation = LogFileInformation.builder()
+                                .file(file)
+                                .startPosition(startPosition)
+                                .build();
+                        componentLogFileInformation.get().get().getLogFileInformationList().add(logFileInformation);
+                    });
+                    break;
+                } catch (SecurityException e) {
+                    logger.atError().cause(e).log("Unable to get log files for {} from {}",
+                            componentLogConfiguration.getName(), componentLogConfiguration.getDirectoryPath());
                 }
             }
-        } catch (InterruptedException e) {
-            logger.atDebug().log("Interrupted while running upload loop, exiting");
+            if (componentLogFileInformation.get().isPresent()) {
+                CloudWatchAttempt cloudWatchAttempt =
+                        logsProcessor.processLogFiles(componentLogFileInformation.get().get());
+                uploader.upload(cloudWatchAttempt);
+            } else {
+                TimeUnit.SECONDS.sleep(periodicUpdateIntervalSec);
+                isCurrentlyUploading.set(false);
+            }
         }
     }
 

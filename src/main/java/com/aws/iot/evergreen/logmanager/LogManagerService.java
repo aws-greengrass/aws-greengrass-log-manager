@@ -73,7 +73,6 @@ public class LogManagerService extends PluginService {
     private Set<ComponentLogConfiguration> componentLogConfigurations = new HashSet<>();
     private final AtomicBoolean isCurrentlyUploading = new AtomicBoolean(false);
     private Future<?> currentPeriodicUpdateFuture;
-    private Future<?> oldPeriodicUpdateFuture;
     private int periodicUpdateIntervalSec;
 
     /**
@@ -95,11 +94,9 @@ public class LogManagerService extends PluginService {
                 .dflt(DEFAULT_PERIODIC_UPDATE_INTERVAL_SEC)
                 .subscribe((why, newv) -> {
                     periodicUpdateIntervalSec = Coerce.toInt(newv);
-                    if (this.currentPeriodicUpdateFuture != null) {
-                        this.oldPeriodicUpdateFuture = this.currentPeriodicUpdateFuture;
-                        this.oldPeriodicUpdateFuture.cancel(false);
+                    if (this.currentPeriodicUpdateFuture == null) {
+                        this.currentPeriodicUpdateFuture = this.executorService.submit(this::processLogsAndUpload);
                     }
-                    this.currentPeriodicUpdateFuture = this.executorService.submit(this::processLogsAndUpload);
                 });
         this.uploader.registerAttemptStatus(LOGS_UPLOADER_SERVICE_TOPICS, this::handleCloudWatchAttemptStatus);
 
@@ -250,8 +247,7 @@ public class LogManagerService extends PluginService {
      */
     private void processLogsAndUpload() {
         try {
-            while (!Thread.currentThread().isInterrupted() && (this.oldPeriodicUpdateFuture == null
-                    || !this.oldPeriodicUpdateFuture.isCancelled())) {
+            while (!Thread.currentThread().isInterrupted()) {
                 // If there is already an upload ongoing, don't do anything. Wait for the next schedule to trigger to
                 // upload new logs.
                 if (!isCurrentlyUploading.compareAndSet(false, true)) {

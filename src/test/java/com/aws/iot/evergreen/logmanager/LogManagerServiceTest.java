@@ -120,7 +120,7 @@ public class LogManagerServiceTest extends EGServiceTestUtil {
     }
 
     @AfterEach
-    public void cleanup() {
+    public void cleanup() throws InterruptedException {
         logsUploaderService.componentCurrentProcessingLogFile.clear();
         logsUploaderService.lastComponentUploadedLogFileInstantMap.clear();
         executorService.shutdownNow();

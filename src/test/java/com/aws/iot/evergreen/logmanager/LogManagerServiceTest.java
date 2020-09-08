@@ -74,7 +74,7 @@ public class LogManagerServiceTest extends EGServiceTestUtil {
     @TempDir
     static Path directoryPath;
     private LogManagerService logsUploaderService;
-    ExecutorService executorService = Executors.newCachedThreadPool();
+    private final ExecutorService executor = Executors.newCachedThreadPool();
 
     @BeforeAll
     static void setupBefore() throws IOException, InterruptedException {
@@ -123,7 +123,6 @@ public class LogManagerServiceTest extends EGServiceTestUtil {
     public void cleanup() throws InterruptedException {
         logsUploaderService.componentCurrentProcessingLogFile.clear();
         logsUploaderService.lastComponentUploadedLogFileInstantMap.clear();
-        executorService.shutdownNow();
         logsUploaderService.shutdown();
     }
 
@@ -149,8 +148,8 @@ public class LogManagerServiceTest extends EGServiceTestUtil {
                 .thenReturn(configTopic);
         doNothing().when(mockUploader).registerAttemptStatus(anyString(), callbackCaptor.capture());
 
-        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executorService);
-        logsUploaderService.startup();
+        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger);
+        startServiceOnAnotherThread();
 
         TimeUnit.SECONDS.sleep(5);
 
@@ -166,9 +165,17 @@ public class LogManagerServiceTest extends EGServiceTestUtil {
         verify(mockUploader, times(1)).upload(any(CloudWatchAttempt.class));
     }
 
+    private void startServiceOnAnotherThread() {
+        executor.submit(() -> {
+            try {
+                logsUploaderService.startup();
+            } catch (InterruptedException ignored) { }
+        });
+    }
+
     @Test
     public void GIVEN_invalid_config_WHEN_config_is_processed_THEN_no_component_config_is_added(
-            ExtensionContext context1) throws InterruptedException {
+            ExtensionContext context1) {
         ignoreExceptionOfType(context1, MismatchedInputException.class);
         Topic periodicUpdateIntervalMsTopic = Topic.of(context, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC, "3");
         when(config.lookup(PARAMETERS_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC))
@@ -182,14 +189,14 @@ public class LogManagerServiceTest extends EGServiceTestUtil {
         when(config.lookup(PARAMETERS_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC))
                 .thenReturn(configTopic);
 
-        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executorService);
-        logsUploaderService.startup();
+        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger);
+        startServiceOnAnotherThread();
         assertThat(logsUploaderService.componentCurrentProcessingLogFile.values(), IsEmptyCollection.empty());
     }
 
     @Test
     public void GIVEN_null_config_WHEN_config_is_processed_THEN_no_component_config_is_added(
-            ExtensionContext context1) throws InterruptedException {
+            ExtensionContext context1) {
         ignoreExceptionOfType(context1, MismatchedInputException.class);
         Topic periodicUpdateIntervalMsTopic = Topic.of(context, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC, "3");
         when(config.lookup(PARAMETERS_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC))
@@ -198,14 +205,14 @@ public class LogManagerServiceTest extends EGServiceTestUtil {
         when(config.lookup(PARAMETERS_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC))
                 .thenReturn(configTopic);
 
-        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executorService);
-        logsUploaderService.startup();
+        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger);
+        startServiceOnAnotherThread();
         assertThat(logsUploaderService.componentCurrentProcessingLogFile.values(), IsEmptyCollection.empty());
     }
 
     @Test
     public void GIVEN_cloud_watch_attempt_handler_WHEN_attempt_completes_THEN_successfully_updates_states_for_each_component()
-            throws InterruptedException, URISyntaxException {
+            throws URISyntaxException {
         Topic periodicUpdateIntervalMsTopic = Topic.of(context, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC, "1000");
         when(config.lookup(PARAMETERS_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC))
                 .thenReturn(periodicUpdateIntervalMsTopic);
@@ -252,8 +259,8 @@ public class LogManagerServiceTest extends EGServiceTestUtil {
         attempt.getLogStreamUploadedMap().putAll(logStreamUploadedMap);
         doNothing().when(mockUploader).registerAttemptStatus(anyString(), callbackCaptor.capture());
 
-        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executorService);
-        logsUploaderService.startup();
+        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger);
+        startServiceOnAnotherThread();
 
         callbackCaptor.getValue().accept(attempt);
 
@@ -285,9 +292,7 @@ public class LogManagerServiceTest extends EGServiceTestUtil {
         when(config.lookup(PARAMETERS_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC))
                 .thenReturn(configTopic);
 
-        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executorService);
-        logsUploaderService.startup();
-
+        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger);
         File file = new File(directoryPath.resolve("evergreen_test_2.log").toUri());
         File currentProcessingFile = new File(directoryPath.resolve("evergreen_test_3.log").toUri());
         logsUploaderService.lastComponentUploadedLogFileInstantMap.put(SYSTEM_LOGS_COMPONENT_NAME,
@@ -299,6 +304,7 @@ public class LogManagerServiceTest extends EGServiceTestUtil {
                         .startPosition(2)
                         .build());
 
+        startServiceOnAnotherThread();
         TimeUnit.SECONDS.sleep(5);
 
         assertNotNull(componentLogsInformationCaptor.getValue());
@@ -337,8 +343,8 @@ public class LogManagerServiceTest extends EGServiceTestUtil {
         when(config.lookup(PARAMETERS_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC))
                 .thenReturn(configTopic);
 
-        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executorService);
-        logsUploaderService.startup();
+        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger);
+        startServiceOnAnotherThread();
 
         File file = new File(directoryPath.resolve("evergreen.log_test_2").toUri());
         File currentProcessingFile = new File(directoryPath.resolve("evergreen.log_test-3").toUri());

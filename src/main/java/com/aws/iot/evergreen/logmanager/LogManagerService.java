@@ -41,8 +41,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -69,10 +67,8 @@ public class LogManagerService extends PluginService {
             new ConcurrentHashMap<>();
     private final CloudWatchLogsUploader uploader;
     private final CloudWatchAttemptLogsProcessor logsProcessor;
-    private final ExecutorService executorService;
     private Set<ComponentLogConfiguration> componentLogConfigurations = new HashSet<>();
     private final AtomicBoolean isCurrentlyUploading = new AtomicBoolean(false);
-    private Future<?> currentPeriodicUpdateFuture;
     private int periodicUpdateIntervalSec;
 
     /**
@@ -83,20 +79,15 @@ public class LogManagerService extends PluginService {
      * @param deviceConfiguration {@link DeviceConfiguration}
      */
     @Inject
-    LogManagerService(Topics topics, CloudWatchLogsUploader uploader, CloudWatchAttemptLogsProcessor merger,
-                      ExecutorService executorService) {
+    LogManagerService(Topics topics, CloudWatchLogsUploader uploader, CloudWatchAttemptLogsProcessor merger) {
         super(topics);
         this.uploader = uploader;
         this.logsProcessor = merger;
-        this.executorService = executorService;
 
         topics.lookup(PARAMETERS_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC)
                 .dflt(DEFAULT_PERIODIC_UPDATE_INTERVAL_SEC)
                 .subscribe((why, newv) -> {
                     periodicUpdateIntervalSec = Coerce.toInt(newv);
-                    if (this.currentPeriodicUpdateFuture == null) {
-                        this.currentPeriodicUpdateFuture = this.executorService.submit(this::processLogsAndUpload);
-                    }
                 });
         this.uploader.registerAttemptStatus(LOGS_UPLOADER_SERVICE_TOPICS, this::handleCloudWatchAttemptStatus);
 
@@ -337,17 +328,17 @@ public class LogManagerService extends PluginService {
     }
 
     @Override
-    @SuppressWarnings("PMD.UselessOverridingMethod")
     public void startup() throws InterruptedException {
         // Need to override the function for tests.
         super.startup();
+        processLogsAndUpload();
     }
 
     @Override
-    public void shutdown() {
-        if (this.currentPeriodicUpdateFuture != null) {
-            this.currentPeriodicUpdateFuture.cancel(true);
-        }
+    @SuppressWarnings("PMD.UselessOverridingMethod")
+    public void shutdown() throws InterruptedException {
+        // Need to override the function for tests.
+        super.shutdown();
     }
 
     @Builder

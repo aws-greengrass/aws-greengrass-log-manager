@@ -23,8 +23,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import software.amazon.awssdk.services.cloudwatchlogs.CloudWatchLogsClient;
 import software.amazon.awssdk.services.cloudwatchlogs.model.CreateLogGroupRequest;
 import software.amazon.awssdk.services.cloudwatchlogs.model.CreateLogStreamRequest;
-import software.amazon.awssdk.services.cloudwatchlogs.model.DescribeLogStreamsRequest;
-import software.amazon.awssdk.services.cloudwatchlogs.model.DescribeLogStreamsResponse;
 import software.amazon.awssdk.services.cloudwatchlogs.model.InputLogEvent;
 import software.amazon.awssdk.services.cloudwatchlogs.model.InvalidSequenceTokenException;
 import software.amazon.awssdk.services.cloudwatchlogs.model.LimitExceededException;
@@ -178,16 +176,13 @@ public class CloudWatchLogsUploaderTest extends EGServiceTestUtil  {
         attempt.setLogStreamsToLogEventsMap(logSteamForGroup1Map);
         PutLogEventsResponse putLogEventsResponse = PutLogEventsResponse.builder().nextSequenceToken(mockNextSequenceToken).build();
         when(mockCloudWatchLogsClient.putLogEvents(any(PutLogEventsRequest.class)))
-                .thenThrow(InvalidSequenceTokenException.class)
+                .thenThrow(InvalidSequenceTokenException.builder().expectedSequenceToken(mockNextSequenceToken2).build())
                 .thenReturn(putLogEventsResponse);
-        DescribeLogStreamsResponse response = DescribeLogStreamsResponse.builder().nextToken(mockNextSequenceToken2).build();
-        when(mockCloudWatchLogsClient.describeLogStreams(any(DescribeLogStreamsRequest.class))).thenReturn(response);
 
         uploader = new CloudWatchLogsUploader(mockCloudWatchClientFactory);
         uploader.addNextSequenceToken(mockGroupName, mockStreamNameForGroup, mockSequenceToken);
         uploader.upload(attempt, 1);
 
-        verify(mockCloudWatchLogsClient, times(1)).describeLogStreams(any(DescribeLogStreamsRequest.class));
         verify(mockCloudWatchLogsClient, times(2)).putLogEvents(putLogEventsRequestArgumentCaptor.capture());
 
         Set<String> messageTextToCheck = new HashSet<>();

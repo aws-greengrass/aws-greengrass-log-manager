@@ -75,6 +75,7 @@ public class LogManagerService extends PluginService {
      *
      * @param topics              The configuration coming from the kernel.
      * @param uploader            {@link CloudWatchLogsUploader}
+     * @param logProcessor        {@link CloudWatchAttemptLogsProcessor}
      */
     @Inject
     LogManagerService(Topics topics, CloudWatchLogsUploader uploader, CloudWatchAttemptLogsProcessor logProcessor) {

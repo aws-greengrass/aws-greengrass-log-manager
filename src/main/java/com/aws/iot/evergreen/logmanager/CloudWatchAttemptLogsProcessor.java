@@ -22,7 +22,6 @@ import com.aws.iot.evergreen.util.Coerce;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.Setter;
 import org.slf4j.event.Level;
 import software.amazon.awssdk.services.cloudwatchlogs.model.InputLogEvent;
 
@@ -61,11 +60,8 @@ public class CloudWatchAttemptLogsProcessor {
     private static final ObjectMapper DESERIALIZER = new ObjectMapper()
             .configure(MapperFeature.ACCEPT_CASE_INSENSITIVE_PROPERTIES, true);
     private final SimpleDateFormat dateFormatter = new SimpleDateFormat("yyyy/MM/dd", Locale.ENGLISH);
-    @Setter
-    private String thingName;
-    @Setter
-    private String awsRegion;
     private final Kernel kernel;
+    private final DeviceConfiguration deviceConfiguration;
     private static final Logger logger = LogManager.getLogger(CloudWatchAttemptLogsProcessor.class);
 
     /**
@@ -76,9 +72,8 @@ public class CloudWatchAttemptLogsProcessor {
      */
     @Inject
     public CloudWatchAttemptLogsProcessor(DeviceConfiguration deviceConfiguration, Kernel kernel) {
-        this.thingName = Coerce.toString(deviceConfiguration.getThingName());
-        this.awsRegion = Coerce.toString(deviceConfiguration.getAWSRegion());
         this.kernel = kernel;
+        this.deviceConfiguration = deviceConfiguration;
     }
 
     /**
@@ -93,6 +88,8 @@ public class CloudWatchAttemptLogsProcessor {
         CloudWatchAttempt attempt = new CloudWatchAttempt();
         Map<String, CloudWatchAttemptLogInformation> logStreamsMap = new ConcurrentHashMap<>();
         AtomicBoolean reachedMaxSize = new AtomicBoolean(false);
+        String thingName = Coerce.toString(deviceConfiguration.getThingName());
+        String awsRegion = Coerce.toString(deviceConfiguration.getAWSRegion());
 
         String logGroupName = DEFAULT_LOG_GROUP_NAME
                 .replace("{componentType}", componentLogFileInformation.getComponentType().toString())

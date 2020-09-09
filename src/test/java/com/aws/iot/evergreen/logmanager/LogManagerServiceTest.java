@@ -1,6 +1,7 @@
 package com.aws.iot.evergreen.logmanager;
 
 import com.aws.iot.evergreen.config.Topic;
+import com.aws.iot.evergreen.config.Topics;
 import com.aws.iot.evergreen.logging.impl.config.EvergreenLogConfig;
 import com.aws.iot.evergreen.logging.impl.config.LogStore;
 import com.aws.iot.evergreen.logmanager.model.CloudWatchAttempt;
@@ -10,6 +11,7 @@ import com.aws.iot.evergreen.logmanager.model.ComponentLogFileInformation;
 import com.aws.iot.evergreen.logmanager.model.ComponentType;
 import com.aws.iot.evergreen.testcommons.testutilities.EGExtension;
 import com.aws.iot.evergreen.testcommons.testutilities.EGServiceTestUtil;
+import com.aws.iot.evergreen.util.Coerce;
 import com.fasterxml.jackson.databind.exc.MismatchedInputException;
 import org.hamcrest.collection.IsEmptyCollection;
 import org.hamcrest.core.IsNot;
@@ -38,6 +40,7 @@ import java.time.Instant;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -46,6 +49,8 @@ import java.util.function.Consumer;
 
 import static com.aws.iot.evergreen.logmanager.LogManagerService.LOGS_UPLOADER_CONFIGURATION_TOPIC;
 import static com.aws.iot.evergreen.logmanager.LogManagerService.LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC;
+import static com.aws.iot.evergreen.logmanager.LogManagerService.PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION;
+import static com.aws.iot.evergreen.logmanager.LogManagerService.PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP;
 import static com.aws.iot.evergreen.logmanager.LogManagerService.SYSTEM_LOGS_COMPONENT_NAME;
 import static com.aws.iot.evergreen.packagemanager.KernelConfigResolver.PARAMETERS_CONFIG_KEY;
 import static com.aws.iot.evergreen.testcommons.testutilities.ExceptionLogProtector.ignoreExceptionOfType;
@@ -57,6 +62,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -71,6 +77,10 @@ public class LogManagerServiceTest extends EGServiceTestUtil {
     private ArgumentCaptor<ComponentLogFileInformation> componentLogsInformationCaptor;
     @Captor
     private ArgumentCaptor<Consumer<CloudWatchAttempt>> callbackCaptor;
+    @Captor
+    private ArgumentCaptor<Map<Object, Object>> replaceAndWaitCaptor;
+    @Captor
+    private ArgumentCaptor<Object> objectCaptor;
 
     @TempDir
     static Path directoryPath;
@@ -227,8 +237,20 @@ public class LogManagerServiceTest extends EGServiceTestUtil {
         when(config.lookup(PARAMETERS_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC))
                 .thenReturn(configTopic);
 
+        Topics componentTopics2 = mock(Topics.class);
+        Topic lastFileProcessedTimeStampTopics = mock(Topic.class);
+        when(config.lookupTopics(PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP, "TestComponent"))
+                .thenReturn(componentTopics2);
+        when(componentTopics2.createLeafChild(any())).thenReturn(lastFileProcessedTimeStampTopics);
+        when(lastFileProcessedTimeStampTopics.withValue(objectCaptor.capture()))
+                .thenReturn(lastFileProcessedTimeStampTopics);
+
+        Topics componentTopics3 = mock(Topics.class);
+        when(config.lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION, "TestComponent2"))
+                .thenReturn(componentTopics3);
+        doNothing().when(componentTopics3).replaceAndWait(replaceAndWaitCaptor.capture());
+
         CloudWatchAttempt attempt = new CloudWatchAttempt();
-        Map<String, Map<String, CloudWatchAttemptLogInformation>> logGroupsToLogStreamsMap = new HashMap<>();
         Map<String, CloudWatchAttemptLogInformation> logStreamsToLogInformationMap = new HashMap<>();
         File file1 = new File(getClass().getResource("testlogs2.log").toURI());
         File file2 = new File(getClass().getResource("testlogs1.log").toURI());
@@ -236,11 +258,13 @@ public class LogManagerServiceTest extends EGServiceTestUtil {
         attemptLogFileInformationMap1.put(file1.getAbsolutePath(), CloudWatchAttemptLogFileInformation.builder()
                 .startPosition(0)
                 .bytesRead(13)
+                .lastModifiedTime(file1.lastModified())
                 .build());
         Map<String, CloudWatchAttemptLogFileInformation> attemptLogFileInformationMap2 = new HashMap<>();
         attemptLogFileInformationMap2.put(file2.getAbsolutePath(), CloudWatchAttemptLogFileInformation.builder()
                 .startPosition(0)
                 .bytesRead(1061)
+                .lastModifiedTime(file2.lastModified())
                 .build());
 
         CloudWatchAttemptLogInformation attemptLogInformation1 = CloudWatchAttemptLogInformation.builder()
@@ -253,7 +277,6 @@ public class LogManagerServiceTest extends EGServiceTestUtil {
                 .build();
         logStreamsToLogInformationMap.put("testStream", attemptLogInformation1);
         logStreamsToLogInformationMap.put("testStream2", attemptLogInformation2);
-        logGroupsToLogStreamsMap.put("testGroup", logStreamsToLogInformationMap);
         attempt.setLogStreamsToLogEventsMap(logStreamsToLogInformationMap);
         attempt.setLogStreamUploadedSet(new HashSet<>(Arrays.asList("testStream", "testStream2")));
         doNothing().when(mockUploader).registerAttemptStatus(anyString(), callbackCaptor.capture());
@@ -262,6 +285,21 @@ public class LogManagerServiceTest extends EGServiceTestUtil {
         startServiceOnAnotherThread();
 
         callbackCaptor.getValue().accept(attempt);
+
+        assertThat(replaceAndWaitCaptor.getAllValues(), IsNot.not(IsEmptyCollection.empty()));
+        assertThat(objectCaptor.getAllValues(), IsNot.not(IsEmptyCollection.empty()));
+        List<Object> completedComponentLastProcessedFileInformation = objectCaptor.getAllValues();
+        List<Map<Object, Object>> partiallyReadComponentLogFileInformation = replaceAndWaitCaptor.getAllValues();
+        assertEquals(1, completedComponentLastProcessedFileInformation.size());
+        assertEquals(1, partiallyReadComponentLogFileInformation.size());
+        assertEquals(file1.lastModified(), Coerce.toLong(completedComponentLastProcessedFileInformation.get(0)));
+        LogManagerService.CurrentProcessingFileInformation currentProcessingFileInformation =
+                LogManagerService.CurrentProcessingFileInformation
+                        .convertFromMapOfObjects(partiallyReadComponentLogFileInformation.get(0));
+        assertEquals(file2.getAbsolutePath(), currentProcessingFileInformation.getFileName());
+        assertEquals(1061, currentProcessingFileInformation.getStartPosition());
+        assertEquals(file2.lastModified(), currentProcessingFileInformation.getLastModifiedTime());
+
 
         assertNotNull(logsUploaderService.lastComponentUploadedLogFileInstantMap);
         assertThat(logsUploaderService.lastComponentUploadedLogFileInstantMap.entrySet(), IsNot.not(IsEmptyCollection.empty()));

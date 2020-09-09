@@ -223,6 +223,7 @@ public class CloudWatchLogsUploaderTest extends EGServiceTestUtil  {
     public void GIVEN_mock_cloud_watch_attempt_WHEN_create_group_throws_LimitExceededException_THEN_attempt_has_nothing_uploaded(
             ExtensionContext context1) throws InterruptedException {
         ignoreExceptionOfType(context1, LimitExceededException.class);
+        ignoreExceptionOfType(context1, ResourceNotFoundException.class);
         String mockGroupName = "testGroup";
         String mockStreamNameForGroup = "testStream";
         String mockSequenceToken = UUID.randomUUID().toString();
@@ -268,6 +269,7 @@ public class CloudWatchLogsUploaderTest extends EGServiceTestUtil  {
     public void GIVEN_mock_cloud_watch_attempt_WHEN_create_stream_throws_LimitExceededException_THEN_attempt_has_nothing_uploaded(
             ExtensionContext context1) throws InterruptedException {
         ignoreExceptionOfType(context1, LimitExceededException.class);
+        ignoreExceptionOfType(context1, ResourceNotFoundException.class);
         String mockGroupName = "testGroup";
         String mockStreamNameForGroup = "testStream";
         String mockSequenceToken = UUID.randomUUID().toString();

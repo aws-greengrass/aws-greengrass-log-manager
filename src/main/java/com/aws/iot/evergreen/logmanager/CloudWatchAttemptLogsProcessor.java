@@ -51,11 +51,15 @@ import static com.aws.iot.evergreen.deployment.converter.DeploymentDocumentConve
 public class CloudWatchAttemptLogsProcessor {
     public static final String DEFAULT_LOG_GROUP_NAME = "/aws/greengrass/{componentType}/{region}/{componentName}";
     public static final String DEFAULT_LOG_STREAM_NAME = "/{date}/{ggFleetId}/{thingName}";
+    // https://docs.aws.amazon.com/AmazonCloudWatchLogs/latest/APIReference/API_PutLogEvents.html
+    // The maximum batch size is 1,048,576 bytes. This size is calculated as the sum of all event messages in UTF-8,
+    // plus 26 bytes for each log event.
     private static final int EVENT_STORAGE_OVERHEAD = 26;
     private static final int TIMESTAMP_BYTES = 8;
     private static final int MAX_BATCH_SIZE = 1024 * 1024;
     private static final int MAX_LOG_STREAM_NAME = 512;
-    private static final ObjectMapper DESERIALIZER = new ObjectMapper();
+    private static final ObjectMapper DESERIALIZER = new ObjectMapper()
+            .configure(MapperFeature.ACCEPT_CASE_INSENSITIVE_PROPERTIES, true);
     private final SimpleDateFormat dateFormatter = new SimpleDateFormat("yyyy/MM/dd", Locale.ENGLISH);
     @Setter
     private String thingName;
@@ -75,7 +79,6 @@ public class CloudWatchAttemptLogsProcessor {
         this.thingName = Coerce.toString(deviceConfiguration.getThingName());
         this.awsRegion = Coerce.toString(deviceConfiguration.getAWSRegion());
         this.kernel = kernel;
-        DESERIALIZER.configure(MapperFeature.ACCEPT_CASE_INSENSITIVE_PROPERTIES, true);
     }
 
     /**

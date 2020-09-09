@@ -29,7 +29,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import javax.inject.Inject;
@@ -57,9 +56,8 @@ public class CloudWatchLogsUploader {
      *
      * @param attempt   {@link CloudWatchAttempt}
      * @param tryCount  The upload try count.
-     * @throws InterruptedException if the thread gets interrupted.
      */
-    public void upload(CloudWatchAttempt attempt, int tryCount) throws InterruptedException {
+    public void upload(CloudWatchAttempt attempt, int tryCount) {
         try {
             attempt.getLogStreamsToLogEventsMap().forEach((streamName, attemptLogInformation) -> {
                 boolean success = uploadLogs(attempt.getLogGroupName(), streamName,
@@ -68,12 +66,10 @@ public class CloudWatchLogsUploader {
                     attempt.getLogStreamUploadedSet().add(streamName);
                 }
             });
-            listeners.values().forEach(consumer -> consumer.accept(attempt));
         } catch (LimitExceededException e) {
-            // Sleep for some time here.
-            TimeUnit.SECONDS.sleep(1);
-            upload(attempt, tryCount + 1);
+            logger.atError().cause(e).log();
         }
+        listeners.values().forEach(consumer -> consumer.accept(attempt));
     }
 
     /**
@@ -131,7 +127,10 @@ public class CloudWatchLogsUploader {
             return true;
         } catch (InvalidSequenceTokenException e) {
             // Get correct token using describe
-            logger.atError().cause(e).log("Get correct token.");
+            logger.atError().cause(e)
+                    .log("Invalid token while uploading logs to {}-{}. Getting the correct sequence token.",
+                            logGroupName,
+                    logStreamName);
             Optional<String> sequenceNumber = getSequenceToken(logGroupName, logStreamName);
             sequenceNumber.ifPresent(s -> addNextSequenceToken(logGroupName, logStreamName, s));
             // TODO: better do the retry mechanism? Maybe need to have a scheduled task to handle this.
@@ -140,6 +139,8 @@ public class CloudWatchLogsUploader {
             // Don't do anything since the data already exists.
         } catch (ResourceNotFoundException e) {
             // Handle no log group/log stream
+            logger.atError().cause(e).log("Unable to find log group- {} or log stream - {}. Creating them now.",
+                    logGroupName, logStreamName);
             createNewLogGroup(logGroupName);
             createNewLogSteam(logGroupName, logStreamName);
             return uploadLogs(logGroupName, logStreamName, logEvents, tryCount + 1);
@@ -220,6 +221,9 @@ public class CloudWatchLogsUploader {
         } catch (ResourceNotFoundException e) {
             // Should never happen since we would make put request before this. If the log group/stream does not exist,
             // we would have gotten this exception that time.
+            logger.atError().cause(e)
+                    .log("Unable to get next sequence number for stream {} in group {} due to "
+                            + "ResourceNotFoundException.", logStreamName, logGroupName);
         } catch (CloudWatchLogsException e) {
             logger.atError().cause(e).log("Unable to get next sequence number for stream {} in group {}.",
                     logStreamName, logGroupName);
@@ -238,7 +242,7 @@ public class CloudWatchLogsUploader {
         Map<String, String> logStreamToSequenceTokenMap =
                 logGroupsToSequenceTokensMap.getOrDefault(logGroupName, new ConcurrentHashMap<>());
         logStreamToSequenceTokenMap.put(logStreamName, nextSequenceToken);
-        // TODO: clean up old streams/tokens. Maybe allow a mex of 5 streams for each log group.
+        // TODO: clean up old streams/tokens. Maybe allow a max of 5 streams for each log group.
         logGroupsToSequenceTokensMap.put(logGroupName, logStreamToSequenceTokenMap);
     }
 }

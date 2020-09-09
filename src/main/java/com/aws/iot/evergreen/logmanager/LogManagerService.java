@@ -188,19 +188,19 @@ public class LogManagerService extends PluginService {
                                                         CloudWatchAttemptLogFileInformation
                                                                 cloudWatchAttemptLogFileInformation) {
         File file = new File(fileName);
+        String componentName = attemptLogInformation.getComponentName();
         // If we have completely read the file, then we need add it to the completed files list and remove it
         // it (if necessary) for the current processing list.
         if (file.length() == cloudWatchAttemptLogFileInformation.getBytesRead()
                 + cloudWatchAttemptLogFileInformation.getStartPosition()) {
-            Set<String> completedFileNames = completedLogFilePerComponent
-                    .getOrDefault(attemptLogInformation.getComponentName(), new HashSet<>());
+            Set<String> completedFileNames = completedLogFilePerComponent.getOrDefault(componentName, new HashSet<>());
             completedFileNames.add(fileName);
-            completedLogFilePerComponent.put(attemptLogInformation.getComponentName(), completedFileNames);
-            if (currentProcessingLogFilePerComponent.containsKey(attemptLogInformation.getComponentName())) {
+            completedLogFilePerComponent.put(componentName, completedFileNames);
+            if (currentProcessingLogFilePerComponent.containsKey(componentName)) {
                 CurrentProcessingFileInformation fileInformation = currentProcessingLogFilePerComponent
-                        .get(attemptLogInformation.getComponentName());
+                        .get(componentName);
                 if (fileInformation.fileName.equals(fileName)) {
-                    currentProcessingLogFilePerComponent.remove(attemptLogInformation.getComponentName());
+                    currentProcessingLogFilePerComponent.remove(componentName);
                 }
             }
         } else {
@@ -247,10 +247,11 @@ public class LogManagerService extends PluginService {
             final Set<ComponentLogConfiguration> currentComponentLogConfigurations = componentLogConfigurations;
             for (ComponentLogConfiguration componentLogConfiguration : currentComponentLogConfigurations) {
                 if (componentLogFileInformation.get().isPresent()) {
-                    continue;
+                    break;
                 }
+                String componentName = componentLogConfiguration.getName();
                 Instant lastUploadedLogFileTimeMs =
-                        lastComponentUploadedLogFileInstantMap.getOrDefault(componentLogConfiguration.getName(),
+                        lastComponentUploadedLogFileInstantMap.getOrDefault(componentName,
                                 Instant.EPOCH);
                 File folder = new File(componentLogConfiguration.getDirectoryPath().toUri());
                 List<File> allFiles = new ArrayList<>();
@@ -277,21 +278,18 @@ public class LogManagerService extends PluginService {
 
                     componentLogFileInformation.set(Optional.of(
                             ComponentLogFileInformation.builder()
-                                    .name(componentLogConfiguration.getName())
+                                    .name(componentName)
                                     .multiLineStartPattern(componentLogConfiguration.getMultiLineStartPattern())
                                     .desiredLogLevel(componentLogConfiguration.getMinimumLogLevel())
                                     .componentType(componentLogConfiguration.getComponentType())
-                                    .logFileInformationList(new ArrayList<>())
                                     .build()));
                     allFiles.forEach(file -> {
                         long startPosition = 0;
                         // If the file was paritially read in the previous run, then get the starting position for
                         // new log lines.
-                        // TODO: Add file last modified time information to make sure it is the same file.
-                        if (componentCurrentProcessingLogFile.containsKey(componentLogConfiguration.getName())) {
+                        if (componentCurrentProcessingLogFile.containsKey(componentName)) {
                             CurrentProcessingFileInformation processingFileInformation =
-                                    componentCurrentProcessingLogFile
-                                            .get(componentLogConfiguration.getName());
+                                    componentCurrentProcessingLogFile.get(componentName);
                             if (processingFileInformation.fileName.equals(file.getAbsolutePath())
                                     && processingFileInformation.lastModifiedTime == file.lastModified()) {
                                 startPosition = processingFileInformation.startPosition;
@@ -306,7 +304,7 @@ public class LogManagerService extends PluginService {
                     break;
                 } catch (SecurityException e) {
                     logger.atError().cause(e).log("Unable to get log files for {} from {}",
-                            componentLogConfiguration.getName(), componentLogConfiguration.getDirectoryPath());
+                            componentName, componentLogConfiguration.getDirectoryPath());
                 }
             }
             if (componentLogFileInformation.get().isPresent()) {

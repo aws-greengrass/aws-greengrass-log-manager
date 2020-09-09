@@ -4,9 +4,9 @@
 *.class
 **/*.jar
 *~
-*.log*
 *.metrics
 .idea
 coverage
 *.iml
 bin
+evergreen*.log

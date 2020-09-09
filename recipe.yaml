@@ -1,10 +1,10 @@
 ---
 templateVersion: '2020-01-25'
-componentName: aws.greengrass.logManager
+componentName: aws.greengrass.logmanager
 description: AWS Greengrass Log Manager
 publisher: AWS
 version: '0.0.0'
 componentType: plugin
 manifests:
     - artifacts:
-        - uri: s3://gg-dev-artifacts/$componentName/$version/aws.greengrass.logManager.jar
+        - uri: s3://gg-dev-artifacts/$componentName/$version/aws.greengrass.logmanager.jar

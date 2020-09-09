@@ -189,13 +189,13 @@ public class LogManagerService extends PluginService {
 
         //TODO: Persist this information to the disk.
         componentCurrentProcessingLogFile.forEach((componentName, currentProcessingFileInformation) -> {
-            Topics componentTopics = config.lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION,
-                    componentName);
+            Topics componentTopics = getRuntimeConfig()
+                    .lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION, componentName);
             componentTopics.replaceAndWait(currentProcessingFileInformation.convertToMapOfObjects());
         });
         lastComponentUploadedLogFileInstantMap.forEach((componentName, instant) -> {
-            Topics componentTopics = config.lookupTopics(PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP,
-                    componentName);
+            Topics componentTopics = getRuntimeConfig()
+                    .lookupTopics(PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP, componentName);
             Topic lastFileProcessedTimeStamp = componentTopics.createLeafChild(PERSISTED_LAST_FILE_PROCESSED_TIMESTAMP);
             lastFileProcessedTimeStamp.withValue(instant.toEpochMilli());
         });

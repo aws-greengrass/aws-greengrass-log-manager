@@ -282,6 +282,12 @@ public class LogManagerServiceTest extends EGServiceTestUtil {
         doNothing().when(mockUploader).registerAttemptStatus(anyString(), callbackCaptor.capture());
 
         logsUploaderService = new LogManagerService(config, mockUploader, mockMerger);
+        when(logsUploaderService.getRuntimeConfig()
+                .lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION, "TestComponent2"))
+                .thenReturn(componentTopics3);
+        when(logsUploaderService.getRuntimeConfig()
+                .lookupTopics(PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP, "TestComponent"))
+                .thenReturn(componentTopics2);
         startServiceOnAnotherThread();
 
         callbackCaptor.getValue().accept(attempt);

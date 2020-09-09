@@ -245,6 +245,9 @@ public class CloudWatchAttemptLogsProcessor {
         CloudWatchAttemptLogInformation attemptLogInformation;
         Optional<EvergreenStructuredLogMessage> logMessage = tryGetEvergreenStructuredLogMessage(data);
         if (logMessage.isPresent()) {
+            logger.atInfo().log("*************");
+            logger.atInfo().log(logMessage);
+            logger.atInfo().log("*************");
             logStreamName = logStreamName.replace("{date}",
                     dateFormatter.format(new Date(logMessage.get().getTimestamp())));
             attemptLogInformation = logStreamsMap.getOrDefault(logStreamName,

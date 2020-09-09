@@ -53,7 +53,7 @@ public class CloudWatchAttemptLogsProcessor {
     public static final String DEFAULT_LOG_STREAM_NAME = "/{date}/{ggFleetId}/{thingName}";
     // https://docs.aws.amazon.com/AmazonCloudWatchLogs/latest/APIReference/API_PutLogEvents.html
     // The maximum batch size is 1,048,576 bytes. This size is calculated as the sum of all event messages in UTF-8,
-    // plus 26 bytes for each log event.
+    // plus 26 bytes for each log event which is defined in the API definition.
     private static final int EVENT_STORAGE_OVERHEAD = 26;
     private static final int TIMESTAMP_BYTES = 8;
     private static final int MAX_BATCH_SIZE = 1024 * 1024;
@@ -245,9 +245,6 @@ public class CloudWatchAttemptLogsProcessor {
         CloudWatchAttemptLogInformation attemptLogInformation;
         Optional<EvergreenStructuredLogMessage> logMessage = tryGetEvergreenStructuredLogMessage(data);
         if (logMessage.isPresent()) {
-            logger.atInfo().log("*************");
-            logger.atInfo().log(logMessage);
-            logger.atInfo().log("*************");
             logStreamName = logStreamName.replace("{date}",
                     dateFormatter.format(new Date(logMessage.get().getTimestamp())));
             attemptLogInformation = logStreamsMap.getOrDefault(logStreamName,

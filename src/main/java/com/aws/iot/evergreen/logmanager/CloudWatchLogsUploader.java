@@ -67,7 +67,7 @@ public class CloudWatchLogsUploader {
                 }
             });
         } catch (LimitExceededException e) {
-            logger.atError().cause(e).log();
+            logger.atError().cause(e).log("Unable to upload logs for log group {}", attempt.getLogGroupName());
         }
         listeners.values().forEach(consumer -> consumer.accept(attempt));
     }
@@ -222,8 +222,8 @@ public class CloudWatchLogsUploader {
             // Should never happen since we would make put request before this. If the log group/stream does not exist,
             // we would have gotten this exception that time.
             logger.atError().cause(e)
-                    .log("Unable to get next sequence number for stream {} in group {} due to "
-                            + "ResourceNotFoundException.", logStreamName, logGroupName);
+                    .log("Unable to get resources to get sequence number stream {} in group {}",
+                            logStreamName, logGroupName);
         } catch (CloudWatchLogsException e) {
             logger.atError().cause(e).log("Unable to get next sequence number for stream {} in group {}.",
                     logStreamName, logGroupName);

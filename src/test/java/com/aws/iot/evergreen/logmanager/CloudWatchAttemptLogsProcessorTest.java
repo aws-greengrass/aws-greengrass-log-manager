@@ -186,10 +186,6 @@ public class CloudWatchAttemptLogsProcessorTest extends EGServiceTestUtil {
 
         assertNotNull(attempt);
 
-        System.out.println("******************");
-        System.out.println(attempt);
-        System.out.println("******************");
-
         assertNotNull(attempt.getLogStreamsToLogEventsMap());
         assertThat(attempt.getLogStreamsToLogEventsMap().entrySet(), IsNot.not(IsEmptyCollection.empty()));
         String logGroup = calculateLogGroupName(ComponentType.GreengrassSystemComponent, "testRegion", "TestComponent");

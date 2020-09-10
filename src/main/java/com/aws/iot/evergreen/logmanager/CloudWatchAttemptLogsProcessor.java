@@ -31,9 +31,7 @@ import java.io.RandomAccessFile;
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.Date;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Locale;
 import java.util.Map;
@@ -95,8 +93,20 @@ public class CloudWatchAttemptLogsProcessor {
                 .replace("{region}", awsRegion)
                 .replace("{componentName}", componentLogFileInformation.getName());
         attempt.setLogGroupName(logGroupName);
-        Set<String> groups = getGroupsForComponent(componentLogFileInformation);
+        Set<String> groups = getGroupsForComponent(componentLogFileInformation.getName(),
+                componentLogFileInformation.getComponentType());
         String logStreamName = DEFAULT_LOG_STREAM_NAME.replace("{thingName}", thingName);
+        if (groups.isEmpty()) {
+            logStreamName = logStreamName.replace("{ggFleetId}", DEFAULT_GROUP_NAME);
+        } else {
+            StringJoiner stringJoiner = new StringJoiner(":");
+            groups.forEach(groupName -> {
+                if (stringJoiner.length() + groupName.length() <= MAX_LOG_STREAM_NAME) {
+                    stringJoiner.add(groupName);
+                }
+            });
+            logStreamName = logStreamName.replace("{ggFleetId}", stringJoiner.toString());
+        }
 
         // Run the loop until all the log files from the component have been read or the max message
         // size has been reached.
@@ -105,18 +115,6 @@ public class CloudWatchAttemptLogsProcessor {
             long startPosition = componentLogFileInformation.getLogFileInformationList().get(0).getStartPosition();
             String fileName = file.getAbsolutePath();
             long lastModified = file.lastModified();
-
-            if (groups.isEmpty()) {
-                logStreamName = logStreamName.replace("{ggFleetId}", DEFAULT_GROUP_NAME);
-            } else {
-                StringJoiner stringJoiner = new StringJoiner(":");
-                groups.forEach(groupName -> {
-                    if (stringJoiner.length() + groupName.length() <= MAX_LOG_STREAM_NAME) {
-                        stringJoiner.add(groupName);
-                    }
-                });
-                logStreamName = logStreamName.replace("{ggFleetId}", stringJoiner.toString());
-            }
 
             // If we have read the file already, we are at the correct offset in the file to start reading from
             // Let's get that file handle to read the new log line.
@@ -176,10 +174,11 @@ public class CloudWatchAttemptLogsProcessor {
      * Gets the groups associated with the component. If it is for System logs, we get all the groups
      * the device is a part of.
      *
-     * @param componentLogFileInformation   The information about the component we are currently processing.
-     * @return  The list of groups associated to the component.
+     * @param componentName The name of the component.
+     * @param componentType The type of the component.
+     * @return The list of groups associated to the component.
      */
-    private Set<String> getGroupsForComponent(ComponentLogFileInformation componentLogFileInformation) {
+    private Set<String> getGroupsForComponent(String componentName, ComponentType componentType) {
         Set<String> groups = new HashSet<>();
         try {
             EvergreenService deploymentServiceLocateResult = this.kernel
@@ -187,10 +186,10 @@ public class CloudWatchAttemptLogsProcessor {
             if (deploymentServiceLocateResult instanceof DeploymentService) {
                 DeploymentService deploymentService = (DeploymentService) deploymentServiceLocateResult;
                 if (ComponentType.GreengrassSystemComponent
-                        .equals(componentLogFileInformation.getComponentType())) {
+                        .equals(componentType)) {
                     groups = deploymentService.getAllGroupConfigs();
                 } else {
-                    groups = deploymentService.getGroupConfigsForUserComponent(componentLogFileInformation.getName());
+                    groups = deploymentService.getGroupConfigsForUserComponent(componentName);
                 }
             }
         } catch (ServiceLoadException e) {
@@ -234,27 +233,24 @@ public class CloudWatchAttemptLogsProcessor {
         if (logMessage.isPresent()) {
             logStreamName = logStreamName.replace("{date}",
                     dateFormatter.format(new Date(logMessage.get().getTimestamp())));
-            attemptLogInformation = logStreamsMap.getOrDefault(logStreamName,
-                    CloudWatchAttemptLogInformation.builder()
+            attemptLogInformation = logStreamsMap.computeIfAbsent(logStreamName,
+                    key -> CloudWatchAttemptLogInformation.builder()
                             .componentName(componentName)
-                            .logEvents(new ArrayList<>())
-                            .attemptLogFileInformationMap(new HashMap<>())
                             .build());
             reachedMaxSize = checkAndAddNewLogEvent(totalBytesRead, attemptLogInformation, data,
                     desiredLogLevel, logMessage.get());
 
         } else {
             logStreamName = logStreamName.replace("{date}", dateFormatter.format(new Date()));
-            attemptLogInformation = logStreamsMap.getOrDefault(logStreamName,
-                    CloudWatchAttemptLogInformation.builder()
+            attemptLogInformation = logStreamsMap.computeIfAbsent(logStreamName,
+                    key -> CloudWatchAttemptLogInformation.builder()
                             .componentName(componentName)
-                            .logEvents(new ArrayList<>())
                             .build());
             reachedMaxSize = addNewLogEvent(totalBytesRead, attemptLogInformation, data.toString());
         }
         if (!reachedMaxSize) {
-            updateCloudWatchAttemptLogInformation(logStreamName, logStreamsMap, fileName, startPosition,
-                    currentPosition, attemptLogInformation, lastModified);
+            updateCloudWatchAttemptLogInformation(fileName, startPosition, currentPosition, attemptLogInformation,
+                    lastModified);
         }
         return reachedMaxSize;
     }
@@ -262,38 +258,32 @@ public class CloudWatchAttemptLogsProcessor {
     /**
      * Updates the number of bytes read for the current CloudWatchAttempt.
      *
-     * @param logStreamName         The log stream name.
-     * @param logStreamsMap         The log stream to CloudWatchAttemptLogInformation map.
      * @param fileName              The name of the file we are currently processing.
      * @param startPosition         The initial start offset of the file.
      * @param currentPosition       The current offset in the file.
      * @param attemptLogInformation The attempt information containing the log file information.
      * @param lastModified          The last modified time for the file we are processing.
      */
-    private void updateCloudWatchAttemptLogInformation(String logStreamName,
-                                                       Map<String, CloudWatchAttemptLogInformation> logStreamsMap,
-                                                       String fileName,
+    private void updateCloudWatchAttemptLogInformation(String fileName,
                                                        long startPosition,
                                                        long currentPosition,
                                                        CloudWatchAttemptLogInformation attemptLogInformation,
                                                        long lastModified) {
         CloudWatchAttemptLogFileInformation attemptLogFileInformation =
-                attemptLogInformation.getAttemptLogFileInformationMap().getOrDefault(fileName,
-                        CloudWatchAttemptLogFileInformation.builder()
+                attemptLogInformation.getAttemptLogFileInformationMap().computeIfAbsent(fileName,
+                        key -> CloudWatchAttemptLogFileInformation.builder()
                                 .startPosition(startPosition)
                                 .lastModifiedTime(lastModified)
                                 .build());
         attemptLogFileInformation.setBytesRead(currentPosition - attemptLogFileInformation.getStartPosition());
-        attemptLogInformation.getAttemptLogFileInformationMap().put(fileName, attemptLogFileInformation);
-        logStreamsMap.put(logStreamName, attemptLogInformation);
     }
 
     /**
      * Verify we can deserialize the log line as a EvergreenStructuredLogMessage. If not, return an empty optional
      * value.
      *
-     * @param data  The log line read from the file.
-     * @return  a EvergreenStructuredLogMessage if the deserialization is successful, else an empty optional object.
+     * @param data The log line read from the file.
+     * @return a EvergreenStructuredLogMessage if the deserialization is successful, else an empty optional object.
      */
     private Optional<EvergreenStructuredLogMessage> tryGetEvergreenStructuredLogMessage(StringBuilder data) {
         try {
@@ -330,12 +320,13 @@ public class CloudWatchAttemptLogsProcessor {
     /**
      * Adds a new log event to the CloudWatchAttempt provided the maximum message size is not reached after adding the
      * input event.
-     * @implNote We need to add extra bytes size for every input message as well as the timestamp byte size alongwith
-     *     the log line data size to get the exact size of the input log events.
+     *
      * @param totalBytesRead        The total bytes read till now.
      * @param attemptLogInformation The attempt information containing the log file information.
      * @param data                  The log line read from the file.
      * @return whether or not the maximum message size has reached or not.
+     * @implNote We need to add extra bytes size for every input message as well as the timestamp byte size alongwith
+     *     the log line data size to get the exact size of the input log events.
      */
     private boolean addNewLogEvent(AtomicInteger totalBytesRead, CloudWatchAttemptLogInformation attemptLogInformation,
                                    String data) {

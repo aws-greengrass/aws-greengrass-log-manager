@@ -11,6 +11,7 @@ import lombok.Getter;
 import lombok.Setter;
 import software.amazon.awssdk.services.cloudwatchlogs.model.InputLogEvent;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -20,7 +21,8 @@ import java.util.Map;
 @Getter
 @Setter
 public class CloudWatchAttemptLogInformation {
-    private List<InputLogEvent> logEvents;
+    @Builder.Default
+    private List<InputLogEvent> logEvents = new ArrayList<>();
     @Builder.Default
     private Map<String, CloudWatchAttemptLogFileInformation> attemptLogFileInformationMap = new HashMap<>();
     private String componentName;

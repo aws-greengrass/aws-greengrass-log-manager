@@ -23,6 +23,7 @@ import org.hamcrest.core.IsNot;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.extension.ExtensionContext;
 import org.junit.jupiter.api.io.TempDir;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -46,8 +47,10 @@ import java.util.regex.Pattern;
 
 import static com.aws.iot.evergreen.deployment.DeviceConfiguration.DEVICE_PARAM_AWS_REGION;
 import static com.aws.iot.evergreen.deployment.DeviceConfiguration.DEVICE_PARAM_THING_NAME;
+import static com.aws.iot.evergreen.deployment.converter.DeploymentDocumentConverter.DEFAULT_GROUP_NAME;
 import static com.aws.iot.evergreen.logmanager.CloudWatchAttemptLogsProcessor.DEFAULT_LOG_GROUP_NAME;
 import static com.aws.iot.evergreen.logmanager.CloudWatchAttemptLogsProcessor.DEFAULT_LOG_STREAM_NAME;
+import static com.aws.iot.evergreen.testcommons.testutilities.ExceptionLogProtector.ignoreExceptionOfType;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -76,7 +79,9 @@ public class CloudWatchAttemptLogsProcessorTest extends EGServiceTestUtil {
         Topic regionTopic = Topic.of(context, DEVICE_PARAM_AWS_REGION, "testRegion");
         when(mockDeviceConfiguration.getThingName()).thenReturn(thingNameTopic);
         when(mockDeviceConfiguration.getAWSRegion()).thenReturn(regionTopic);
+    }
 
+    private void mockDefaultGetGroups() throws ServiceLoadException {
         lenient().when(mockKernel.locate(DeploymentService.DEPLOYMENT_SERVICE_TOPICS)).thenReturn(mockDeploymentService);
         lenient().when(mockDeploymentService.getGroupConfigsForUserComponent(anyString()))
                 .thenReturn(new HashSet<>(Collections.singletonList("testGroup2")));
@@ -85,8 +90,9 @@ public class CloudWatchAttemptLogsProcessorTest extends EGServiceTestUtil {
     }
 
     @Test
-    public void GIVEN_one_component_one_file_less_than_max_WHEN_merge_THEN_reads_entire_file()
-            throws URISyntaxException {
+    public void GIVEN_one_system_component_one_file_less_than_max_WHEN_merge_THEN_reads_entire_file()
+            throws URISyntaxException, ServiceLoadException {
+        mockDefaultGetGroups();
         File file1 = new File(getClass().getResource("testlogs2.log").toURI());
         List<LogFileInformation> logFileInformationSet = new ArrayList<>();
         logFileInformationSet.add(LogFileInformation.builder().startPosition(0).file(file1).build());
@@ -105,7 +111,7 @@ public class CloudWatchAttemptLogsProcessorTest extends EGServiceTestUtil {
         assertThat(attempt.getLogStreamsToLogEventsMap().entrySet(), IsNot.not(IsEmptyCollection.empty()));
         String logGroup = calculateLogGroupName(ComponentType.GreengrassSystemComponent, "testRegion", "TestComponent");
         assertEquals(attempt.getLogGroupName(), logGroup);
-        String logStream = calculateLogStreamName("testThing");
+        String logStream = calculateLogStreamName("testThing", "testGroup1");
         assertTrue(attempt.getLogStreamsToLogEventsMap().containsKey(logStream));
         CloudWatchAttemptLogInformation logEventsForStream1 = attempt.getLogStreamsToLogEventsMap().get(logStream);
         assertNotNull(logEventsForStream1.getLogEvents());
@@ -117,7 +123,115 @@ public class CloudWatchAttemptLogsProcessorTest extends EGServiceTestUtil {
     }
 
     @Test
-    public void GIVEN_one_component_one_file_more_than_max_WHEN_merge_THEN_reads_partial_file() throws IOException {
+    public void GIVEN_one_user_component_one_file_less_than_max_WHEN_merge_THEN_reads_entire_file()
+            throws URISyntaxException, ServiceLoadException {
+        mockDefaultGetGroups();
+        File file1 = new File(getClass().getResource("testlogs2.log").toURI());
+        List<LogFileInformation> logFileInformationSet = new ArrayList<>();
+        logFileInformationSet.add(LogFileInformation.builder().startPosition(0).file(file1).build());
+        ComponentLogFileInformation componentLogFileInformation = ComponentLogFileInformation.builder()
+                .name("TestComponent")
+                .multiLineStartPattern(Pattern.compile("^[^\\s]+(\\s+[^\\s]+)*$"))
+                .desiredLogLevel(Level.INFO)
+                .componentType(ComponentType.UserComponent)
+                .logFileInformationList(logFileInformationSet)
+                .build();
+        logsProcessor = new CloudWatchAttemptLogsProcessor(mockDeviceConfiguration, mockKernel);
+        CloudWatchAttempt attempt = logsProcessor.processLogFiles(componentLogFileInformation);
+        assertNotNull(attempt);
+
+        assertNotNull(attempt.getLogStreamsToLogEventsMap());
+        assertThat(attempt.getLogStreamsToLogEventsMap().entrySet(), IsNot.not(IsEmptyCollection.empty()));
+        String logGroup = calculateLogGroupName(ComponentType.UserComponent, "testRegion", "TestComponent");
+        assertEquals(attempt.getLogGroupName(), logGroup);
+        String logStream = calculateLogStreamName("testThing", "testGroup2");
+        assertTrue(attempt.getLogStreamsToLogEventsMap().containsKey(logStream));
+        CloudWatchAttemptLogInformation logEventsForStream1 = attempt.getLogStreamsToLogEventsMap().get(logStream);
+        assertNotNull(logEventsForStream1.getLogEvents());
+        assertEquals(7, logEventsForStream1.getLogEvents().size());
+        assertTrue(logEventsForStream1.getAttemptLogFileInformationMap().containsKey(file1.getAbsolutePath()));
+        assertEquals(0, logEventsForStream1.getAttemptLogFileInformationMap().get(file1.getAbsolutePath()).getStartPosition());
+        assertEquals(13, logEventsForStream1.getAttemptLogFileInformationMap().get(file1.getAbsolutePath()).getBytesRead());
+        assertEquals("TestComponent", logEventsForStream1.getComponentName());
+    }
+
+    @Test
+    public void GIVEN_one_component_one_file_less_than_max_WHEN_no_group_THEN_reads_entire_file_and_sets_group_correctly()
+            throws URISyntaxException, ServiceLoadException {
+        when(mockKernel.locate(DeploymentService.DEPLOYMENT_SERVICE_TOPICS)).thenReturn(mockDeploymentService);
+        lenient().when(mockDeploymentService.getGroupConfigsForUserComponent(anyString()))
+                .thenReturn(new HashSet<>(Collections.emptyList()));
+        lenient().when(mockDeploymentService.getAllGroupConfigs())
+                .thenReturn(new HashSet<>(Collections.emptyList()));
+
+        File file1 = new File(getClass().getResource("testlogs2.log").toURI());
+        List<LogFileInformation> logFileInformationSet = new ArrayList<>();
+        logFileInformationSet.add(LogFileInformation.builder().startPosition(0).file(file1).build());
+        ComponentLogFileInformation componentLogFileInformation = ComponentLogFileInformation.builder()
+                .name("TestComponent")
+                .multiLineStartPattern(Pattern.compile("^[^\\s]+(\\s+[^\\s]+)*$"))
+                .desiredLogLevel(Level.INFO)
+                .componentType(ComponentType.GreengrassSystemComponent)
+                .logFileInformationList(logFileInformationSet)
+                .build();
+        logsProcessor = new CloudWatchAttemptLogsProcessor(mockDeviceConfiguration, mockKernel);
+        CloudWatchAttempt attempt = logsProcessor.processLogFiles(componentLogFileInformation);
+        assertNotNull(attempt);
+
+        assertNotNull(attempt.getLogStreamsToLogEventsMap());
+        assertThat(attempt.getLogStreamsToLogEventsMap().entrySet(), IsNot.not(IsEmptyCollection.empty()));
+        String logGroup = calculateLogGroupName(ComponentType.GreengrassSystemComponent, "testRegion", "TestComponent");
+        assertEquals(attempt.getLogGroupName(), logGroup);
+        String logStream = calculateLogStreamName("testThing", DEFAULT_GROUP_NAME);
+        assertTrue(attempt.getLogStreamsToLogEventsMap().containsKey(logStream));
+        CloudWatchAttemptLogInformation logEventsForStream1 = attempt.getLogStreamsToLogEventsMap().get(logStream);
+        assertNotNull(logEventsForStream1.getLogEvents());
+        assertEquals(7, logEventsForStream1.getLogEvents().size());
+        assertTrue(logEventsForStream1.getAttemptLogFileInformationMap().containsKey(file1.getAbsolutePath()));
+        assertEquals(0, logEventsForStream1.getAttemptLogFileInformationMap().get(file1.getAbsolutePath()).getStartPosition());
+        assertEquals(13, logEventsForStream1.getAttemptLogFileInformationMap().get(file1.getAbsolutePath()).getBytesRead());
+        assertEquals("TestComponent", logEventsForStream1.getComponentName());
+    }
+
+    @Test
+    public void GIVEN_one_component_one_file_less_than_max_WHEN_locate_throws_ServiceLoadException_THEN_reads_entire_file_and_sets_group_correctly(
+            ExtensionContext context1) throws URISyntaxException, ServiceLoadException {
+        ignoreExceptionOfType(context1, ServiceLoadException.class);
+        when(mockKernel.locate(DeploymentService.DEPLOYMENT_SERVICE_TOPICS)).thenThrow(ServiceLoadException.class);
+
+        File file1 = new File(getClass().getResource("testlogs2.log").toURI());
+        List<LogFileInformation> logFileInformationSet = new ArrayList<>();
+        logFileInformationSet.add(LogFileInformation.builder().startPosition(0).file(file1).build());
+        ComponentLogFileInformation componentLogFileInformation = ComponentLogFileInformation.builder()
+                .name("TestComponent")
+                .multiLineStartPattern(Pattern.compile("^[^\\s]+(\\s+[^\\s]+)*$"))
+                .desiredLogLevel(Level.INFO)
+                .componentType(ComponentType.GreengrassSystemComponent)
+                .logFileInformationList(logFileInformationSet)
+                .build();
+        logsProcessor = new CloudWatchAttemptLogsProcessor(mockDeviceConfiguration, mockKernel);
+        CloudWatchAttempt attempt = logsProcessor.processLogFiles(componentLogFileInformation);
+        assertNotNull(attempt);
+
+        assertNotNull(attempt.getLogStreamsToLogEventsMap());
+        assertThat(attempt.getLogStreamsToLogEventsMap().entrySet(), IsNot.not(IsEmptyCollection.empty()));
+        String logGroup = calculateLogGroupName(ComponentType.GreengrassSystemComponent, "testRegion", "TestComponent");
+        assertEquals(attempt.getLogGroupName(), logGroup);
+        String logStream = calculateLogStreamName("testThing", DEFAULT_GROUP_NAME);
+        assertTrue(attempt.getLogStreamsToLogEventsMap().containsKey(logStream));
+        CloudWatchAttemptLogInformation logEventsForStream1 = attempt.getLogStreamsToLogEventsMap().get(logStream);
+        assertNotNull(logEventsForStream1.getLogEvents());
+        assertEquals(7, logEventsForStream1.getLogEvents().size());
+        assertTrue(logEventsForStream1.getAttemptLogFileInformationMap().containsKey(file1.getAbsolutePath()));
+        assertEquals(0, logEventsForStream1.getAttemptLogFileInformationMap().get(file1.getAbsolutePath()).getStartPosition());
+        assertEquals(13, logEventsForStream1.getAttemptLogFileInformationMap().get(file1.getAbsolutePath()).getBytesRead());
+        assertEquals("TestComponent", logEventsForStream1.getComponentName());
+    }
+
+    @Test
+    public void GIVEN_one_component_one_file_more_than_max_WHEN_merge_THEN_reads_partial_file()
+            throws IOException, ServiceLoadException {
+        mockDefaultGetGroups();
         File file = new File(directoryPath.resolve("evergreen_test.log").toUri());
         file.createNewFile();
         assertTrue(file.setReadable(true));
@@ -152,7 +266,7 @@ public class CloudWatchAttemptLogsProcessorTest extends EGServiceTestUtil {
             assertThat(attempt.getLogStreamsToLogEventsMap().entrySet(), IsNot.not(IsEmptyCollection.empty()));
             String logGroup = calculateLogGroupName(ComponentType.GreengrassSystemComponent, "testRegion", "TestComponent");
             assertEquals(attempt.getLogGroupName(), logGroup);
-            String logStream = calculateLogStreamName("testThing");
+            String logStream = calculateLogStreamName("testThing", "testGroup1");
             assertTrue(attempt.getLogStreamsToLogEventsMap().containsKey(logStream));
             CloudWatchAttemptLogInformation logEventsForStream1 = attempt.getLogStreamsToLogEventsMap().get(logStream);
             assertNotNull(logEventsForStream1.getLogEvents());
@@ -168,7 +282,8 @@ public class CloudWatchAttemptLogsProcessorTest extends EGServiceTestUtil {
 
     @Test
     public void GIVEN_one_components_two_file_less_than_max_WHEN_merge_THEN_reads_and_merges_both_files()
-            throws URISyntaxException {
+            throws URISyntaxException, ServiceLoadException {
+        mockDefaultGetGroups();
         File file1 = new File(getClass().getResource("testlogs2.log").toURI());
         File file2 = new File(getClass().getResource("testlogs1.log").toURI());
         List<LogFileInformation> logFileInformationSet = new ArrayList<>();
@@ -190,7 +305,7 @@ public class CloudWatchAttemptLogsProcessorTest extends EGServiceTestUtil {
         assertThat(attempt.getLogStreamsToLogEventsMap().entrySet(), IsNot.not(IsEmptyCollection.empty()));
         String logGroup = calculateLogGroupName(ComponentType.GreengrassSystemComponent, "testRegion", "TestComponent");
         assertEquals(attempt.getLogGroupName(), logGroup);
-        String logStream = calculateLogStreamName("testThing");
+        String logStream = calculateLogStreamName("testThing", "testGroup1");
         String logStream2 = "/2020/02/10/testGroup1/testThing";
         assertTrue(attempt.getLogStreamsToLogEventsMap().containsKey(logStream));
         assertTrue(attempt.getLogStreamsToLogEventsMap().containsKey(logStream2));
@@ -218,11 +333,11 @@ public class CloudWatchAttemptLogsProcessorTest extends EGServiceTestUtil {
                 .replace("{componentName}", componentName);
     }
 
-    private String calculateLogStreamName(String thingName) {
+    private String calculateLogStreamName(String thingName, String group) {
         synchronized (DATE_FORMATTER) {
             return DEFAULT_LOG_STREAM_NAME
                     .replace("{thingName}", thingName)
-                    .replace("{ggFleetId}", "testGroup1")
+                    .replace("{ggFleetId}", group)
                     .replace("{date}", DATE_FORMATTER.format(new Date()));
         }
     }

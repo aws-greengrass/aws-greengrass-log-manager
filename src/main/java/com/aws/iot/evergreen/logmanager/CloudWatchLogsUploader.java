@@ -10,6 +10,7 @@ import com.aws.iot.evergreen.logging.impl.LogManager;
 import com.aws.iot.evergreen.logmanager.model.CloudWatchAttempt;
 import com.aws.iot.evergreen.logmanager.util.CloudWatchClientFactory;
 import software.amazon.awssdk.awscore.exception.AwsServiceException;
+import software.amazon.awssdk.core.exception.SdkException;
 import software.amazon.awssdk.services.cloudwatchlogs.CloudWatchLogsClient;
 import software.amazon.awssdk.services.cloudwatchlogs.model.CloudWatchLogsException;
 import software.amazon.awssdk.services.cloudwatchlogs.model.CreateLogGroupRequest;
@@ -17,7 +18,6 @@ import software.amazon.awssdk.services.cloudwatchlogs.model.CreateLogStreamReque
 import software.amazon.awssdk.services.cloudwatchlogs.model.DataAlreadyAcceptedException;
 import software.amazon.awssdk.services.cloudwatchlogs.model.InputLogEvent;
 import software.amazon.awssdk.services.cloudwatchlogs.model.InvalidSequenceTokenException;
-import software.amazon.awssdk.services.cloudwatchlogs.model.LimitExceededException;
 import software.amazon.awssdk.services.cloudwatchlogs.model.PutLogEventsRequest;
 import software.amazon.awssdk.services.cloudwatchlogs.model.PutLogEventsResponse;
 import software.amazon.awssdk.services.cloudwatchlogs.model.ResourceAlreadyExistsException;
@@ -33,10 +33,8 @@ import javax.inject.Inject;
 public class CloudWatchLogsUploader {
     private final Logger logger = LogManager.getLogger(CloudWatchLogsUploader.class);
     private final Map<String, Consumer<CloudWatchAttempt>> listeners = new ConcurrentHashMap<>();
-    // TODO: Implement some back off.
-    // https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/cloudwatch_limits_cwl.html
     private final CloudWatchLogsClient cloudWatchLogsClient;
-    private static final int MAX_RETRIES = 5;
+    private static final int MAX_RETRIES = 3;
 
     final Map<String, Map<String, String>> logGroupsToSequenceTokensMap = new ConcurrentHashMap<>();
 
@@ -63,7 +61,7 @@ public class CloudWatchLogsUploader {
                     attempt.getLogStreamUploadedSet().add(streamName);
                 }
             });
-        } catch (LimitExceededException e) {
+        } catch (SdkException e) {
             logger.atError().cause(e).log("Unable to upload logs for log group {}", attempt.getLogGroupName());
         }
         listeners.values().forEach(consumer -> consumer.accept(attempt));
@@ -133,6 +131,8 @@ public class CloudWatchLogsUploader {
             return uploadLogs(logGroupName, logStreamName, logEvents, tryCount + 1);
         } catch (DataAlreadyAcceptedException e) {
             // Don't do anything since the data already exists.
+            addNextSequenceToken(logGroupName, logStreamName, e.expectedSequenceToken());
+            return true;
         } catch (ResourceNotFoundException e) {
             // Handle no log group/log stream
             logger.atError().cause(e).log("Unable to find log group- {} or log stream - {}. Creating them now.",
@@ -160,14 +160,9 @@ public class CloudWatchLogsUploader {
             this.cloudWatchLogsClient.createLogGroup(request);
         } catch (ResourceAlreadyExistsException e) {
             // Don't do anything if the resource already exists.
-        } catch (LimitExceededException e) {
-            // Back off for some time before retrying.
-            // TODO: implement backoff.
-            logger.atError().cause(e).log("Unable to create log group {}. Retrying in some time.",
-                    logGroupName);
-            throw e;
         } catch (CloudWatchLogsException e) {
             logger.atError().cause(e).log("Unable to create log group {}.", logGroupName);
+            throw e;
         }
     }
 
@@ -187,14 +182,9 @@ public class CloudWatchLogsUploader {
             this.cloudWatchLogsClient.createLogStream(request);
         } catch (ResourceAlreadyExistsException e) {
             // Don't do anything if the resource already exists.
-        } catch (LimitExceededException e) {
-            // Back off for some time before retrying.
-            logger.atError().cause(e)
-                    .log("Unable to create log stream {} for group {}. Retrying in some time.",
-                            logStreamName, logGroupName);
-            throw e;
         } catch (CloudWatchLogsException e) {
             logger.atError().cause(e).log("Unable to create log stream {} for group {}.", logStreamName, logGroupName);
+            throw e;
         }
     }
 

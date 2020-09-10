@@ -20,14 +20,17 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import software.amazon.awssdk.awscore.exception.AwsServiceException;
 import software.amazon.awssdk.services.cloudwatchlogs.CloudWatchLogsClient;
 import software.amazon.awssdk.services.cloudwatchlogs.model.CreateLogGroupRequest;
 import software.amazon.awssdk.services.cloudwatchlogs.model.CreateLogStreamRequest;
+import software.amazon.awssdk.services.cloudwatchlogs.model.DataAlreadyAcceptedException;
 import software.amazon.awssdk.services.cloudwatchlogs.model.InputLogEvent;
 import software.amazon.awssdk.services.cloudwatchlogs.model.InvalidSequenceTokenException;
 import software.amazon.awssdk.services.cloudwatchlogs.model.LimitExceededException;
 import software.amazon.awssdk.services.cloudwatchlogs.model.PutLogEventsRequest;
 import software.amazon.awssdk.services.cloudwatchlogs.model.PutLogEventsResponse;
+import software.amazon.awssdk.services.cloudwatchlogs.model.ResourceAlreadyExistsException;
 import software.amazon.awssdk.services.cloudwatchlogs.model.ResourceNotFoundException;
 
 import java.time.Instant;
@@ -45,6 +48,7 @@ import java.util.concurrent.TimeUnit;
 import static com.aws.iot.evergreen.testcommons.testutilities.ExceptionLogProtector.ignoreExceptionOfType;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -143,8 +147,155 @@ public class CloudWatchLogsUploaderTest extends EGServiceTestUtil  {
     }
 
     @Test
-    public void GIVEN_mock_cloud_watch_attempt_WHEN_bad_sequence_token_THEN_successfully_gets_correct_token(
+    public void GIVEN_mock_cloud_watch_attempt_WHEN_put_events_throws_DataAlreadyAcceptedException_THEN_successfully_uploads_all_log_events(
             ExtensionContext context1) throws InterruptedException {
+        ignoreExceptionOfType(context1, ResourceNotFoundException.class);
+        String mockGroupName = "testGroup";
+        String mockStreamNameForGroup = "testStream";
+        String mockSequenceToken = UUID.randomUUID().toString();
+        String mockNextSequenceToken = UUID.randomUUID().toString();
+        CloudWatchAttempt attempt = new CloudWatchAttempt();
+        Map<String, CloudWatchAttemptLogInformation> logSteamForGroup1Map = new ConcurrentHashMap<>();
+        List<InputLogEvent> inputLogEventsForStream1OfGroup1 = new ArrayList<>();
+        inputLogEventsForStream1OfGroup1.add(InputLogEvent.builder()
+                .timestamp(Instant.now().toEpochMilli())
+                .message("test")
+                .build());
+        inputLogEventsForStream1OfGroup1.add(InputLogEvent.builder()
+                .timestamp(Instant.now().toEpochMilli())
+                .message("test2")
+                .build());
+        Map<String, CloudWatchAttemptLogFileInformation> attemptLogFileInformationMap = new HashMap<>();
+        attemptLogFileInformationMap.put("test.log", CloudWatchAttemptLogFileInformation.builder()
+                .startPosition(0)
+                .bytesRead(100)
+                .build());
+        logSteamForGroup1Map.put(mockStreamNameForGroup,
+                CloudWatchAttemptLogInformation.builder()
+                        .logEvents(inputLogEventsForStream1OfGroup1)
+                        .attemptLogFileInformationMap(attemptLogFileInformationMap)
+                        .build());
+        attempt.setLogGroupName(mockGroupName);
+        attempt.setLogStreamsToLogEventsMap(logSteamForGroup1Map);
+        DataAlreadyAcceptedException exception = DataAlreadyAcceptedException.builder()
+                .expectedSequenceToken(mockNextSequenceToken).build();
+        when(mockCloudWatchLogsClient.putLogEvents(any(PutLogEventsRequest.class)))
+                .thenThrow(exception);
+
+        uploader = new CloudWatchLogsUploader(mockCloudWatchClientFactory);
+        uploader.addNextSequenceToken(mockGroupName, mockStreamNameForGroup, mockSequenceToken);
+        CountDownLatch attemptFinishedLatch = new CountDownLatch(1);
+        uploader.registerAttemptStatus(UUID.randomUUID().toString(), cloudWatchAttempt -> {
+            assertTrue(cloudWatchAttempt.getLogStreamUploadedSet().contains("testStream"));
+            attemptFinishedLatch.countDown();
+        });
+
+        uploader.upload(attempt, 1);
+
+        assertTrue(attemptFinishedLatch.await(5, TimeUnit.SECONDS));
+        verify(mockCloudWatchLogsClient, times(1)).putLogEvents(putLogEventsRequestArgumentCaptor.capture());
+
+        Set<String> messageTextToCheck = new HashSet<>();
+        messageTextToCheck.add("test");
+        messageTextToCheck.add("test2");
+
+        List<PutLogEventsRequest> putLogEventsRequests = putLogEventsRequestArgumentCaptor.getAllValues();
+        assertEquals(1, putLogEventsRequests.size());
+
+        PutLogEventsRequest request = putLogEventsRequests.get(0);
+        assertTrue(request.hasLogEvents());
+        assertEquals(mockGroupName, request.logGroupName());
+        assertEquals(mockStreamNameForGroup, request.logStreamName());
+        assertEquals(mockSequenceToken, request.sequenceToken());
+        assertEquals(2, request.logEvents().size());
+        request.logEvents().forEach(inputLogEvent -> {
+            assertNotNull(inputLogEvent.message());
+            assertNotNull(inputLogEvent.timestamp());
+            messageTextToCheck.remove(inputLogEvent.message());
+        });
+
+        assertEquals(0, messageTextToCheck.size());
+        assertEquals(mockNextSequenceToken, uploader.logGroupsToSequenceTokensMap.get(mockGroupName).get(mockStreamNameForGroup));
+    }
+
+    @Test
+    public void GIVEN_mock_cloud_watch_attempt_WHEN_create_stream_group_throw_ResourceAlreadyExistsException_THEN_successfully_uploads_all_log_events(
+            ExtensionContext context1) throws InterruptedException {
+        ignoreExceptionOfType(context1, ResourceNotFoundException.class);
+        String mockGroupName = "testGroup";
+        String mockStreamNameForGroup = "testStream";
+        String mockSequenceToken = UUID.randomUUID().toString();
+        String mockNextSequenceToken = UUID.randomUUID().toString();
+        CloudWatchAttempt attempt = new CloudWatchAttempt();
+        Map<String, CloudWatchAttemptLogInformation> logSteamForGroup1Map = new ConcurrentHashMap<>();
+        List<InputLogEvent> inputLogEventsForStream1OfGroup1 = new ArrayList<>();
+        inputLogEventsForStream1OfGroup1.add(InputLogEvent.builder()
+                .timestamp(Instant.now().toEpochMilli())
+                .message("test")
+                .build());
+        inputLogEventsForStream1OfGroup1.add(InputLogEvent.builder()
+                .timestamp(Instant.now().toEpochMilli())
+                .message("test2")
+                .build());
+        Map<String, CloudWatchAttemptLogFileInformation> attemptLogFileInformationMap = new HashMap<>();
+        attemptLogFileInformationMap.put("test.log", CloudWatchAttemptLogFileInformation.builder()
+                .startPosition(0)
+                .bytesRead(100)
+                .build());
+        logSteamForGroup1Map.put(mockStreamNameForGroup,
+                CloudWatchAttemptLogInformation.builder()
+                        .logEvents(inputLogEventsForStream1OfGroup1)
+                        .attemptLogFileInformationMap(attemptLogFileInformationMap)
+                        .build());
+        attempt.setLogGroupName(mockGroupName);
+        attempt.setLogStreamsToLogEventsMap(logSteamForGroup1Map);
+        PutLogEventsResponse response = PutLogEventsResponse.builder().nextSequenceToken(mockNextSequenceToken).build();
+        when(mockCloudWatchLogsClient.putLogEvents(any(PutLogEventsRequest.class)))
+                .thenThrow(ResourceNotFoundException.class)
+                .thenReturn(response);
+        when(mockCloudWatchLogsClient.createLogGroup(any(CreateLogGroupRequest.class))).thenThrow(ResourceAlreadyExistsException.class);
+        when(mockCloudWatchLogsClient.createLogStream(any(CreateLogStreamRequest.class))).thenThrow(ResourceAlreadyExistsException.class);
+        uploader = new CloudWatchLogsUploader(mockCloudWatchClientFactory);
+        uploader.addNextSequenceToken(mockGroupName, mockStreamNameForGroup, mockSequenceToken);
+        CountDownLatch attemptFinishedLatch = new CountDownLatch(1);
+        uploader.registerAttemptStatus(UUID.randomUUID().toString(), cloudWatchAttempt -> {
+            assertTrue(cloudWatchAttempt.getLogStreamUploadedSet().contains("testStream"));
+            attemptFinishedLatch.countDown();
+        });
+
+        uploader.upload(attempt, 1);
+
+        assertTrue(attemptFinishedLatch.await(5, TimeUnit.SECONDS));
+        verify(mockCloudWatchLogsClient, times(1)).createLogStream(any(CreateLogStreamRequest.class));
+        verify(mockCloudWatchLogsClient, times(1)).createLogGroup(any(CreateLogGroupRequest.class));
+        verify(mockCloudWatchLogsClient, times(2)).putLogEvents(putLogEventsRequestArgumentCaptor.capture());
+
+        Set<String> messageTextToCheck = new HashSet<>();
+        messageTextToCheck.add("test");
+        messageTextToCheck.add("test2");
+
+        List<PutLogEventsRequest> putLogEventsRequests = putLogEventsRequestArgumentCaptor.getAllValues();
+        assertEquals(2, putLogEventsRequests.size());
+
+        PutLogEventsRequest request = putLogEventsRequests.get(1);
+        assertTrue(request.hasLogEvents());
+        assertEquals(mockGroupName, request.logGroupName());
+        assertEquals(mockStreamNameForGroup, request.logStreamName());
+        assertEquals(mockSequenceToken, request.sequenceToken());
+        assertEquals(2, request.logEvents().size());
+        request.logEvents().forEach(inputLogEvent -> {
+            assertNotNull(inputLogEvent.message());
+            assertNotNull(inputLogEvent.timestamp());
+            messageTextToCheck.remove(inputLogEvent.message());
+        });
+
+        assertEquals(0, messageTextToCheck.size());
+        assertEquals(mockNextSequenceToken, uploader.logGroupsToSequenceTokensMap.get(mockGroupName).get(mockStreamNameForGroup));
+    }
+
+    @Test
+    public void GIVEN_mock_cloud_watch_attempt_WHEN_bad_sequence_token_THEN_successfully_gets_correct_token(
+            ExtensionContext context1) {
         ignoreExceptionOfType(context1, InvalidSequenceTokenException.class);
         String mockGroupName = "testGroup";
         String mockStreamNameForGroup = "testStream";
@@ -304,5 +455,145 @@ public class CloudWatchLogsUploaderTest extends EGServiceTestUtil  {
         uploader.upload(attempt, 1);
 
         assertTrue(attemptFinishedLatch.await(5, TimeUnit.SECONDS));
+    }
+
+    @Test
+    public void GIVEN_mock_cloud_watch_attempt_WHEN_put_throws_AwsServiceExceptionTHEN_attempt_has_nothing_uploaded(
+            ExtensionContext context1) throws InterruptedException {
+        ignoreExceptionOfType(context1, AwsServiceException.class);
+        String mockGroupName = "testGroup";
+        String mockStreamNameForGroup = "testStream";
+        String mockSequenceToken = UUID.randomUUID().toString();
+        CloudWatchAttempt attempt = new CloudWatchAttempt();
+        Map<String, CloudWatchAttemptLogInformation> logSteamForGroup1Map = new ConcurrentHashMap<>();
+        List<InputLogEvent> inputLogEventsForStream1OfGroup1 = new ArrayList<>();
+        inputLogEventsForStream1OfGroup1.add(InputLogEvent.builder()
+                .timestamp(Instant.now().toEpochMilli())
+                .message("test")
+                .build());
+        inputLogEventsForStream1OfGroup1.add(InputLogEvent.builder()
+                .timestamp(Instant.now().toEpochMilli())
+                .message("test2")
+                .build());
+        Map<String, CloudWatchAttemptLogFileInformation> attemptLogFileInformationMap = new HashMap<>();
+        attemptLogFileInformationMap.put("test.log", CloudWatchAttemptLogFileInformation.builder()
+                .startPosition(0)
+                .bytesRead(100)
+                .build());
+        logSteamForGroup1Map.put(mockStreamNameForGroup,
+                CloudWatchAttemptLogInformation.builder()
+                        .logEvents(inputLogEventsForStream1OfGroup1)
+                        .attemptLogFileInformationMap(attemptLogFileInformationMap)
+                        .build());
+        attempt.setLogGroupName(mockGroupName);
+        attempt.setLogStreamsToLogEventsMap(logSteamForGroup1Map);
+        when(mockCloudWatchLogsClient.putLogEvents(any(PutLogEventsRequest.class))).thenThrow(AwsServiceException.class);
+
+        CountDownLatch attemptFinishedLatch = new CountDownLatch(1);
+        uploader = new CloudWatchLogsUploader(mockCloudWatchClientFactory);
+        uploader.registerAttemptStatus(UUID.randomUUID().toString(), cloudWatchAttempt -> {
+            assertThat(cloudWatchAttempt.getLogStreamUploadedSet(), IsEmptyCollection.empty());
+            attemptFinishedLatch.countDown();
+        });
+        uploader.addNextSequenceToken(mockGroupName, mockStreamNameForGroup, mockSequenceToken);
+        uploader.upload(attempt, 1);
+
+        assertTrue(attemptFinishedLatch.await(5, TimeUnit.SECONDS));
+    }
+
+    @Test
+    public void GIVEN_mock_cloud_watch_attempt_WHEN_put_throws_InvalidSequenceTokenException_THEN_attempt_has_nothing_uploaded(
+            ExtensionContext context1) throws InterruptedException {
+        ignoreExceptionOfType(context1, InvalidSequenceTokenException.class);
+        String mockGroupName = "testGroup";
+        String mockStreamNameForGroup = "testStream";
+        String mockSequenceToken = UUID.randomUUID().toString();
+        CloudWatchAttempt attempt = new CloudWatchAttempt();
+        Map<String, CloudWatchAttemptLogInformation> logSteamForGroup1Map = new ConcurrentHashMap<>();
+        List<InputLogEvent> inputLogEventsForStream1OfGroup1 = new ArrayList<>();
+        inputLogEventsForStream1OfGroup1.add(InputLogEvent.builder()
+                .timestamp(Instant.now().toEpochMilli())
+                .message("test")
+                .build());
+        inputLogEventsForStream1OfGroup1.add(InputLogEvent.builder()
+                .timestamp(Instant.now().toEpochMilli())
+                .message("test2")
+                .build());
+        Map<String, CloudWatchAttemptLogFileInformation> attemptLogFileInformationMap = new HashMap<>();
+        attemptLogFileInformationMap.put("test.log", CloudWatchAttemptLogFileInformation.builder()
+                .startPosition(0)
+                .bytesRead(100)
+                .build());
+        logSteamForGroup1Map.put(mockStreamNameForGroup,
+                CloudWatchAttemptLogInformation.builder()
+                        .logEvents(inputLogEventsForStream1OfGroup1)
+                        .attemptLogFileInformationMap(attemptLogFileInformationMap)
+                        .build());
+        attempt.setLogGroupName(mockGroupName);
+        attempt.setLogStreamsToLogEventsMap(logSteamForGroup1Map);
+        InvalidSequenceTokenException e = InvalidSequenceTokenException.builder().expectedSequenceToken("nextToken").build();
+        when(mockCloudWatchLogsClient.putLogEvents(any(PutLogEventsRequest.class))).thenThrow(e);
+
+        CountDownLatch attemptFinishedLatch = new CountDownLatch(1);
+        uploader = new CloudWatchLogsUploader(mockCloudWatchClientFactory);
+        uploader.registerAttemptStatus(UUID.randomUUID().toString(), cloudWatchAttempt -> {
+            assertThat(cloudWatchAttempt.getLogStreamUploadedSet(), IsEmptyCollection.empty());
+            attemptFinishedLatch.countDown();
+        });
+        uploader.addNextSequenceToken(mockGroupName, mockStreamNameForGroup, mockSequenceToken);
+        uploader.upload(attempt, 1);
+
+        assertTrue(attemptFinishedLatch.await(5, TimeUnit.SECONDS));
+
+        verify(mockCloudWatchLogsClient, times(3)).putLogEvents(putLogEventsRequestArgumentCaptor.capture());
+    }
+
+    @Test
+    public void GIVEN_mock_cloud_watch_attempt_WHEN_unregister_listener_THEN_no_status_is_published(
+            ExtensionContext context1) throws InterruptedException {
+        ignoreExceptionOfType(context1, InvalidSequenceTokenException.class);
+        String mockGroupName = "testGroup";
+        String mockStreamNameForGroup = "testStream";
+        String componentName = UUID.randomUUID().toString();
+        String mockSequenceToken = UUID.randomUUID().toString();
+        CloudWatchAttempt attempt = new CloudWatchAttempt();
+        Map<String, CloudWatchAttemptLogInformation> logSteamForGroup1Map = new ConcurrentHashMap<>();
+        List<InputLogEvent> inputLogEventsForStream1OfGroup1 = new ArrayList<>();
+        inputLogEventsForStream1OfGroup1.add(InputLogEvent.builder()
+                .timestamp(Instant.now().toEpochMilli())
+                .message("test")
+                .build());
+        inputLogEventsForStream1OfGroup1.add(InputLogEvent.builder()
+                .timestamp(Instant.now().toEpochMilli())
+                .message("test2")
+                .build());
+        Map<String, CloudWatchAttemptLogFileInformation> attemptLogFileInformationMap = new HashMap<>();
+        attemptLogFileInformationMap.put("test.log", CloudWatchAttemptLogFileInformation.builder()
+                .startPosition(0)
+                .bytesRead(100)
+                .build());
+        logSteamForGroup1Map.put(mockStreamNameForGroup,
+                CloudWatchAttemptLogInformation.builder()
+                        .logEvents(inputLogEventsForStream1OfGroup1)
+                        .attemptLogFileInformationMap(attemptLogFileInformationMap)
+                        .build());
+        attempt.setLogGroupName(mockGroupName);
+        attempt.setLogStreamsToLogEventsMap(logSteamForGroup1Map);
+        InvalidSequenceTokenException e = InvalidSequenceTokenException.builder().expectedSequenceToken("nextToken").build();
+        when(mockCloudWatchLogsClient.putLogEvents(any(PutLogEventsRequest.class))).thenThrow(e);
+
+        CountDownLatch attemptFinishedLatch = new CountDownLatch(1);
+        uploader = new CloudWatchLogsUploader(mockCloudWatchClientFactory);
+        uploader.registerAttemptStatus(componentName, cloudWatchAttempt -> {
+            assertThat(cloudWatchAttempt.getLogStreamUploadedSet(), IsEmptyCollection.empty());
+            attemptFinishedLatch.countDown();
+        });
+        uploader.addNextSequenceToken(mockGroupName, mockStreamNameForGroup, mockSequenceToken);
+        uploader.unregisterAttemptStatus(componentName);
+        uploader.upload(attempt, 1);
+
+        assertFalse(attemptFinishedLatch.await(5, TimeUnit.SECONDS));
+
+        verify(mockCloudWatchLogsClient, times(3)).putLogEvents(putLogEventsRequestArgumentCaptor.capture());
     }
 }

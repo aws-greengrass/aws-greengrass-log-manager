@@ -122,6 +122,7 @@ public class LogManagerService extends PluginService {
         Set<ComponentLogConfiguration> newComponentLogConfigurations = new HashSet<>();
         if (config.getSystemLogsConfiguration().isUploadToCloudWatch()) {
             addSystemLogsConfiguration(newComponentLogConfigurations);
+            updatePersistedComponentState(SYSTEM_LOGS_COMPONENT_NAME);
         }
         config.getComponentLogInformation().forEach(componentConfiguration -> {
             ComponentLogConfiguration componentLogConfiguration = ComponentLogConfiguration.builder()
@@ -132,6 +133,7 @@ public class LogManagerService extends PluginService {
                     .build();
             // TODO: handle the different optional cases.
             newComponentLogConfigurations.add(componentLogConfiguration);
+            updatePersistedComponentState(componentConfiguration.getComponentName());
         });
 
         this.componentLogConfigurations = newComponentLogConfigurations;
@@ -145,6 +147,41 @@ public class LogManagerService extends PluginService {
                 .name(SYSTEM_LOGS_COMPONENT_NAME)
                 .componentType(ComponentType.GreengrassSystemComponent)
                 .build());
+    }
+
+    private void updatePersistedComponentState(String componentName) {
+        Topics currentProcessingComponentTopics = getRuntimeConfig()
+                .lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION, componentName);
+        if (!currentProcessingComponentTopics.isEmpty()) {
+            CurrentProcessingFileInformation currentProcessingFileInformation =
+                    CurrentProcessingFileInformation.builder().build();
+            currentProcessingComponentTopics.iterator().forEachRemaining(node -> {
+                Topic topic = (Topic) node;
+                switch (topic.getName()) {
+                    case PERSISTED_CURRENT_PROCESSING_FILE_NAME:
+                        currentProcessingFileInformation.setFileName(Coerce.toString(topic.getOnce()));
+                        break;
+                    case PERSISTED_CURRENT_PROCESSING_FILE_START_POSITION:
+                        currentProcessingFileInformation.setStartPosition(Coerce.toLong(topic.getOnce()));
+                        break;
+                    case PERSISTED_CURRENT_PROCESSING_FILE_LAST_MODIFIED_TIME:
+                        currentProcessingFileInformation.setLastModifiedTime(Coerce.toLong(topic.getOnce()));
+                        break;
+                    default:
+                        break;
+                }
+            });
+            componentCurrentProcessingLogFile.put(componentName, currentProcessingFileInformation);
+        }
+        Topics lastFileProcessedComponentTopics = getRuntimeConfig()
+                .lookupTopics(PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP, componentName);
+        if (!lastFileProcessedComponentTopics.isEmpty()) {
+            Topic lastFileProcessedTimeStamp =
+                    lastFileProcessedComponentTopics.lookup(PERSISTED_LAST_FILE_PROCESSED_TIMESTAMP);
+            lastComponentUploadedLogFileInstantMap.put(componentName,
+                    Instant.ofEpochMilli(Coerce.toLong(lastFileProcessedTimeStamp.getOnce())));
+        }
+
     }
 
     /**

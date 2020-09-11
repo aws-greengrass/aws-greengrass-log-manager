@@ -1,10 +1,10 @@
 ---
-templateVersion: '2020-01-25'
-componentName: aws.greengrass.logmanager
-description: AWS Greengrass Log Manager
-publisher: AWS
-version: '0.0.0'
-componentType: plugin
-manifests:
-    - artifacts:
-        - uri: s3://gg-dev-artifacts/$componentName/$version/aws.greengrass.logmanager.jar
+RecipeFormatVersion: '2020-01-25'
+ComponentName: aws.greengrass.logmanager
+ComponentDescription: AWS Greengrass Log Manager
+ComponentPublisher: AWS
+ComponentVersion: '0.0.0'
+ComponentType: plugin
+Manifests:
+    - Artifacts:
+        - URI: s3://gg-dev-artifacts/$componentName/$version/aws.greengrass.logmanager.jar

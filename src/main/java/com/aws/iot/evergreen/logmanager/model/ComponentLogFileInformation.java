@@ -10,6 +10,7 @@ import lombok.Getter;
 import lombok.Value;
 import org.slf4j.event.Level;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Pattern;
 
@@ -17,7 +18,8 @@ import java.util.regex.Pattern;
 @Value
 @Getter
 public class ComponentLogFileInformation {
-    private List<LogFileInformation> logFileInformationList;
+    @Builder.Default
+    private List<LogFileInformation> logFileInformationList = new ArrayList<>();
     private String name;
     private Pattern multiLineStartPattern;
     private Level desiredLogLevel;

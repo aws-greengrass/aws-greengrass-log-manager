@@ -26,6 +26,16 @@ the threshold specified by the customer.
 
 ## FAQ
 
+## Sample Configuration
+```
+Manifests:
+  - Dependencies:
+      aws.greengrass.logmanager
+  - aws.greengrass.logmanager:
+      Parameters:
+        logsUploaderConfigurationJson: "{\"ComponentLogInformation\": [{\"LogFileRegex\": \"^log.txt\\\\w*\",\"LogFileDirectoryPath\": \"/var/usr/\", \"MultiLineStartPattern\": \"\\{'timestamp\",\"MinimumLogLevel\": \"DEBUG\",\"DiskSpaceLimit\": \"10\",\"ComponentName\": \"UserComponentA\",\"DiskSpaceLimitUnit\": \"GB\",\"DeleteLogFileAfterCloudUpload\": \"true\"}],\"SystemLogsConfiguration\":{\"UploadToCloudWatch\": true,\"MinimumLogLevel\": \"INFO\",\"DiskSpaceLimit\": \"25\",\"DiskSpaceLimitUnit\": \"MB\"}}"
+```
+
 ## Security
 
 See [CONTRIBUTING](CONTRIBUTING.md#security-issue-notifications) for more information.

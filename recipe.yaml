@@ -4,7 +4,7 @@ ComponentName: aws.greengrass.logmanager
 ComponentDescription: AWS Greengrass Log Manager
 ComponentPublisher: AWS
 ComponentVersion: '0.0.0'
-ComponentType: plugin
+ComponentType: aws.greengrass.plugin
 Manifests:
     - Artifacts:
         - URI: s3://gg-dev-artifacts/$componentName/$version/aws.greengrass.logmanager.jar

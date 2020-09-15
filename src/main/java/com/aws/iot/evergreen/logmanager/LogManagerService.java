@@ -159,13 +159,13 @@ public class LogManagerService extends PluginService {
                 Topic topic = (Topic) node;
                 switch (topic.getName()) {
                     case PERSISTED_CURRENT_PROCESSING_FILE_NAME:
-                        currentProcessingFileInformation.setFileName(Coerce.toString(topic.getOnce()));
+                        currentProcessingFileInformation.setFileName(Coerce.toString(topic));
                         break;
                     case PERSISTED_CURRENT_PROCESSING_FILE_START_POSITION:
-                        currentProcessingFileInformation.setStartPosition(Coerce.toLong(topic.getOnce()));
+                        currentProcessingFileInformation.setStartPosition(Coerce.toLong(topic));
                         break;
                     case PERSISTED_CURRENT_PROCESSING_FILE_LAST_MODIFIED_TIME:
-                        currentProcessingFileInformation.setLastModifiedTime(Coerce.toLong(topic.getOnce()));
+                        currentProcessingFileInformation.setLastModifiedTime(Coerce.toLong(topic));
                         break;
                     default:
                         break;
@@ -179,7 +179,7 @@ public class LogManagerService extends PluginService {
             Topic lastFileProcessedTimeStamp =
                     lastFileProcessedComponentTopics.lookup(PERSISTED_LAST_FILE_PROCESSED_TIMESTAMP);
             lastComponentUploadedLogFileInstantMap.put(componentName,
-                    Instant.ofEpochMilli(Coerce.toLong(lastFileProcessedTimeStamp.getOnce())));
+                    Instant.ofEpochMilli(Coerce.toLong(lastFileProcessedTimeStamp)));
         }
 
     }

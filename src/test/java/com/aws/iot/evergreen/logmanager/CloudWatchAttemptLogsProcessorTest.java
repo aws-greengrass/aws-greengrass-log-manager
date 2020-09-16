@@ -74,7 +74,7 @@ public class CloudWatchAttemptLogsProcessorTest extends EGServiceTestUtil {
     private CloudWatchAttemptLogsProcessor logsProcessor;
 
     @BeforeEach
-    public void startup() throws ServiceLoadException {
+    public void startup() {
         Topic thingNameTopic = Topic.of(context, DEVICE_PARAM_THING_NAME, "testThing");
         Topic regionTopic = Topic.of(context, DEVICE_PARAM_AWS_REGION, "testRegion");
         when(mockDeviceConfiguration.getThingName()).thenReturn(thingNameTopic);
@@ -233,7 +233,7 @@ public class CloudWatchAttemptLogsProcessorTest extends EGServiceTestUtil {
             throws IOException, ServiceLoadException {
         mockDefaultGetGroups();
         File file = new File(directoryPath.resolve("evergreen_test.log").toUri());
-        file.createNewFile();
+        assertTrue(file.createNewFile());
         assertTrue(file.setReadable(true));
         assertTrue(file.setWritable(true));
         try (OutputStream fileOutputStream = Files.newOutputStream(file.toPath())) {

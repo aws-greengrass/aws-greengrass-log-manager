@@ -5,6 +5,7 @@
 
 package com.aws.iot.evergreen.logmanager;
 
+import com.aws.iot.evergreen.config.Topic;
 import com.aws.iot.evergreen.config.Topics;
 import com.aws.iot.evergreen.dependency.ImplementsService;
 import com.aws.iot.evergreen.kernel.PluginService;
@@ -18,6 +19,7 @@ import com.aws.iot.evergreen.logmanager.model.ComponentType;
 import com.aws.iot.evergreen.logmanager.model.LogFileInformation;
 import com.aws.iot.evergreen.logmanager.model.configuration.LogsUploaderConfiguration;
 import com.aws.iot.evergreen.util.Coerce;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -55,6 +57,16 @@ public class LogManagerService extends PluginService {
     public static final String LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC = "periodicUploadIntervalSec";
     public static final String LOGS_UPLOADER_CONFIGURATION_TOPIC = "logsUploaderConfiguration";
     public static final String SYSTEM_LOGS_COMPONENT_NAME = "System";
+    public static final String PERSISTED_CURRENT_PROCESSING_FILE_NAME = "currentProcessingFileName";
+    public static final String PERSISTED_CURRENT_PROCESSING_FILE_START_POSITION = "currentProcessingFileStartPosition";
+    public static final String PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION =
+            "currentComponentFileProcessingInformation";
+    public static final String PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP =
+            "componentLastFileProcessedTimeStamp";
+    public static final String PERSISTED_LAST_FILE_PROCESSED_TIMESTAMP =
+            "lastFileProcessedTimeStamp";
+    public static final String PERSISTED_CURRENT_PROCESSING_FILE_LAST_MODIFIED_TIME =
+            "currentProcessingFileLastModified";
     private static final int DEFAULT_PERIODIC_UPDATE_INTERVAL_SEC = 300;
     private static final String DEFAULT_FILE_REGEX = "^%s\\w*.log";
     private static final ObjectMapper DESERIALIZER = new ObjectMapper()
@@ -111,6 +123,7 @@ public class LogManagerService extends PluginService {
         Set<ComponentLogConfiguration> newComponentLogConfigurations = new HashSet<>();
         if (config.getSystemLogsConfiguration().isUploadToCloudWatch()) {
             addSystemLogsConfiguration(newComponentLogConfigurations);
+            loadStateFromConfiguration(SYSTEM_LOGS_COMPONENT_NAME);
         }
         config.getComponentLogInformation().forEach(componentConfiguration -> {
             ComponentLogConfiguration componentLogConfiguration = ComponentLogConfiguration.builder()
@@ -121,6 +134,7 @@ public class LogManagerService extends PluginService {
                     .build();
             // TODO: handle the different optional cases.
             newComponentLogConfigurations.add(componentLogConfiguration);
+            loadStateFromConfiguration(componentConfiguration.getComponentName());
         });
 
         this.componentLogConfigurations = newComponentLogConfigurations;
@@ -134,6 +148,27 @@ public class LogManagerService extends PluginService {
                 .name(SYSTEM_LOGS_COMPONENT_NAME)
                 .componentType(ComponentType.GreengrassSystemComponent)
                 .build());
+    }
+
+    private void loadStateFromConfiguration(String componentName) {
+        Topics currentProcessingComponentTopics = getRuntimeConfig()
+                .lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION, componentName);
+        if (!currentProcessingComponentTopics.isEmpty()) {
+            CurrentProcessingFileInformation currentProcessingFileInformation =
+                    CurrentProcessingFileInformation.builder().build();
+            currentProcessingComponentTopics.iterator().forEachRemaining(node ->
+                    currentProcessingFileInformation.updateFromTopic((Topic) node));
+            componentCurrentProcessingLogFile.put(componentName, currentProcessingFileInformation);
+        }
+        Topics lastFileProcessedComponentTopics = getRuntimeConfig()
+                .lookupTopics(PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP, componentName);
+        if (!lastFileProcessedComponentTopics.isEmpty()) {
+            Topic lastFileProcessedTimeStamp =
+                    lastFileProcessedComponentTopics.lookup(PERSISTED_LAST_FILE_PROCESSED_TIMESTAMP);
+            lastComponentUploadedLogFileInstantMap.put(componentName,
+                    Instant.ofEpochMilli(Coerce.toLong(lastFileProcessedTimeStamp)));
+        }
+
     }
 
     /**
@@ -175,9 +210,19 @@ public class LogManagerService extends PluginService {
                     }
                 }));
         currentProcessingLogFilePerComponent.forEach(componentCurrentProcessingLogFile::put);
-        isCurrentlyUploading.set(false);
 
-        //TODO: Persist this information to the disk.
+        componentCurrentProcessingLogFile.forEach((componentName, currentProcessingFileInformation) -> {
+            Topics componentTopics = getRuntimeConfig()
+                    .lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION, componentName);
+            componentTopics.replaceAndWait(currentProcessingFileInformation.convertToMapOfObjects());
+        });
+        lastComponentUploadedLogFileInstantMap.forEach((componentName, instant) -> {
+            Topics componentTopics = getRuntimeConfig()
+                    .lookupTopics(PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP, componentName);
+            Topic lastFileProcessedTimeStamp = componentTopics.createLeafChild(PERSISTED_LAST_FILE_PROCESSED_TIMESTAMP);
+            lastFileProcessedTimeStamp.withValue(instant.toEpochMilli());
+        });
+        isCurrentlyUploading.set(false);
     }
 
     private void processCloudWatchAttemptLogInformation(Map<String, Set<String>> completedLogFilePerComponent,
@@ -336,8 +381,48 @@ public class LogManagerService extends PluginService {
     @Getter
     @Data
     static class CurrentProcessingFileInformation {
+        @JsonProperty(PERSISTED_CURRENT_PROCESSING_FILE_NAME)
         private String fileName;
+        @JsonProperty(PERSISTED_CURRENT_PROCESSING_FILE_START_POSITION)
         private long startPosition;
+        @JsonProperty(PERSISTED_CURRENT_PROCESSING_FILE_LAST_MODIFIED_TIME)
         private long lastModifiedTime;
+
+        public Map<Object, Object> convertToMapOfObjects() {
+            Map<Object, Object> currentProcessingFileInformationMap = new HashMap<>();
+            currentProcessingFileInformationMap.put(PERSISTED_CURRENT_PROCESSING_FILE_NAME, fileName);
+            currentProcessingFileInformationMap.put(PERSISTED_CURRENT_PROCESSING_FILE_START_POSITION, startPosition);
+            currentProcessingFileInformationMap.put(PERSISTED_CURRENT_PROCESSING_FILE_LAST_MODIFIED_TIME,
+                    lastModifiedTime);
+            return currentProcessingFileInformationMap;
+        }
+
+        public void updateFromTopic(Topic topic) {
+            switch (topic.getName()) {
+                case PERSISTED_CURRENT_PROCESSING_FILE_NAME:
+                    fileName = Coerce.toString(topic);
+                    break;
+                case PERSISTED_CURRENT_PROCESSING_FILE_START_POSITION:
+                    startPosition = Coerce.toLong(topic);
+                    break;
+                case PERSISTED_CURRENT_PROCESSING_FILE_LAST_MODIFIED_TIME:
+                    lastModifiedTime = Coerce.toLong(topic);
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        public static CurrentProcessingFileInformation convertFromMapOfObjects(
+                Map<Object, Object> currentProcessingFileInformationMap) {
+            return CurrentProcessingFileInformation.builder()
+                    .fileName(Coerce.toString(currentProcessingFileInformationMap
+                            .get(PERSISTED_CURRENT_PROCESSING_FILE_NAME)))
+                    .lastModifiedTime(Coerce.toLong(currentProcessingFileInformationMap
+                            .get(PERSISTED_CURRENT_PROCESSING_FILE_LAST_MODIFIED_TIME)))
+                    .startPosition(Coerce.toLong(currentProcessingFileInformationMap
+                            .get(PERSISTED_CURRENT_PROCESSING_FILE_START_POSITION)))
+                    .build();
+        }
     }
 }

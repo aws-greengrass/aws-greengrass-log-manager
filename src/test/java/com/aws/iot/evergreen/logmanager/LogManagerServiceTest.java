@@ -96,10 +96,10 @@ public class LogManagerServiceTest extends EGServiceTestUtil {
     static void setupBefore() throws IOException, InterruptedException {
         EvergreenLogConfig.getInstance().setLevel(Level.TRACE);
         EvergreenLogConfig.getInstance().setStoreType(LogStore.FILE);
-        EvergreenLogConfig.getInstance().setStorePath(directoryPath);
+        EvergreenLogConfig.getInstance().setStorePath(directoryPath.resolve("evergreen.log"));
         for (int i = 0; i < 5; i++) {
             File file = new File(directoryPath.resolve("evergreen_test_" + i + ".log").toUri());
-            file.createNewFile();
+            assertTrue(file.createNewFile());
             assertTrue(file.setReadable(true));
             assertTrue(file.setWritable(true));
 
@@ -448,9 +448,8 @@ public class LogManagerServiceTest extends EGServiceTestUtil {
         assertNotNull(componentLogFileInformation.getLogFileInformationList());
         assertThat(componentLogFileInformation.getLogFileInformationList(), IsNot.not(IsEmptyCollection.empty()));
         assertTrue(componentLogFileInformation.getLogFileInformationList().size() >= 2);
-        componentLogFileInformation.getLogFileInformationList().forEach(logFileInformation -> {
-            assertEquals(0, logFileInformation.getStartPosition());
-        });
+        componentLogFileInformation.getLogFileInformationList().forEach(logFileInformation ->
+                assertEquals(0, logFileInformation.getStartPosition()));
         verify(mockUploader, times(1)).upload(any(CloudWatchAttempt.class), anyInt());
     }
 

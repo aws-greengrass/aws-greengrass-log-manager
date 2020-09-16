@@ -19,6 +19,7 @@ import com.aws.iot.evergreen.logmanager.model.ComponentType;
 import com.aws.iot.evergreen.logmanager.model.LogFileInformation;
 import com.aws.iot.evergreen.logmanager.model.configuration.LogsUploaderConfiguration;
 import com.aws.iot.evergreen.util.Coerce;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -122,7 +123,7 @@ public class LogManagerService extends PluginService {
         Set<ComponentLogConfiguration> newComponentLogConfigurations = new HashSet<>();
         if (config.getSystemLogsConfiguration().isUploadToCloudWatch()) {
             addSystemLogsConfiguration(newComponentLogConfigurations);
-            updatePersistedComponentState(SYSTEM_LOGS_COMPONENT_NAME);
+            loadStateFromConfiguration(SYSTEM_LOGS_COMPONENT_NAME);
         }
         config.getComponentLogInformation().forEach(componentConfiguration -> {
             ComponentLogConfiguration componentLogConfiguration = ComponentLogConfiguration.builder()
@@ -133,7 +134,7 @@ public class LogManagerService extends PluginService {
                     .build();
             // TODO: handle the different optional cases.
             newComponentLogConfigurations.add(componentLogConfiguration);
-            updatePersistedComponentState(componentConfiguration.getComponentName());
+            loadStateFromConfiguration(componentConfiguration.getComponentName());
         });
 
         this.componentLogConfigurations = newComponentLogConfigurations;
@@ -149,28 +150,14 @@ public class LogManagerService extends PluginService {
                 .build());
     }
 
-    private void updatePersistedComponentState(String componentName) {
+    private void loadStateFromConfiguration(String componentName) {
         Topics currentProcessingComponentTopics = getRuntimeConfig()
                 .lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION, componentName);
         if (!currentProcessingComponentTopics.isEmpty()) {
             CurrentProcessingFileInformation currentProcessingFileInformation =
                     CurrentProcessingFileInformation.builder().build();
-            currentProcessingComponentTopics.iterator().forEachRemaining(node -> {
-                Topic topic = (Topic) node;
-                switch (topic.getName()) {
-                    case PERSISTED_CURRENT_PROCESSING_FILE_NAME:
-                        currentProcessingFileInformation.setFileName(Coerce.toString(topic));
-                        break;
-                    case PERSISTED_CURRENT_PROCESSING_FILE_START_POSITION:
-                        currentProcessingFileInformation.setStartPosition(Coerce.toLong(topic));
-                        break;
-                    case PERSISTED_CURRENT_PROCESSING_FILE_LAST_MODIFIED_TIME:
-                        currentProcessingFileInformation.setLastModifiedTime(Coerce.toLong(topic));
-                        break;
-                    default:
-                        break;
-                }
-            });
+            currentProcessingComponentTopics.iterator().forEachRemaining(node ->
+                    currentProcessingFileInformation.updateFromTopic((Topic) node));
             componentCurrentProcessingLogFile.put(componentName, currentProcessingFileInformation);
         }
         Topics lastFileProcessedComponentTopics = getRuntimeConfig()
@@ -224,7 +211,6 @@ public class LogManagerService extends PluginService {
                 }));
         currentProcessingLogFilePerComponent.forEach(componentCurrentProcessingLogFile::put);
 
-        //TODO: Persist this information to the disk.
         componentCurrentProcessingLogFile.forEach((componentName, currentProcessingFileInformation) -> {
             Topics componentTopics = getRuntimeConfig()
                     .lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION, componentName);
@@ -395,8 +381,11 @@ public class LogManagerService extends PluginService {
     @Getter
     @Data
     static class CurrentProcessingFileInformation {
+        @JsonProperty(PERSISTED_CURRENT_PROCESSING_FILE_NAME)
         private String fileName;
+        @JsonProperty(PERSISTED_CURRENT_PROCESSING_FILE_START_POSITION)
         private long startPosition;
+        @JsonProperty(PERSISTED_CURRENT_PROCESSING_FILE_LAST_MODIFIED_TIME)
         private long lastModifiedTime;
 
         public Map<Object, Object> convertToMapOfObjects() {
@@ -406,6 +395,22 @@ public class LogManagerService extends PluginService {
             currentProcessingFileInformationMap.put(PERSISTED_CURRENT_PROCESSING_FILE_LAST_MODIFIED_TIME,
                     lastModifiedTime);
             return currentProcessingFileInformationMap;
+        }
+
+        public void updateFromTopic(Topic topic) {
+            switch (topic.getName()) {
+                case PERSISTED_CURRENT_PROCESSING_FILE_NAME:
+                    fileName = Coerce.toString(topic);
+                    break;
+                case PERSISTED_CURRENT_PROCESSING_FILE_START_POSITION:
+                    startPosition = Coerce.toLong(topic);
+                    break;
+                case PERSISTED_CURRENT_PROCESSING_FILE_LAST_MODIFIED_TIME:
+                    lastModifiedTime = Coerce.toLong(topic);
+                    break;
+                default:
+                    break;
+            }
         }
 
         public static CurrentProcessingFileInformation convertFromMapOfObjects(

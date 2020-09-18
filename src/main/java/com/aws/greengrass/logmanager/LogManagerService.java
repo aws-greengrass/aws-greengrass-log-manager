@@ -1,24 +1,24 @@
 /*
- *  Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
- *  SPDX-License-Identifier: Apache-2.0
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: Apache-2.0
  */
 
-package com.aws.iot.evergreen.logmanager;
+package com.aws.greengrass.logmanager;
 
-import com.aws.iot.evergreen.config.Topic;
-import com.aws.iot.evergreen.config.Topics;
-import com.aws.iot.evergreen.dependency.ImplementsService;
-import com.aws.iot.evergreen.kernel.PluginService;
-import com.aws.iot.evergreen.logging.impl.LogManager;
-import com.aws.iot.evergreen.logmanager.model.CloudWatchAttempt;
-import com.aws.iot.evergreen.logmanager.model.CloudWatchAttemptLogFileInformation;
-import com.aws.iot.evergreen.logmanager.model.CloudWatchAttemptLogInformation;
-import com.aws.iot.evergreen.logmanager.model.ComponentLogConfiguration;
-import com.aws.iot.evergreen.logmanager.model.ComponentLogFileInformation;
-import com.aws.iot.evergreen.logmanager.model.ComponentType;
-import com.aws.iot.evergreen.logmanager.model.LogFileInformation;
-import com.aws.iot.evergreen.logmanager.model.configuration.LogsUploaderConfiguration;
-import com.aws.iot.evergreen.util.Coerce;
+import com.aws.greengrass.config.Topic;
+import com.aws.greengrass.config.Topics;
+import com.aws.greengrass.dependency.ImplementsService;
+import com.aws.greengrass.lifecyclemanager.PluginService;
+import com.aws.greengrass.logging.impl.LogManager;
+import com.aws.greengrass.logmanager.model.CloudWatchAttempt;
+import com.aws.greengrass.logmanager.model.CloudWatchAttemptLogFileInformation;
+import com.aws.greengrass.logmanager.model.CloudWatchAttemptLogInformation;
+import com.aws.greengrass.logmanager.model.ComponentLogConfiguration;
+import com.aws.greengrass.logmanager.model.ComponentLogFileInformation;
+import com.aws.greengrass.logmanager.model.ComponentType;
+import com.aws.greengrass.logmanager.model.LogFileInformation;
+import com.aws.greengrass.logmanager.model.configuration.LogsUploaderConfiguration;
+import com.aws.greengrass.util.Coerce;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.MapperFeature;
@@ -48,12 +48,12 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Pattern;
 import javax.inject.Inject;
 
-import static com.aws.iot.evergreen.logmanager.LogManagerService.LOGS_UPLOADER_SERVICE_TOPICS;
-import static com.aws.iot.evergreen.packagemanager.KernelConfigResolver.PARAMETERS_CONFIG_KEY;
+import static com.aws.greengrass.componentmanager.KernelConfigResolver.PARAMETERS_CONFIG_KEY;
+import static com.aws.greengrass.logmanager.LogManagerService.LOGS_UPLOADER_SERVICE_TOPICS;
 
 @ImplementsService(name = LOGS_UPLOADER_SERVICE_TOPICS, version = "1.0.0")
 public class LogManagerService extends PluginService {
-    public static final String LOGS_UPLOADER_SERVICE_TOPICS = "aws.greengrass.logmanager";
+    public static final String LOGS_UPLOADER_SERVICE_TOPICS = "aws.greengrass.LogManager";
     public static final String LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC = "periodicUploadIntervalSec";
     public static final String LOGS_UPLOADER_CONFIGURATION_TOPIC = "logsUploaderConfiguration";
     public static final String SYSTEM_LOGS_COMPONENT_NAME = "System";

@@ -1,9 +1,9 @@
 /*
- *  Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
- *  SPDX-License-Identifier: Apache-2.0
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: Apache-2.0
  */
 
-package com.aws.iot.evergreen.logmanager.model;
+package com.aws.greengrass.logmanager.model;
 
 import lombok.Data;
 import lombok.Getter;

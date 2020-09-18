@@ -10,3 +10,4 @@ coverage
 *.iml
 bin
 evergreen*.log
+greengrass*.log

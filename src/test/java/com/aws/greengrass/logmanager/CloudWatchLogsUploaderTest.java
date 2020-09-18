@@ -1,16 +1,16 @@
 /*
- *  Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
- *  SPDX-License-Identifier: Apache-2.0
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: Apache-2.0
  */
 
-package com.aws.iot.evergreen.logmanager;
+package com.aws.greengrass.logmanager;
 
-import com.aws.iot.evergreen.logmanager.model.CloudWatchAttempt;
-import com.aws.iot.evergreen.logmanager.model.CloudWatchAttemptLogFileInformation;
-import com.aws.iot.evergreen.logmanager.model.CloudWatchAttemptLogInformation;
-import com.aws.iot.evergreen.logmanager.util.CloudWatchClientFactory;
-import com.aws.iot.evergreen.testcommons.testutilities.EGExtension;
-import com.aws.iot.evergreen.testcommons.testutilities.EGServiceTestUtil;
+import com.aws.greengrass.logmanager.model.CloudWatchAttempt;
+import com.aws.greengrass.logmanager.model.CloudWatchAttemptLogFileInformation;
+import com.aws.greengrass.logmanager.model.CloudWatchAttemptLogInformation;
+import com.aws.greengrass.logmanager.util.CloudWatchClientFactory;
+import com.aws.greengrass.testcommons.testutilities.GGExtension;
+import com.aws.greengrass.testcommons.testutilities.GGServiceTestUtil;
 import org.hamcrest.collection.IsEmptyCollection;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -45,7 +45,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
-import static com.aws.iot.evergreen.testcommons.testutilities.ExceptionLogProtector.ignoreExceptionOfType;
+import static com.aws.greengrass.testcommons.testutilities.ExceptionLogProtector.ignoreExceptionOfType;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -56,8 +56,8 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-@ExtendWith({MockitoExtension.class, EGExtension.class})
-public class CloudWatchLogsUploaderTest extends EGServiceTestUtil  {
+@ExtendWith({MockitoExtension.class, GGExtension.class})
+public class CloudWatchLogsUploaderTest extends GGServiceTestUtil {
     @Mock
     private CloudWatchClientFactory mockCloudWatchClientFactory;
     @Mock

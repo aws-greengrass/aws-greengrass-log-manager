@@ -1,11 +1,13 @@
-/* Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: Apache-2.0 */
+/*
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ */
 
-package com.aws.iot.evergreen.logmanager.util;
+package com.aws.greengrass.logmanager.util;
 
-import com.aws.iot.evergreen.deployment.DeviceConfiguration;
-import com.aws.iot.evergreen.tes.LazyCredentialProvider;
-import com.aws.iot.evergreen.util.Coerce;
+import com.aws.greengrass.deployment.DeviceConfiguration;
+import com.aws.greengrass.tes.LazyCredentialProvider;
+import com.aws.greengrass.util.Coerce;
 import lombok.Getter;
 import software.amazon.awssdk.core.client.config.ClientOverrideConfiguration;
 import software.amazon.awssdk.core.retry.RetryPolicy;

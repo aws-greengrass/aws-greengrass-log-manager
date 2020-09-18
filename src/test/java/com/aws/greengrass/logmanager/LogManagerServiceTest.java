@@ -1,18 +1,23 @@
-package com.aws.iot.evergreen.logmanager;
+/*
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ */
 
-import com.aws.iot.evergreen.config.Topic;
-import com.aws.iot.evergreen.config.Topics;
-import com.aws.iot.evergreen.config.UpdateBehaviorTree;
-import com.aws.iot.evergreen.logging.impl.config.EvergreenLogConfig;
-import com.aws.iot.evergreen.logging.impl.config.LogStore;
-import com.aws.iot.evergreen.logmanager.model.CloudWatchAttempt;
-import com.aws.iot.evergreen.logmanager.model.CloudWatchAttemptLogFileInformation;
-import com.aws.iot.evergreen.logmanager.model.CloudWatchAttemptLogInformation;
-import com.aws.iot.evergreen.logmanager.model.ComponentLogFileInformation;
-import com.aws.iot.evergreen.logmanager.model.ComponentType;
-import com.aws.iot.evergreen.testcommons.testutilities.EGExtension;
-import com.aws.iot.evergreen.testcommons.testutilities.EGServiceTestUtil;
-import com.aws.iot.evergreen.util.Coerce;
+package com.aws.greengrass.logmanager;
+
+import com.aws.greengrass.config.Topic;
+import com.aws.greengrass.config.Topics;
+import com.aws.greengrass.config.UpdateBehaviorTree;
+import com.aws.greengrass.logging.impl.config.LogConfig;
+import com.aws.greengrass.logging.impl.config.LogStore;
+import com.aws.greengrass.logmanager.model.CloudWatchAttempt;
+import com.aws.greengrass.logmanager.model.CloudWatchAttemptLogFileInformation;
+import com.aws.greengrass.logmanager.model.CloudWatchAttemptLogInformation;
+import com.aws.greengrass.logmanager.model.ComponentLogFileInformation;
+import com.aws.greengrass.logmanager.model.ComponentType;
+import com.aws.greengrass.testcommons.testutilities.GGExtension;
+import com.aws.greengrass.testcommons.testutilities.GGServiceTestUtil;
+import com.aws.greengrass.util.Coerce;
 import com.fasterxml.jackson.databind.exc.MismatchedInputException;
 import org.hamcrest.collection.IsEmptyCollection;
 import org.hamcrest.core.IsNot;
@@ -48,15 +53,15 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
-import static com.aws.iot.evergreen.kernel.EvergreenService.RUNTIME_STORE_NAMESPACE_TOPIC;
-import static com.aws.iot.evergreen.logmanager.LogManagerService.LOGS_UPLOADER_CONFIGURATION_TOPIC;
-import static com.aws.iot.evergreen.logmanager.LogManagerService.LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC;
-import static com.aws.iot.evergreen.logmanager.LogManagerService.PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION;
-import static com.aws.iot.evergreen.logmanager.LogManagerService.PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP;
-import static com.aws.iot.evergreen.logmanager.LogManagerService.PERSISTED_LAST_FILE_PROCESSED_TIMESTAMP;
-import static com.aws.iot.evergreen.logmanager.LogManagerService.SYSTEM_LOGS_COMPONENT_NAME;
-import static com.aws.iot.evergreen.packagemanager.KernelConfigResolver.PARAMETERS_CONFIG_KEY;
-import static com.aws.iot.evergreen.testcommons.testutilities.ExceptionLogProtector.ignoreExceptionOfType;
+import static com.aws.greengrass.componentmanager.KernelConfigResolver.PARAMETERS_CONFIG_KEY;
+import static com.aws.greengrass.lifecyclemanager.GreengrassService.RUNTIME_STORE_NAMESPACE_TOPIC;
+import static com.aws.greengrass.logmanager.LogManagerService.LOGS_UPLOADER_CONFIGURATION_TOPIC;
+import static com.aws.greengrass.logmanager.LogManagerService.LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC;
+import static com.aws.greengrass.logmanager.LogManagerService.PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION;
+import static com.aws.greengrass.logmanager.LogManagerService.PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP;
+import static com.aws.greengrass.logmanager.LogManagerService.PERSISTED_LAST_FILE_PROCESSED_TIMESTAMP;
+import static com.aws.greengrass.logmanager.LogManagerService.SYSTEM_LOGS_COMPONENT_NAME;
+import static com.aws.greengrass.testcommons.testutilities.ExceptionLogProtector.ignoreExceptionOfType;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -72,8 +77,8 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-@ExtendWith({MockitoExtension.class, EGExtension.class})
-public class LogManagerServiceTest extends EGServiceTestUtil {
+@ExtendWith({MockitoExtension.class, GGExtension.class})
+public class LogManagerServiceTest extends GGServiceTestUtil {
     @Mock
     private CloudWatchLogsUploader mockUploader;
     @Mock
@@ -94,9 +99,9 @@ public class LogManagerServiceTest extends EGServiceTestUtil {
 
     @BeforeAll
     static void setupBefore() throws IOException, InterruptedException {
-        EvergreenLogConfig.getInstance().setLevel(Level.TRACE);
-        EvergreenLogConfig.getInstance().setStoreType(LogStore.FILE);
-        EvergreenLogConfig.getInstance().setStorePath(directoryPath.resolve("evergreen.log"));
+        LogConfig.getInstance().setLevel(Level.TRACE);
+        LogConfig.getInstance().setStoreType(LogStore.FILE);
+        LogConfig.getInstance().setStorePath(directoryPath.resolve("evergreen.log"));
         for (int i = 0; i < 5; i++) {
             File file = new File(directoryPath.resolve("evergreen_test_" + i + ".log").toUri());
             assertTrue(file.createNewFile());
@@ -116,8 +121,8 @@ public class LogManagerServiceTest extends EGServiceTestUtil {
 
     @AfterAll
     static void cleanUpAfter() {
-        EvergreenLogConfig.getInstance().setLevel(Level.INFO);
-        EvergreenLogConfig.getInstance().setStoreType(LogStore.CONSOLE);
+        LogConfig.getInstance().setLevel(Level.INFO);
+        LogConfig.getInstance().setStoreType(LogStore.CONSOLE);
         final File folder = new File(directoryPath.toUri());
         final File[] files = folder.listFiles();
         if (files != null) {
@@ -131,7 +136,7 @@ public class LogManagerServiceTest extends EGServiceTestUtil {
 
     @BeforeEach
     public void setup() {
-        serviceFullName = "aws.greengrass.logmanager";
+        serviceFullName = "aws.greengrass.LogManager";
         initializeMockedConfig();
     }
 

@@ -86,6 +86,7 @@ public class LogManagerService extends PluginService {
     private static final String DEFAULT_FILE_REGEX = "^%s\\w*.log";
     private static final ObjectMapper DESERIALIZER = new ObjectMapper()
             .configure(MapperFeature.ACCEPT_CASE_INSENSITIVE_PROPERTIES, true);
+    private final Object spaceManagementLock = new Object();
 
     final Map<String, Instant> lastComponentUploadedLogFileInstantMap =
             Collections.synchronizedMap(new LinkedHashMap<>());
@@ -161,17 +162,23 @@ public class LogManagerService extends PluginService {
 
         this.componentLogConfigurations = newComponentLogConfigurations;
 
-        if (spaceManagementThread != null) {
-            spaceManagementThread.cancel(true);
-        }
-        spaceManagementThread = this.executorService.submit(() -> {
-            try {
-                startWatchServiceOnLogFilePaths();
-            } catch (IOException e) {
-                //TODO: fail the deployment?
-                logger.atError().cause(e).log();
+        scheduleSpaceManagementThread();
+    }
+
+    private void scheduleSpaceManagementThread() {
+        synchronized (spaceManagementLock) {
+            if (spaceManagementThread != null) {
+                spaceManagementThread.cancel(true);
             }
-        });
+            spaceManagementThread = this.executorService.submit(() -> {
+                try {
+                    startWatchServiceOnLogFilePaths();
+                } catch (IOException e) {
+                    //TODO: fail the deployment?
+                    logger.atError().cause(e).log("Unable to start space management thread.");
+                }
+            });
+        }
     }
 
     private void addSystemLogsConfiguration(Map<String, ComponentLogConfiguration> newComponentLogConfigurations,
@@ -471,79 +478,86 @@ public class LogManagerService extends PluginService {
      */
     private void startWatchServiceOnLogFilePaths() throws IOException {
         try (WatchService watchService = FileSystems.getDefault().newWatchService()) {
-            componentLogConfigurations.forEach((componentName, componentLogConfiguration) -> {
-                // Only register the path of a component if the disk space limit is set.
-                if (componentLogConfiguration.getDiskSpaceLimit() > 0) {
-                    Path path = componentLogConfiguration.getDirectoryPath();
-                    try {
-                        path.register(watchService, StandardWatchEventKinds.ENTRY_CREATE,
-                                StandardWatchEventKinds.ENTRY_MODIFY);
-                    } catch (IOException e) {
-                        logger.atError().cause(e).log("Unable to watch {} for log space management.", path);
-                    }
-                }
-            });
-
-            while (true) {
-                final WatchKey watchKey = watchService.take();
-                final Watchable watchable = watchKey.watchable();
-
-                //Since we are registering only paths in thw watch service, the watchables must be paths
-                if (watchable instanceof Path) {
-                    final Path directory = (Path) watchable;
-                    Map<String, ComponentLogConfiguration> updatedComponentsConfiguration = new HashMap<>();
-                    // Based on the directory and file name created/modified, the log manager will store the component
-                    // information which need to be checked.
-                    List<ComponentLogConfiguration> allComponentsConfiguration =
-                            componentLogConfigurations.values().stream()
-                                    .filter(componentLogConfiguration ->
-                                            componentLogConfiguration.getDirectoryPath().equals(directory))
-                                    .collect(Collectors.toList());
-
-                    // The events can have multiple log files in the same directory. We need to make sure we get the
-                    // correct component based on the file name pattern.
-                    for (WatchEvent<?> event : watchKey.pollEvents()) {
-                        String fileName = Coerce.toString(event.context());
-                        List<ComponentLogConfiguration> list = allComponentsConfiguration.stream()
-                                .filter(componentLogConfiguration ->
-                                        componentLogConfiguration.getMultiLineStartPattern().matcher(fileName).find())
-                                .collect(Collectors.toList());
-                        list.forEach(componentLogConfiguration ->
-                                updatedComponentsConfiguration.putIfAbsent(componentLogConfiguration.getName(),
-                                        componentLogConfiguration));
-                    }
-
-                    // Get the total log files size in the directories for all updates components. If the log files
-                    // size exceed the limit set by the customer, the log manager will figure out the minimum bytes
-                    // to be deleted inorder to meet the limit. It will then go ahead and delete the oldest files until
-                    // the minimum bytes have been deleted.
-                    for (ComponentLogConfiguration componentLogConfiguration :
-                            updatedComponentsConfiguration.values()) {
-                        long totalDirectorySize = Files.walk(componentLogConfiguration.getDirectoryPath())
-                                .filter(p -> {
-                                    File file = p.toFile();
-                                    return file.isFile() && componentLogConfiguration.getFileNameRegex()
-                                            .matcher(file.getName()).find();
-                                })
-                                .mapToLong(p -> p.toFile().length())
-                                .sum();
-
-                        if (totalDirectorySize > componentLogConfiguration.getDiskSpaceLimit()) {
-                            long minimumBytesToBeDeleted = totalDirectorySize
-                                    - componentLogConfiguration.getDiskSpaceLimit();
-                            deleteFiles(minimumBytesToBeDeleted, componentLogConfiguration.getDirectoryPath(),
-                                    componentLogConfiguration.getFileNameRegex());
+            try {
+                componentLogConfigurations.forEach((componentName, componentLogConfiguration) -> {
+                    // Only register the path of a component if the disk space limit is set.
+                    if (componentLogConfiguration.getDiskSpaceLimit() > 0) {
+                        Path path = componentLogConfiguration.getDirectoryPath();
+                        try {
+                            path.register(watchService, StandardWatchEventKinds.ENTRY_CREATE,
+                                    StandardWatchEventKinds.ENTRY_MODIFY);
+                        } catch (IOException e) {
+                            logger.atError().cause(e).log("Unable to watch {} for log space management.",
+                                    path);
                         }
                     }
-                }
+                });
 
-                if (!watchKey.reset()) {
-                    logger.atError().log("Log Space Management encountered an issue. Returning.");
-                    break;
+                while (true) {
+                    final WatchKey watchKey = watchService.take();
+                    final Watchable watchable = watchKey.watchable();
+
+                    //Since we are registering only paths in thw watch service, the watchables must be paths
+                    if (watchable instanceof Path) {
+                        final Path directory = (Path) watchable;
+                        Map<String, ComponentLogConfiguration> updatedComponentsConfiguration = new HashMap<>();
+                        // Based on the directory and file name created/modified, the log manager will store the
+                        // component information which need to be checked.
+                        List<ComponentLogConfiguration> allComponentsConfiguration =
+                                componentLogConfigurations.values().stream()
+                                        .filter(componentLogConfiguration ->
+                                                componentLogConfiguration.getDirectoryPath().equals(directory))
+                                        .collect(Collectors.toList());
+
+                        // The events can have multiple log files in the same directory. We need to make sure we get the
+                        // correct component based on the file name pattern.
+                        for (WatchEvent<?> event : watchKey.pollEvents()) {
+                            String fileName = Coerce.toString(event.context());
+                            List<ComponentLogConfiguration> list = allComponentsConfiguration.stream()
+                                    .filter(componentLogConfiguration -> componentLogConfiguration
+                                            .getMultiLineStartPattern().matcher(fileName).find())
+                                    .collect(Collectors.toList());
+                            list.forEach(componentLogConfiguration ->
+                                    updatedComponentsConfiguration.putIfAbsent(componentLogConfiguration.getName(),
+                                            componentLogConfiguration));
+                        }
+
+                        // Get the total log files size in the directories for all updates components. If the log files
+                        // size exceed the limit set by the customer, the log manager will figure out the minimum bytes
+                        // to be deleted inorder to meet the limit. It will then go ahead and delete the oldest files
+                        // until the minimum bytes have been deleted.
+                        for (ComponentLogConfiguration componentLogConfiguration :
+                                updatedComponentsConfiguration.values()) {
+                            long totalDirectorySize = Files.walk(componentLogConfiguration.getDirectoryPath())
+                                    .filter(p -> {
+                                        File file = p.toFile();
+                                        return file.isFile() && componentLogConfiguration.getFileNameRegex()
+                                                .matcher(file.getName()).find();
+                                    })
+                                    .mapToLong(p -> p.toFile().length())
+                                    .sum();
+
+                            if (totalDirectorySize > componentLogConfiguration.getDiskSpaceLimit()) {
+                                long minimumBytesToBeDeleted = totalDirectorySize
+                                        - componentLogConfiguration.getDiskSpaceLimit();
+                                deleteFiles(minimumBytesToBeDeleted, componentLogConfiguration.getDirectoryPath(),
+                                        componentLogConfiguration.getFileNameRegex());
+                            }
+                        }
+                    }
+
+                    if (!watchKey.reset()) {
+                        logger.atError().log("Log Space Management encountered an issue. Returning.");
+                        break;
+                    }
                 }
+            } catch (IOException e) {
+                // If there is any other IOException, then we should restart the thread.
+                scheduleSpaceManagementThread();
             }
         } catch (InterruptedException e) {
             logger.atError().cause(e).log("Log Space management interrupted. Returning.");
+            Thread.currentThread().interrupt();
         }
     }
 
@@ -557,7 +571,7 @@ public class LogManagerService extends PluginService {
      */
     private void deleteFiles(long minimumBytesToBeDeleted, Path directoryPath, Pattern fileNameRegex) {
         long bytesDeleted = 0;
-        File folder = new File(directoryPath.toUri());
+        File folder = directoryPath.toFile();
         List<File> allFiles = new ArrayList<>();
         File[] files = folder.listFiles();
         if (files != null && files.length > 0) {

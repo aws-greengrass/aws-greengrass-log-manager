@@ -546,7 +546,6 @@ public class LogManagerServiceTest extends EGServiceTestUtil {
             assertTrue(Files.notExists(Paths.get(fileNames.get(i))));
         }
         for (int i = 2; i < 5; i++) {
-            System.out.println(i);
             assertTrue(Files.exists(Paths.get(fileNames.get(i))));
         }
     }

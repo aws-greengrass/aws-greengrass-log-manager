@@ -1,22 +1,22 @@
 /*
- *  Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
- *  SPDX-License-Identifier: Apache-2.0
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: Apache-2.0
  */
 
-package com.aws.iot.evergreen.logmanager;
+package com.aws.greengrass.logmanager;
 
-import com.aws.iot.evergreen.config.Topic;
-import com.aws.iot.evergreen.deployment.DeploymentService;
-import com.aws.iot.evergreen.deployment.DeviceConfiguration;
-import com.aws.iot.evergreen.kernel.Kernel;
-import com.aws.iot.evergreen.kernel.exceptions.ServiceLoadException;
-import com.aws.iot.evergreen.logmanager.model.CloudWatchAttempt;
-import com.aws.iot.evergreen.logmanager.model.CloudWatchAttemptLogInformation;
-import com.aws.iot.evergreen.logmanager.model.ComponentLogFileInformation;
-import com.aws.iot.evergreen.logmanager.model.ComponentType;
-import com.aws.iot.evergreen.logmanager.model.LogFileInformation;
-import com.aws.iot.evergreen.testcommons.testutilities.EGExtension;
-import com.aws.iot.evergreen.testcommons.testutilities.EGServiceTestUtil;
+import com.aws.greengrass.config.Topic;
+import com.aws.greengrass.deployment.DeploymentService;
+import com.aws.greengrass.deployment.DeviceConfiguration;
+import com.aws.greengrass.lifecyclemanager.Kernel;
+import com.aws.greengrass.lifecyclemanager.exceptions.ServiceLoadException;
+import com.aws.greengrass.logmanager.model.CloudWatchAttempt;
+import com.aws.greengrass.logmanager.model.CloudWatchAttemptLogInformation;
+import com.aws.greengrass.logmanager.model.ComponentLogFileInformation;
+import com.aws.greengrass.logmanager.model.ComponentType;
+import com.aws.greengrass.logmanager.model.LogFileInformation;
+import com.aws.greengrass.testcommons.testutilities.GGExtension;
+import com.aws.greengrass.testcommons.testutilities.GGServiceTestUtil;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.hamcrest.collection.IsEmptyCollection;
 import org.hamcrest.core.IsNot;
@@ -45,12 +45,12 @@ import java.util.List;
 import java.util.Locale;
 import java.util.regex.Pattern;
 
-import static com.aws.iot.evergreen.deployment.DeviceConfiguration.DEVICE_PARAM_AWS_REGION;
-import static com.aws.iot.evergreen.deployment.DeviceConfiguration.DEVICE_PARAM_THING_NAME;
-import static com.aws.iot.evergreen.deployment.converter.DeploymentDocumentConverter.DEFAULT_GROUP_NAME;
-import static com.aws.iot.evergreen.logmanager.CloudWatchAttemptLogsProcessor.DEFAULT_LOG_GROUP_NAME;
-import static com.aws.iot.evergreen.logmanager.CloudWatchAttemptLogsProcessor.DEFAULT_LOG_STREAM_NAME;
-import static com.aws.iot.evergreen.testcommons.testutilities.ExceptionLogProtector.ignoreExceptionOfType;
+import static com.aws.greengrass.deployment.DeviceConfiguration.DEVICE_PARAM_AWS_REGION;
+import static com.aws.greengrass.deployment.DeviceConfiguration.DEVICE_PARAM_THING_NAME;
+import static com.aws.greengrass.deployment.converter.DeploymentDocumentConverter.DEFAULT_GROUP_NAME;
+import static com.aws.greengrass.logmanager.CloudWatchAttemptLogsProcessor.DEFAULT_LOG_GROUP_NAME;
+import static com.aws.greengrass.logmanager.CloudWatchAttemptLogsProcessor.DEFAULT_LOG_STREAM_NAME;
+import static com.aws.greengrass.testcommons.testutilities.ExceptionLogProtector.ignoreExceptionOfType;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -59,8 +59,8 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
-@ExtendWith({MockitoExtension.class, EGExtension.class})
-public class CloudWatchAttemptLogsProcessorTest extends EGServiceTestUtil {
+@ExtendWith({MockitoExtension.class, GGExtension.class})
+public class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
     private static final SimpleDateFormat DATE_FORMATTER = new SimpleDateFormat("yyyy/MM/dd", Locale.ENGLISH);
     @Mock
     private DeviceConfiguration mockDeviceConfiguration;
@@ -322,7 +322,7 @@ public class CloudWatchAttemptLogsProcessorTest extends EGServiceTestUtil {
         assertEquals(4, logEventsForStream2.getLogEvents().size());
         assertTrue(logEventsForStream2.getAttemptLogFileInformationMap().containsKey(file2.getAbsolutePath()));
         assertEquals(0, logEventsForStream2.getAttemptLogFileInformationMap().get(file2.getAbsolutePath()).getStartPosition());
-        assertEquals(1256, logEventsForStream2.getAttemptLogFileInformationMap().get(file2.getAbsolutePath()).getBytesRead());
+        assertEquals(1239, logEventsForStream2.getAttemptLogFileInformationMap().get(file2.getAbsolutePath()).getBytesRead());
         assertEquals("TestComponent", logEventsForStream2.getComponentName());
     }
 

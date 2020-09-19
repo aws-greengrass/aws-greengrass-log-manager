@@ -1,24 +1,24 @@
 /*
- *  Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
- *  SPDX-License-Identifier: Apache-2.0
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: Apache-2.0
  */
 
-package com.aws.iot.evergreen.logmanager;
+package com.aws.greengrass.logmanager;
 
-import com.aws.iot.evergreen.deployment.DeploymentService;
-import com.aws.iot.evergreen.deployment.DeviceConfiguration;
-import com.aws.iot.evergreen.kernel.EvergreenService;
-import com.aws.iot.evergreen.kernel.Kernel;
-import com.aws.iot.evergreen.kernel.exceptions.ServiceLoadException;
-import com.aws.iot.evergreen.logging.api.Logger;
-import com.aws.iot.evergreen.logging.impl.EvergreenStructuredLogMessage;
-import com.aws.iot.evergreen.logging.impl.LogManager;
-import com.aws.iot.evergreen.logmanager.model.CloudWatchAttempt;
-import com.aws.iot.evergreen.logmanager.model.CloudWatchAttemptLogFileInformation;
-import com.aws.iot.evergreen.logmanager.model.CloudWatchAttemptLogInformation;
-import com.aws.iot.evergreen.logmanager.model.ComponentLogFileInformation;
-import com.aws.iot.evergreen.logmanager.model.ComponentType;
-import com.aws.iot.evergreen.util.Coerce;
+import com.aws.greengrass.deployment.DeploymentService;
+import com.aws.greengrass.deployment.DeviceConfiguration;
+import com.aws.greengrass.lifecyclemanager.GreengrassService;
+import com.aws.greengrass.lifecyclemanager.Kernel;
+import com.aws.greengrass.lifecyclemanager.exceptions.ServiceLoadException;
+import com.aws.greengrass.logging.api.Logger;
+import com.aws.greengrass.logging.impl.GreengrassLogMessage;
+import com.aws.greengrass.logging.impl.LogManager;
+import com.aws.greengrass.logmanager.model.CloudWatchAttempt;
+import com.aws.greengrass.logmanager.model.CloudWatchAttemptLogFileInformation;
+import com.aws.greengrass.logmanager.model.CloudWatchAttemptLogInformation;
+import com.aws.greengrass.logmanager.model.ComponentLogFileInformation;
+import com.aws.greengrass.logmanager.model.ComponentType;
+import com.aws.greengrass.util.Coerce;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -43,7 +43,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import javax.inject.Inject;
 
-import static com.aws.iot.evergreen.deployment.converter.DeploymentDocumentConverter.DEFAULT_GROUP_NAME;
+import static com.aws.greengrass.deployment.converter.DeploymentDocumentConverter.DEFAULT_GROUP_NAME;
 
 public class CloudWatchAttemptLogsProcessor {
     public static final String DEFAULT_LOG_GROUP_NAME = "/aws/greengrass/{componentType}/{region}/{componentName}";
@@ -181,7 +181,7 @@ public class CloudWatchAttemptLogsProcessor {
     private Set<String> getGroupsForComponent(String componentName, ComponentType componentType) {
         Set<String> groups = new HashSet<>();
         try {
-            EvergreenService deploymentServiceLocateResult = this.kernel
+            GreengrassService deploymentServiceLocateResult = this.kernel
                     .locate(DeploymentService.DEPLOYMENT_SERVICE_TOPICS);
             if (deploymentServiceLocateResult instanceof DeploymentService) {
                 DeploymentService deploymentService = (DeploymentService) deploymentServiceLocateResult;
@@ -200,13 +200,13 @@ public class CloudWatchAttemptLogsProcessor {
     }
 
     /**
-     * Processes the log line by trying to deserialize the log line as a {@link EvergreenStructuredLogMessage}.
+     * Processes the log line by trying to deserialize the log line as a {@link GreengrassLogMessage}.
      * If log line is in the correct format, add the minimum log level filter and add the log event if the filter
      * passes.
-     * If the log line is not in the {@link EvergreenStructuredLogMessage} format, we will add the log event to be
+     * If the log line is not in the {@link GreengrassLogMessage} format, we will add the log event to be
      * uploaded to CloudWatch.
      * Also creates the log stream name based on the timestamp value of the log line if it is in the
-     * {@link EvergreenStructuredLogMessage} format.
+     * {@link GreengrassLogMessage} format.
      * Else, it will use the current date for the formatter.
      *
      * @param totalBytesRead  Total bytes read/added to the log events list.
@@ -229,7 +229,7 @@ public class CloudWatchAttemptLogsProcessor {
                                    long lastModified) {
         boolean reachedMaxSize;
         CloudWatchAttemptLogInformation attemptLogInformation;
-        Optional<EvergreenStructuredLogMessage> logMessage = tryGetEvergreenStructuredLogMessage(data);
+        Optional<GreengrassLogMessage> logMessage = tryGetstructuredLogMessage(data);
         if (logMessage.isPresent()) {
             logStreamName = logStreamName.replace("{date}",
                     dateFormatter.format(new Date(logMessage.get().getTimestamp())));
@@ -279,15 +279,15 @@ public class CloudWatchAttemptLogsProcessor {
     }
 
     /**
-     * Verify we can deserialize the log line as a EvergreenStructuredLogMessage. If not, return an empty optional
+     * Verify we can deserialize the log line as a structuredLogMessage. If not, return an empty optional
      * value.
      *
      * @param data The log line read from the file.
-     * @return a EvergreenStructuredLogMessage if the deserialization is successful, else an empty optional object.
+     * @return a structuredLogMessage if the deserialization is successful, else an empty optional object.
      */
-    private Optional<EvergreenStructuredLogMessage> tryGetEvergreenStructuredLogMessage(StringBuilder data) {
+    private Optional<GreengrassLogMessage> tryGetstructuredLogMessage(StringBuilder data) {
         try {
-            return Optional.of(DESERIALIZER.readValue(data.toString(), EvergreenStructuredLogMessage.class));
+            return Optional.of(DESERIALIZER.readValue(data.toString(), GreengrassLogMessage.class));
         } catch (JsonProcessingException ignored) {
             // If unable to deserialize, then we treat it as a normal log line and do not need to smartly upload.
             return Optional.empty();
@@ -295,7 +295,7 @@ public class CloudWatchAttemptLogsProcessor {
     }
 
     /**
-     * Verify the {@link EvergreenStructuredLogMessage}'s log level is greater than the desired log level to be uploaded
+     * Verify the {@link GreengrassLogMessage}'s log level is greater than the desired log level to be uploaded
      * to CloudWatch.
      *
      * @param totalBytesRead        The total number of bytes read till now.
@@ -309,7 +309,7 @@ public class CloudWatchAttemptLogsProcessor {
                                            CloudWatchAttemptLogInformation attemptLogInformation,
                                            StringBuilder data,
                                            Level desiredLogLevel,
-                                           EvergreenStructuredLogMessage logMessage) {
+                                           GreengrassLogMessage logMessage) {
         Level currentLogLevel = Level.valueOf(logMessage.getLevel());
         if (currentLogLevel.toInt() < desiredLogLevel.toInt()) {
             return false;

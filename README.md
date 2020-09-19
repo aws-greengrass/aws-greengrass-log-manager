@@ -2,13 +2,13 @@
 
 Log Manager is a Greengrass component that manages the system as well as user component logs. 
 Lambda Manager is an optional internal Evergreen service that runs in the same JVM as the 
-[Evergreen kernel](https://github.com/aws/aws-greengrass-kernel).
+[Greengrass nucleus](https://github.com/aws/aws-greengrass-kernel).
 
 Log Manager has two major features: **Logs Uploader** and **Disk Space Management**
   
 **Logs Uploader** --
 It is responsible for uploading logs from the device from greengrass as well as non-greengrass components to CloudWatch.
-Since the customers can use either the Evergreen Logging and Metrics service framework or any other framework to log, the 
+Since the customers can use either the Greengrass Logging and Metrics service framework or any other framework to log, the 
 logs uploader needs to be smart in order to handle these different formats of logs. 
 The logs uploader should be able to handle any network disruptions or device reboots. The logs uploader should smartly
 manage the log rotation for different logging frameworks and upload the logs on a “best effort” basis.

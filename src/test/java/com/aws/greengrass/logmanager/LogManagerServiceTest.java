@@ -19,6 +19,7 @@ import com.aws.greengrass.testcommons.testutilities.GGExtension;
 import com.aws.greengrass.testcommons.testutilities.GGServiceTestUtil;
 import com.aws.greengrass.util.Coerce;
 import com.fasterxml.jackson.databind.exc.MismatchedInputException;
+import org.apache.commons.lang3.RandomStringUtils;
 import org.hamcrest.collection.IsEmptyCollection;
 import org.hamcrest.core.IsNot;
 import org.junit.jupiter.api.AfterAll;
@@ -42,12 +43,16 @@ import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -188,10 +193,11 @@ public class LogManagerServiceTest extends GGServiceTestUtil {
 
         String configuration =
                 "{\"ComponentLogInformation\": " +
-                        "[{\"LogFileRegex\": \"^log.txt\\\\w*\",\"LogFileDirectoryPath\": \"/var/usr/\", " +
+                        "[{\"LogFileRegex\": \"^log.txt\\\\w*\",\"LogFileDirectoryPath\": \"" +
+                        directoryPath.toAbsolutePath().toString() + "\", " +
                         "\"MultiLineStartPattern\": \"\\\\{'timestamp\",\"MinimumLogLevel\": \"DEBUG\"," +
                         "\"DiskSpaceLimit\": \"10\",\"ComponentName\": \"UserComponentA\"," +
-                        "\"DiskSpaceLimitUnit\": \"GB\",\"DeleteLogFileAfterCloudUpload\": \"true\"}]," +
+                        "\"DiskSpaceLimitUnit\": \"GB\",\"DeleteLogFileAfterCloudUpload\": \"false\"}]," +
                         "\"SystemLogsConfiguration\":{\"UploadToCloudWatch\": true,\"MinimumLogLevel\": \"INFO\"," +
                         "\"DiskSpaceLimit\": \"25\"," +
                         "\"DiskSpaceLimitUnit\": \"MB\"}}";
@@ -200,7 +206,7 @@ public class LogManagerServiceTest extends GGServiceTestUtil {
                 .thenReturn(configTopic);
         doNothing().when(mockUploader).registerAttemptStatus(anyString(), callbackCaptor.capture());
 
-        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger);
+        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor);
         startServiceOnAnotherThread();
 
         TimeUnit.SECONDS.sleep(5);
@@ -243,7 +249,7 @@ public class LogManagerServiceTest extends GGServiceTestUtil {
         when(config.lookup(PARAMETERS_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC))
                 .thenReturn(configTopic);
 
-        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger);
+        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor);
         startServiceOnAnotherThread();
         assertThat(logsUploaderService.componentCurrentProcessingLogFile.values(), IsEmptyCollection.empty());
     }
@@ -259,7 +265,7 @@ public class LogManagerServiceTest extends GGServiceTestUtil {
         when(config.lookup(PARAMETERS_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC))
                 .thenReturn(configTopic);
 
-        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger);
+        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor);
         startServiceOnAnotherThread();
         assertThat(logsUploaderService.componentCurrentProcessingLogFile.values(), IsEmptyCollection.empty());
     }
@@ -327,7 +333,7 @@ public class LogManagerServiceTest extends GGServiceTestUtil {
                 .lookupTopics(PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP, "TestComponent"))
                 .thenReturn(componentTopics2);
 
-        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger);
+        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor);
         startServiceOnAnotherThread();
 
         callbackCaptor.getValue().accept(attempt);
@@ -376,7 +382,7 @@ public class LogManagerServiceTest extends GGServiceTestUtil {
         when(config.lookup(PARAMETERS_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC))
                 .thenReturn(configTopic);
 
-        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger);
+        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor);
         File file = new File(directoryPath.resolve("evergreen_test_2.log").toUri());
         File currentProcessingFile = new File(directoryPath.resolve("evergreen_test_3.log").toUri());
         logsUploaderService.lastComponentUploadedLogFileInstantMap.put(SYSTEM_LOGS_COMPONENT_NAME,
@@ -411,6 +417,145 @@ public class LogManagerServiceTest extends GGServiceTestUtil {
     }
 
     @Test
+    public void GIVEN_user_component_with_space_management_WHEN_log_file_size_exceeds_limit_THEN_deletes_excess_log_files()
+            throws InterruptedException, IOException {
+        mockDefaultPersistedState();
+        Topic periodicUpdateIntervalMsTopic = Topic.of(context, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC, "3");
+        when(config.lookup(PARAMETERS_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC))
+                .thenReturn(periodicUpdateIntervalMsTopic);
+
+        String configuration =
+                "{\"ComponentLogInformation\": " +
+                        "[{\"LogFileRegex\": \"^log.txt\\\\w*\",\"LogFileDirectoryPath\": \"" +
+                        directoryPath.toAbsolutePath().toString() + "\", " +
+                        "\"MultiLineStartPattern\": \"\\\\{'timestamp\",\"MinimumLogLevel\": \"DEBUG\"," +
+                        "\"DiskSpaceLimit\": \"2\",\"ComponentName\": \"UserComponentA\"," +
+                        "\"DiskSpaceLimitUnit\": \"KB\",\"DeleteLogFileAfterCloudUpload\": \"true\"}]," +
+                        "\"SystemLogsConfiguration\":{\"UploadToCloudWatch\": true,\"MinimumLogLevel\": \"INFO\"," +
+                        "\"DiskSpaceLimit\": \"25\"," +
+                        "\"DiskSpaceLimitUnit\": \"KB\"}}";
+        Topic configTopic = Topic.of(context, LOGS_UPLOADER_CONFIGURATION_TOPIC, configuration);
+        when(config.lookup(PARAMETERS_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC))
+                .thenReturn(configTopic);
+
+        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor);
+        startServiceOnAnotherThread();
+        TimeUnit.SECONDS.sleep(5);
+        List<String> fileNames = new ArrayList<>();
+        for (int i = 0; i < 5; i++) {
+            Path fileNamePath = directoryPath.resolve("log.txt_" + UUID.randomUUID().toString());
+            fileNames.add(fileNamePath.toAbsolutePath().toString());
+            File file1 = new File(fileNamePath.toUri());
+            assertTrue(file1.createNewFile());
+            assertTrue(file1.setReadable(true));
+            assertTrue(file1.setWritable(true));
+
+            try (OutputStream fileOutputStream = Files.newOutputStream(file1.toPath())) {
+                String generatedString = RandomStringUtils.randomAlphabetic(1024);
+                fileOutputStream.write(generatedString.getBytes(StandardCharsets.UTF_8));
+            }
+            TimeUnit.SECONDS.sleep(1);
+        }
+        TimeUnit.SECONDS.sleep(5);
+
+        for (int i = 0; i < 3; i++) {
+            assertTrue(Files.notExists(Paths.get(fileNames.get(i))));
+        }
+
+        for (int i = 3; i < 5; i++) {
+            assertTrue(Files.exists(Paths.get(fileNames.get(i))));
+            assertEquals(1024 ,new File(Paths.get(fileNames.get(i)).toUri()).length());
+        }
+    }
+
+    @Test
+    public void GIVEN_user_component_logs_delete_file_after_upload_set_WHEN_upload_logs_THEN_deletes_uploaded_log_files()
+            throws InterruptedException, IOException {
+        mockDefaultPersistedState();
+        Topic periodicUpdateIntervalMsTopic = Topic.of(context, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC, "3");
+        when(config.lookup(PARAMETERS_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC))
+                .thenReturn(periodicUpdateIntervalMsTopic);
+
+        String configuration =
+                "{\"ComponentLogInformation\": " +
+                        "[{\"LogFileRegex\": \"^log2.txt\\\\w*\",\"LogFileDirectoryPath\": \"" +
+                        directoryPath.toAbsolutePath().toString() + "\", " +
+                        "\"MultiLineStartPattern\": \"\\\\{'timestamp\",\"MinimumLogLevel\": \"DEBUG\"," +
+                        "\"DiskSpaceLimit\": \"25\",\"ComponentName\": \"UserComponentA\"," +
+                        "\"DiskSpaceLimitUnit\": \"KB\",\"DeleteLogFileAfterCloudUpload\": \"true\"}]," +
+                        "\"SystemLogsConfiguration\":{\"UploadToCloudWatch\": true,\"MinimumLogLevel\": \"INFO\"," +
+                        "\"DiskSpaceLimit\": \"25\"," +
+                        "\"DiskSpaceLimitUnit\": \"KB\"}}";
+        Topic configTopic = Topic.of(context, LOGS_UPLOADER_CONFIGURATION_TOPIC, configuration);
+        when(config.lookup(PARAMETERS_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC))
+                .thenReturn(configTopic);
+
+        List<String> fileNames = new ArrayList<>();
+        for (int i = 0; i < 5; i++) {
+            Path fileNamePath = directoryPath.resolve("log2.txt_" + UUID.randomUUID().toString());
+            fileNames.add(fileNamePath.toAbsolutePath().toString());
+            File file1 = new File(fileNamePath.toUri());
+            if (Files.notExists(file1.toPath())) {
+                assertTrue(file1.createNewFile());
+            }
+            assertTrue(file1.setReadable(true));
+            assertTrue(file1.setWritable(true));
+
+            try (OutputStream fileOutputStream = Files.newOutputStream(file1.toPath())) {
+                String generatedString = RandomStringUtils.randomAlphabetic(1024);
+                fileOutputStream.write(generatedString.getBytes(StandardCharsets.UTF_8));
+            }
+            TimeUnit.SECONDS.sleep(1);
+        }
+        CloudWatchAttempt attempt = new CloudWatchAttempt();
+        Map<String, CloudWatchAttemptLogInformation> logStreamsToLogInformationMap = new HashMap<>();
+        File file1 = new File(directoryPath.resolve(fileNames.get(0)).toUri());
+        File file2 = new File(directoryPath.resolve(fileNames.get(1)).toUri());
+        Map<String, CloudWatchAttemptLogFileInformation> attemptLogFileInformationMap1 = new HashMap<>();
+        attemptLogFileInformationMap1.put(file1.getAbsolutePath(), CloudWatchAttemptLogFileInformation.builder()
+                .startPosition(0)
+                .bytesRead(file1.length())
+                .lastModifiedTime(file1.lastModified())
+                .build());
+        attemptLogFileInformationMap1.put(file2.getAbsolutePath(), CloudWatchAttemptLogFileInformation.builder()
+                .startPosition(0)
+                .bytesRead(file2.length())
+                .lastModifiedTime(file2.lastModified())
+                .build());
+
+        CloudWatchAttemptLogInformation attemptLogInformation1 = CloudWatchAttemptLogInformation.builder()
+                .componentName("UserComponentA")
+                .attemptLogFileInformationMap(attemptLogFileInformationMap1)
+                .build();
+        logStreamsToLogInformationMap.put("testStream", attemptLogInformation1);
+        attempt.setLogStreamsToLogEventsMap(logStreamsToLogInformationMap);
+        attempt.setLogStreamUploadedSet(new HashSet<>(Collections.singletonList("testStream")));
+        doNothing().when(mockUploader).registerAttemptStatus(anyString(), callbackCaptor.capture());
+        Topics componentTopics1 = mock(Topics.class);
+        Topic lastFileProcessedTimeStampTopics = mock(Topic.class);
+        when(componentTopics1.createLeafChild(any())).thenReturn(lastFileProcessedTimeStampTopics);
+        when(lastFileProcessedTimeStampTopics.withValue(objectCaptor.capture()))
+                .thenReturn(lastFileProcessedTimeStampTopics);
+        when(config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC)
+                .lookupTopics(PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP, "UserComponentA"))
+                .thenReturn(componentTopics1);
+
+        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor);
+        startServiceOnAnotherThread();
+
+        callbackCaptor.getValue().accept(attempt);
+
+        TimeUnit.SECONDS.sleep(5);
+
+        for (int i = 0; i < 2; i++) {
+            assertTrue(Files.notExists(Paths.get(fileNames.get(i))));
+        }
+        for (int i = 2; i < 5; i++) {
+            assertTrue(Files.exists(Paths.get(fileNames.get(i))));
+        }
+    }
+
+    @Test
     public void GIVEN_a_partially_uploaded_file_but_rotated_WHEN_merger_merges_THEN_sets_the_start_position_correctly()
             throws InterruptedException {
         mockDefaultPersistedState();
@@ -428,7 +573,7 @@ public class LogManagerServiceTest extends GGServiceTestUtil {
         when(config.lookup(PARAMETERS_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC))
                 .thenReturn(configTopic);
 
-        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger);
+        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor);
         startServiceOnAnotherThread();
 
         File file = new File(directoryPath.resolve("evergreen.log_test_2").toUri());
@@ -465,10 +610,11 @@ public class LogManagerServiceTest extends GGServiceTestUtil {
                 .thenReturn(periodicUpdateIntervalMsTopic);
         String configuration =
                 "{\"ComponentLogInformation\": " +
-                        "[{\"LogFileRegex\": \"^log.txt\\\\w*\",\"LogFileDirectoryPath\": \"/var/usr/\", " +
+                        "[{\"LogFileRegex\": \"^log.txt\\\\w*\",\"LogFileDirectoryPath\": \"" +
+                        directoryPath.toAbsolutePath().toString() + "\", " +
                         "\"MultiLineStartPattern\": \"\\\\{'timestamp\",\"MinimumLogLevel\": \"DEBUG\"," +
                         "\"DiskSpaceLimit\": \"10\",\"ComponentName\": \"UserComponentA\"," +
-                        "\"DiskSpaceLimitUnit\": \"GB\",\"DeleteLogFileAfterCloudUpload\": \"true\"}]," +
+                        "\"DiskSpaceLimitUnit\": \"GB\",\"DeleteLogFileAfterCloudUpload\": \"false\"}]," +
                         "\"SystemLogsConfiguration\":{\"UploadToCloudWatch\": true,\"MinimumLogLevel\": \"INFO\"," +
                         "\"DiskSpaceLimit\": \"25\"," +
                         "\"DiskSpaceLimitUnit\": \"MB\"}}";
@@ -525,7 +671,7 @@ public class LogManagerServiceTest extends GGServiceTestUtil {
                 .lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION, "UserComponentA"))
                 .thenReturn(currentProcessingComponentTopics2);
 
-        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger);
+        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor);
 
         assertNotNull(logsUploaderService.componentCurrentProcessingLogFile);
         assertNotNull(logsUploaderService.lastComponentUploadedLogFileInstantMap);

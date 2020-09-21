@@ -5,6 +5,7 @@
 
 package com.aws.greengrass.logmanager;
 
+import ch.qos.logback.core.util.FileSize;
 import com.aws.greengrass.config.Topic;
 import com.aws.greengrass.config.Topics;
 import com.aws.greengrass.dependency.ImplementsService;
@@ -18,6 +19,7 @@ import com.aws.greengrass.logmanager.model.ComponentLogFileInformation;
 import com.aws.greengrass.logmanager.model.ComponentType;
 import com.aws.greengrass.logmanager.model.LogFileInformation;
 import com.aws.greengrass.logmanager.model.configuration.LogsUploaderConfiguration;
+import com.aws.greengrass.logmanager.model.configuration.SystemLogsConfiguration;
 import com.aws.greengrass.util.Coerce;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -26,10 +28,20 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.Builder;
 import lombok.Data;
 import lombok.Getter;
+import org.apache.commons.lang3.StringUtils;
+import org.slf4j.event.Level;
 
 import java.io.File;
+import java.io.IOException;
+import java.nio.file.FileSystems;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardWatchEventKinds;
+import java.nio.file.WatchEvent;
+import java.nio.file.WatchKey;
+import java.nio.file.WatchService;
+import java.nio.file.Watchable;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -42,10 +54,13 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import javax.inject.Inject;
 
 import static com.aws.greengrass.componentmanager.KernelConfigResolver.PARAMETERS_CONFIG_KEY;
@@ -71,6 +86,7 @@ public class LogManagerService extends PluginService {
     private static final String DEFAULT_FILE_REGEX = "^%s\\w*.log";
     private static final ObjectMapper DESERIALIZER = new ObjectMapper()
             .configure(MapperFeature.ACCEPT_CASE_INSENSITIVE_PROPERTIES, true);
+    private final Object spaceManagementLock = new Object();
 
     final Map<String, Instant> lastComponentUploadedLogFileInstantMap =
             Collections.synchronizedMap(new LinkedHashMap<>());
@@ -78,28 +94,31 @@ public class LogManagerService extends PluginService {
             new ConcurrentHashMap<>();
     private final CloudWatchLogsUploader uploader;
     private final CloudWatchAttemptLogsProcessor logsProcessor;
-    private Set<ComponentLogConfiguration> componentLogConfigurations = new HashSet<>();
+    private final ExecutorService executorService;
+    private Map<String, ComponentLogConfiguration> componentLogConfigurations = new ConcurrentHashMap<>();
     private final AtomicBoolean isCurrentlyUploading = new AtomicBoolean(false);
     private int periodicUpdateIntervalSec;
+    private Future<?> spaceManagementThread;
 
     /**
      * Constructor.
      *
-     * @param topics              The configuration coming from the kernel.
-     * @param uploader            {@link CloudWatchLogsUploader}
-     * @param logProcessor        {@link CloudWatchAttemptLogsProcessor}
+     * @param topics          The configuration coming from the kernel.
+     * @param uploader        {@link CloudWatchLogsUploader}
+     * @param logProcessor    {@link CloudWatchAttemptLogsProcessor}
+     * @param executorService {@link ExecutorService}
      */
     @Inject
-    LogManagerService(Topics topics, CloudWatchLogsUploader uploader, CloudWatchAttemptLogsProcessor logProcessor) {
+    LogManagerService(Topics topics, CloudWatchLogsUploader uploader, CloudWatchAttemptLogsProcessor logProcessor,
+                      ExecutorService executorService) {
         super(topics);
         this.uploader = uploader;
         this.logsProcessor = logProcessor;
+        this.executorService = executorService;
 
         topics.lookup(PARAMETERS_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC)
                 .dflt(DEFAULT_PERIODIC_UPDATE_INTERVAL_SEC)
-                .subscribe((why, newv) -> {
-                    periodicUpdateIntervalSec = Coerce.toInt(newv);
-                });
+                .subscribe((why, newv) -> periodicUpdateIntervalSec = Coerce.toInt(newv));
         this.uploader.registerAttemptStatus(LOGS_UPLOADER_SERVICE_TOPICS, this::handleCloudWatchAttemptStatus);
 
         topics.lookup(PARAMETERS_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC)
@@ -120,9 +139,9 @@ public class LogManagerService extends PluginService {
     }
 
     private void processConfiguration(LogsUploaderConfiguration config) {
-        Set<ComponentLogConfiguration> newComponentLogConfigurations = new HashSet<>();
+        Map<String, ComponentLogConfiguration> newComponentLogConfigurations = new ConcurrentHashMap<>();
         if (config.getSystemLogsConfiguration().isUploadToCloudWatch()) {
-            addSystemLogsConfiguration(newComponentLogConfigurations);
+            addSystemLogsConfiguration(newComponentLogConfigurations, config.getSystemLogsConfiguration());
             loadStateFromConfiguration(SYSTEM_LOGS_COMPONENT_NAME);
         }
         config.getComponentLogInformation().forEach(componentConfiguration -> {
@@ -132,22 +151,84 @@ public class LogManagerService extends PluginService {
                     .directoryPath(Paths.get(componentConfiguration.getLogFileDirectoryPath()))
                     .componentType(ComponentType.UserComponent)
                     .build();
-            // TODO: handle the different optional cases.
-            newComponentLogConfigurations.add(componentLogConfiguration);
+            setMinimumLogLevel(componentConfiguration.getMinimumLogLevel(), componentLogConfiguration);
+            setDeleteLogFileAfterCloudUpload(componentConfiguration.getDeleteLogFileAfterCloudUpload(),
+                    componentLogConfiguration);
+            setDiskSpaceLimit(componentConfiguration.getDiskSpaceLimit(),
+                    componentConfiguration.getDiskSpaceLimitUnit(), componentLogConfiguration);
+            newComponentLogConfigurations.put(componentConfiguration.getComponentName(), componentLogConfiguration);
             loadStateFromConfiguration(componentConfiguration.getComponentName());
         });
 
         this.componentLogConfigurations = newComponentLogConfigurations;
+
+        scheduleSpaceManagementThread();
     }
 
-    private void addSystemLogsConfiguration(Set<ComponentLogConfiguration> newComponentLogConfigurations) {
+    private void scheduleSpaceManagementThread() {
+        synchronized (spaceManagementLock) {
+            if (spaceManagementThread != null) {
+                spaceManagementThread.cancel(true);
+            }
+            spaceManagementThread = this.executorService.submit(() -> {
+                try {
+                    startWatchServiceOnLogFilePaths();
+                } catch (IOException e) {
+                    //TODO: fail the deployment?
+                    logger.atError().cause(e).log("Unable to start space management thread.");
+                }
+            });
+        }
+    }
+
+    private void addSystemLogsConfiguration(Map<String, ComponentLogConfiguration> newComponentLogConfigurations,
+                                            SystemLogsConfiguration systemLogsConfiguration) {
         Path logsDirectoryPath = Paths.get(LogManager.getConfig().getStoreName()).getParent();
-        newComponentLogConfigurations.add(ComponentLogConfiguration.builder()
+        ComponentLogConfiguration systemConfiguration = ComponentLogConfiguration.builder()
                 .fileNameRegex(Pattern.compile(String.format(DEFAULT_FILE_REGEX, LogManager.getConfig().getFileName())))
                 .directoryPath(logsDirectoryPath)
                 .name(SYSTEM_LOGS_COMPONENT_NAME)
                 .componentType(ComponentType.GreengrassSystemComponent)
-                .build());
+                .build();
+        setMinimumLogLevel(systemLogsConfiguration.getMinimumLogLevel(), systemConfiguration);
+        setDeleteLogFileAfterCloudUpload(systemLogsConfiguration.getDeleteLogFileAfterCloudUpload(),
+                systemConfiguration);
+        setDiskSpaceLimit(systemLogsConfiguration.getDiskSpaceLimit(), systemLogsConfiguration.getDiskSpaceLimitUnit(),
+                systemConfiguration);
+        newComponentLogConfigurations.put(SYSTEM_LOGS_COMPONENT_NAME, systemConfiguration);
+    }
+
+    private void setMinimumLogLevel(String minimumLogLevel, ComponentLogConfiguration componentLogConfiguration) {
+        if (!StringUtils.isEmpty(minimumLogLevel)) {
+            componentLogConfiguration.setMinimumLogLevel(Level.valueOf(minimumLogLevel));
+        }
+    }
+
+    private void setDiskSpaceLimit(String diskSpaceLimit, String diskSpaceLimitUnit,
+                                   ComponentLogConfiguration componentLogConfiguration) {
+        if (!StringUtils.isEmpty(diskSpaceLimit) && !StringUtils.isEmpty(diskSpaceLimitUnit)) {
+            long coefficient;
+            switch (diskSpaceLimitUnit) {
+                case "MB":
+                    coefficient = FileSize.MB_COEFFICIENT;
+                    break;
+                case "GB":
+                    coefficient = FileSize.GB_COEFFICIENT;
+                    break;
+                case "KB":
+                default:
+                    coefficient = FileSize.KB_COEFFICIENT;
+                    break;
+            }
+            componentLogConfiguration.setDiskSpaceLimit(Coerce.toLong(diskSpaceLimit) * coefficient);
+        }
+    }
+
+    private void setDeleteLogFileAfterCloudUpload(String deleteLogFileAfterCloudUpload,
+                                                  ComponentLogConfiguration componentLogConfiguration) {
+        if (!StringUtils.isEmpty(deleteLogFileAfterCloudUpload)) {
+            componentLogConfiguration.setDeleteLogFileAfterCloudUpload(Coerce.toBoolean(deleteLogFileAfterCloudUpload));
+        }
     }
 
     private void loadStateFromConfiguration(String componentName) {
@@ -168,7 +249,6 @@ public class LogManagerService extends PluginService {
             lastComponentUploadedLogFileInstantMap.put(componentName,
                     Instant.ofEpochMilli(Coerce.toLong(lastFileProcessedTimeStamp)));
         }
-
     }
 
     /**
@@ -191,24 +271,44 @@ public class LogManagerService extends PluginService {
         Map<String, CurrentProcessingFileInformation> currentProcessingLogFilePerComponent = new HashMap<>();
 
         cloudWatchAttempt.getLogStreamUploadedSet().forEach((streamName) -> {
-                    CloudWatchAttemptLogInformation attemptLogInformation =
-                            cloudWatchAttempt.getLogStreamsToLogEventsMap().get(streamName);
-                    attemptLogInformation.getAttemptLogFileInformationMap().forEach(
-                            (fileName, cloudWatchAttemptLogFileInformation) ->
-                                    processCloudWatchAttemptLogInformation(completedLogFilePerComponent,
-                                            currentProcessingLogFilePerComponent, attemptLogInformation, fileName,
-                                            cloudWatchAttemptLogFileInformation));
-                });
+            CloudWatchAttemptLogInformation attemptLogInformation =
+                    cloudWatchAttempt.getLogStreamsToLogEventsMap().get(streamName);
+            attemptLogInformation.getAttemptLogFileInformationMap().forEach(
+                    (fileName, cloudWatchAttemptLogFileInformation) ->
+                            processCloudWatchAttemptLogInformation(completedLogFilePerComponent,
+                                    currentProcessingLogFilePerComponent, attemptLogInformation, fileName,
+                                    cloudWatchAttemptLogFileInformation));
+        });
 
-        completedLogFilePerComponent.forEach((componentName, fileNames) ->
-                fileNames.stream().map(File::new).forEach(file -> {
-                    if (!lastComponentUploadedLogFileInstantMap.containsKey(componentName)
-                            || lastComponentUploadedLogFileInstantMap.get(componentName)
-                            .isBefore(Instant.ofEpochMilli(file.lastModified()))) {
-                        lastComponentUploadedLogFileInstantMap.put(componentName,
-                                Instant.ofEpochMilli(file.lastModified()));
+        completedLogFilePerComponent.forEach((componentName, fileNames) -> {
+            fileNames.stream().map(File::new).forEach(file -> {
+                if (!lastComponentUploadedLogFileInstantMap.containsKey(componentName)
+                        || lastComponentUploadedLogFileInstantMap.get(componentName)
+                        .isBefore(Instant.ofEpochMilli(file.lastModified()))) {
+                    lastComponentUploadedLogFileInstantMap.put(componentName,
+                            Instant.ofEpochMilli(file.lastModified()));
+                }
+            });
+            if (!componentLogConfigurations.containsKey(componentName)) {
+                return;
+            }
+            ComponentLogConfiguration componentLogConfiguration = componentLogConfigurations.get(componentName);
+            if (!componentLogConfiguration.isDeleteLogFileAfterCloudUpload()) {
+                return;
+            }
+            fileNames.forEach(fileName -> {
+                try {
+                    boolean successfullyDeleted = Files.deleteIfExists(Paths.get(fileName));
+                    if (successfullyDeleted) {
+                        logger.atDebug().log("Successfully deleted file with name {}", fileName);
+                    } else {
+                        logger.atWarn().log("Unable to delete file with name {}", fileName);
                     }
-                }));
+                } catch (IOException e) {
+                    logger.atError().cause(e).log("Unable to delete file with name: {}", fileName);
+                }
+            });
+        });
         currentProcessingLogFilePerComponent.forEach(componentCurrentProcessingLogFile::put);
 
         componentCurrentProcessingLogFile.forEach((componentName, currentProcessingFileInformation) -> {
@@ -284,13 +384,12 @@ public class LogManagerService extends PluginService {
                 TimeUnit.SECONDS.sleep(periodicUpdateIntervalSec);
                 continue;
             }
-            // TODO: Sleep here if we had received a throttling exception in the previous run.
             AtomicReference<Optional<ComponentLogFileInformation>> componentLogFileInformation =
                     new AtomicReference<>(Optional.empty());
             // Get the latest known configurations because the componentLogConfigurations can change if a new
             // configuration is received from the customer.
-            final Set<ComponentLogConfiguration> currentComponentLogConfigurations = componentLogConfigurations;
-            for (ComponentLogConfiguration componentLogConfiguration : currentComponentLogConfigurations) {
+            final Map<String, ComponentLogConfiguration> currentComponentLogConfigurations = componentLogConfigurations;
+            for (ComponentLogConfiguration componentLogConfiguration : currentComponentLogConfigurations.values()) {
                 if (componentLogFileInformation.get().isPresent()) {
                     break;
                 }
@@ -368,6 +467,143 @@ public class LogManagerService extends PluginService {
         // Need to override the function for tests.
         super.startup();
         processLogsAndUpload();
+    }
+
+    /**
+     * Starts a Watch Service on all the log directories where customer has specified disk space limit.
+     * If any file is modified and created in any of those directories, we get an event containing that information.
+     * The log manager will then verify that the size of all log files in that directory for the component does not
+     * exceed the disk space limit set by the customer. If it does, the log manager will delete the log files until
+     * the limit is met.
+     *
+     * @throws IOException if unable to initialise a new Watch Service.
+     */
+    private void startWatchServiceOnLogFilePaths() throws IOException {
+        //TODO: Optimize this.
+        // The optimization would be to have best of both worlds. The file watcher will mark the changed components
+        // log directories. Another scheduled thread will look at that and clean up files if necessary.
+        try (WatchService watchService = FileSystems.getDefault().newWatchService()) {
+            try {
+                componentLogConfigurations.forEach((componentName, componentLogConfiguration) -> {
+                    // Only register the path of a component if the disk space limit is set.
+                    if (componentLogConfiguration.getDiskSpaceLimit() > 0) {
+                        Path path = componentLogConfiguration.getDirectoryPath();
+                        try {
+                            path.register(watchService, StandardWatchEventKinds.ENTRY_CREATE,
+                                    StandardWatchEventKinds.ENTRY_MODIFY);
+                        } catch (IOException e) {
+                            logger.atError().cause(e).log("Unable to watch {} for log space management.",
+                                    path);
+                        }
+                    }
+                });
+
+                while (true) {
+                    final WatchKey watchKey = watchService.take();
+                    final Watchable watchable = watchKey.watchable();
+
+                    //Since we are registering only paths in thw watch service, the watchables must be paths
+                    if (watchable instanceof Path) {
+                        final Path directory = (Path) watchable;
+                        Map<String, ComponentLogConfiguration> updatedComponentsConfiguration = new HashMap<>();
+                        // Based on the directory and file name created/modified, the log manager will store the
+                        // component information which need to be checked.
+                        List<ComponentLogConfiguration> allComponentsConfiguration =
+                                componentLogConfigurations.values().stream()
+                                        .filter(componentLogConfiguration ->
+                                                componentLogConfiguration.getDirectoryPath().equals(directory))
+                                        .collect(Collectors.toList());
+
+                        // The events can have multiple log files in the same directory. We need to make sure we get the
+                        // correct component based on the file name pattern.
+                        for (WatchEvent<?> event : watchKey.pollEvents()) {
+                            String fileName = Coerce.toString(event.context());
+                            List<ComponentLogConfiguration> list = allComponentsConfiguration.stream()
+                                    .filter(componentLogConfiguration -> componentLogConfiguration
+                                            .getMultiLineStartPattern().matcher(fileName).find())
+                                    .collect(Collectors.toList());
+                            list.forEach(componentLogConfiguration ->
+                                    updatedComponentsConfiguration.putIfAbsent(componentLogConfiguration.getName(),
+                                            componentLogConfiguration));
+                        }
+
+                        // Get the total log files size in the directories for all updates components. If the log files
+                        // size exceed the limit set by the customer, the log manager will figure out the minimum bytes
+                        // to be deleted inorder to meet the limit. It will then go ahead and delete the oldest files
+                        // until the minimum bytes have been deleted.
+                        for (ComponentLogConfiguration componentLogConfiguration :
+                                updatedComponentsConfiguration.values()) {
+                            long totalDirectorySize = Files.walk(componentLogConfiguration.getDirectoryPath())
+                                    .filter(p -> {
+                                        File file = p.toFile();
+                                        return file.isFile() && componentLogConfiguration.getFileNameRegex()
+                                                .matcher(file.getName()).find();
+                                    })
+                                    .mapToLong(p -> p.toFile().length())
+                                    .sum();
+
+                            if (totalDirectorySize > componentLogConfiguration.getDiskSpaceLimit()) {
+                                long minimumBytesToBeDeleted = totalDirectorySize
+                                        - componentLogConfiguration.getDiskSpaceLimit();
+                                deleteFiles(minimumBytesToBeDeleted, componentLogConfiguration.getDirectoryPath(),
+                                        componentLogConfiguration.getFileNameRegex());
+                            }
+                        }
+                    }
+
+                    if (!watchKey.reset()) {
+                        logger.atError().log("Log Space Management encountered an issue. Returning.");
+                        scheduleSpaceManagementThread();
+                        break;
+                    }
+                }
+            } catch (IOException e) {
+                // If there is any other IOException, then we should restart the thread.
+                scheduleSpaceManagementThread();
+            }
+        } catch (InterruptedException e) {
+            logger.atError().cause(e).log("Log Space management interrupted. Returning.");
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    /**
+     * Deletes the oldest log files which matches the file name pattern. The log files will be deleted until the
+     * minimum number of bytes have been deleted.
+     *
+     * @param minimumBytesToBeDeleted   The minimum number of bytes that need to be deleted.
+     * @param directoryPath             The directory path for the log files.
+     * @param fileNameRegex             The file name regex.
+     */
+    private void deleteFiles(long minimumBytesToBeDeleted, Path directoryPath, Pattern fileNameRegex) {
+        long bytesDeleted = 0;
+        File folder = directoryPath.toFile();
+        List<File> allFiles = new ArrayList<>();
+        File[] files = folder.listFiles();
+        if (files != null && files.length > 0) {
+            for (File file : files) {
+                if (file.isFile() && fileNameRegex.matcher(file.getName()).find()) {
+                    allFiles.add(file);
+                }
+            }
+            // Sort the files by the last modified time.
+            allFiles.sort(Comparator.comparingLong(File::lastModified));
+            int fileIndex = 0;
+            while (bytesDeleted < minimumBytesToBeDeleted) {
+                File fileToBeDeleted = allFiles.get(fileIndex++);
+                long fileSize = fileToBeDeleted.length();
+                boolean successfullyDeleted = fileToBeDeleted.delete();
+                if (successfullyDeleted) {
+                    logger.atDebug().log("Successfully deleted file with name {}",
+                            fileToBeDeleted.getAbsolutePath());
+                    bytesDeleted += fileSize;
+                } else {
+                    logger.atWarn().log("Unable to delete file with name {}",
+                            fileToBeDeleted.getAbsolutePath());
+                    break;
+                }
+            }
+        }
     }
 
     @Override

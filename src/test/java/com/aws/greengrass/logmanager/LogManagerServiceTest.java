@@ -534,7 +534,7 @@ public class LogManagerServiceTest extends GGServiceTestUtil {
         Topics componentTopics1 = mock(Topics.class);
         Topic lastFileProcessedTimeStampTopics = mock(Topic.class);
         when(componentTopics1.createLeafChild(any())).thenReturn(lastFileProcessedTimeStampTopics);
-        when(lastFileProcessedTimeStampTopics.withValue(any()))
+        when(lastFileProcessedTimeStampTopics.withValue(any(Number.class)))
                 .thenReturn(lastFileProcessedTimeStampTopics);
         when(config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC)
                 .lookupTopics(PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP, "UserComponentA"))

@@ -93,7 +93,7 @@ public class LogManagerServiceTest extends GGServiceTestUtil {
     @Captor
     private ArgumentCaptor<Consumer<CloudWatchAttempt>> callbackCaptor;
     @Captor
-    private ArgumentCaptor<Map<Object, Object>> replaceAndWaitCaptor;
+    private ArgumentCaptor<Map<String, Object>> replaceAndWaitCaptor;
     @Captor
     private ArgumentCaptor<Object> objectCaptor;
 
@@ -341,7 +341,7 @@ public class LogManagerServiceTest extends GGServiceTestUtil {
         assertThat(replaceAndWaitCaptor.getAllValues(), IsNot.not(IsEmptyCollection.empty()));
         assertThat(objectCaptor.getAllValues(), IsNot.not(IsEmptyCollection.empty()));
         List<Object> completedComponentLastProcessedFileInformation = objectCaptor.getAllValues();
-        List<Map<Object, Object>> partiallyReadComponentLogFileInformation = replaceAndWaitCaptor.getAllValues();
+        List<Map<String, Object>> partiallyReadComponentLogFileInformation = replaceAndWaitCaptor.getAllValues();
         assertEquals(1, completedComponentLastProcessedFileInformation.size());
         assertEquals(1, partiallyReadComponentLogFileInformation.size());
         assertEquals(file1.lastModified(), Coerce.toLong(completedComponentLastProcessedFileInformation.get(0)));

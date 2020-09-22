@@ -96,6 +96,8 @@ public class LogManagerServiceTest extends GGServiceTestUtil {
     private ArgumentCaptor<Map<String, Object>> replaceAndWaitCaptor;
     @Captor
     private ArgumentCaptor<Object> objectCaptor;
+    @Captor
+    private ArgumentCaptor<Number> numberObjectCaptor;
 
     @TempDir
     static Path directoryPath;
@@ -290,7 +292,7 @@ public class LogManagerServiceTest extends GGServiceTestUtil {
         Topics componentTopics2 = mock(Topics.class);
         Topic lastFileProcessedTimeStampTopics = mock(Topic.class);
         when(componentTopics2.createLeafChild(any())).thenReturn(lastFileProcessedTimeStampTopics);
-        when(lastFileProcessedTimeStampTopics.withValue(objectCaptor.capture()))
+        when(lastFileProcessedTimeStampTopics.withValue(numberObjectCaptor.capture()))
                 .thenReturn(lastFileProcessedTimeStampTopics);
 
         Topics componentTopics3 = mock(Topics.class);
@@ -339,8 +341,8 @@ public class LogManagerServiceTest extends GGServiceTestUtil {
         callbackCaptor.getValue().accept(attempt);
 
         assertThat(replaceAndWaitCaptor.getAllValues(), IsNot.not(IsEmptyCollection.empty()));
-        assertThat(objectCaptor.getAllValues(), IsNot.not(IsEmptyCollection.empty()));
-        List<Object> completedComponentLastProcessedFileInformation = objectCaptor.getAllValues();
+        assertThat(numberObjectCaptor.getAllValues(), IsNot.not(IsEmptyCollection.empty()));
+        List<Number> completedComponentLastProcessedFileInformation = numberObjectCaptor.getAllValues();
         List<Map<String, Object>> partiallyReadComponentLogFileInformation = replaceAndWaitCaptor.getAllValues();
         assertEquals(1, completedComponentLastProcessedFileInformation.size());
         assertEquals(1, partiallyReadComponentLogFileInformation.size());
@@ -534,7 +536,7 @@ public class LogManagerServiceTest extends GGServiceTestUtil {
         Topics componentTopics1 = mock(Topics.class);
         Topic lastFileProcessedTimeStampTopics = mock(Topic.class);
         when(componentTopics1.createLeafChild(any())).thenReturn(lastFileProcessedTimeStampTopics);
-        when(lastFileProcessedTimeStampTopics.withValue(objectCaptor.capture()))
+        when(lastFileProcessedTimeStampTopics.withValue(any()))
                 .thenReturn(lastFileProcessedTimeStampTopics);
         when(config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC)
                 .lookupTopics(PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP, "UserComponentA"))

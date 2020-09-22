@@ -95,8 +95,6 @@ public class LogManagerServiceTest extends GGServiceTestUtil {
     @Captor
     private ArgumentCaptor<Map<String, Object>> replaceAndWaitCaptor;
     @Captor
-    private ArgumentCaptor<Object> objectCaptor;
-    @Captor
     private ArgumentCaptor<Number> numberObjectCaptor;
 
     @TempDir

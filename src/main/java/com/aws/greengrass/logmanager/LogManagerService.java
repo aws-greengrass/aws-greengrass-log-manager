@@ -624,8 +624,8 @@ public class LogManagerService extends PluginService {
         @JsonProperty(PERSISTED_CURRENT_PROCESSING_FILE_LAST_MODIFIED_TIME)
         private long lastModifiedTime;
 
-        public Map<Object, Object> convertToMapOfObjects() {
-            Map<Object, Object> currentProcessingFileInformationMap = new HashMap<>();
+        public Map<String, Object> convertToMapOfObjects() {
+            Map<String, Object> currentProcessingFileInformationMap = new HashMap<>();
             currentProcessingFileInformationMap.put(PERSISTED_CURRENT_PROCESSING_FILE_NAME, fileName);
             currentProcessingFileInformationMap.put(PERSISTED_CURRENT_PROCESSING_FILE_START_POSITION, startPosition);
             currentProcessingFileInformationMap.put(PERSISTED_CURRENT_PROCESSING_FILE_LAST_MODIFIED_TIME,
@@ -650,7 +650,7 @@ public class LogManagerService extends PluginService {
         }
 
         public static CurrentProcessingFileInformation convertFromMapOfObjects(
-                Map<Object, Object> currentProcessingFileInformationMap) {
+                Map<String, Object> currentProcessingFileInformationMap) {
             return CurrentProcessingFileInformation.builder()
                     .fileName(Coerce.toString(currentProcessingFileInformationMap
                             .get(PERSISTED_CURRENT_PROCESSING_FILE_NAME)))

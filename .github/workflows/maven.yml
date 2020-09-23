@@ -89,5 +89,6 @@ jobs:
         with:
           recipePath: recipe.yaml
           artifactDirectoryPath: target/artifacts
-          endpoint: https://nztb5z87k6.execute-api.us-east-1.amazonaws.com/Gamma
+          endpoint: https://evergreen-gamma.us-east-1.amazonaws.com
           autoBumpVersion: true
+          publishAsPublic: true

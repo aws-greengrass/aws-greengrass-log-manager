@@ -5,6 +5,7 @@
 
 package com.aws.greengrass.logmanager;
 
+import com.amazonaws.arn.Arn;
 import com.aws.greengrass.deployment.DeploymentService;
 import com.aws.greengrass.deployment.DeviceConfiguration;
 import com.aws.greengrass.lifecyclemanager.GreengrassService;
@@ -100,11 +101,18 @@ public class CloudWatchAttemptLogsProcessor {
             logStreamName = logStreamName.replace("{ggFleetId}", DEFAULT_GROUP_NAME);
         } else {
             StringJoiner stringJoiner = new StringJoiner(":");
-            groups.forEach(groupName -> {
-                if (stringJoiner.length() + groupName.length() <= MAX_LOG_STREAM_NAME) {
-                    stringJoiner.add(groupName);
-                }
+            groups.forEach(groupConfigArn -> {
+                try {
+                    Arn arn = Arn.fromString(groupConfigArn);
+                    String groupName = arn.getResource().getResource();
+                    if (stringJoiner.length() + groupName.length() <= MAX_LOG_STREAM_NAME) {
+                        stringJoiner.add(groupName);
+                    }
+                } catch (IllegalArgumentException ignored) { }
             });
+            if (stringJoiner.length() == 0) {
+                stringJoiner.add(DEFAULT_GROUP_NAME);
+            }
             logStreamName = logStreamName.replace("{ggFleetId}", stringJoiner.toString());
         }
 

@@ -84,9 +84,9 @@ public class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
     private void mockDefaultGetGroups() throws ServiceLoadException {
         lenient().when(mockKernel.locate(DeploymentService.DEPLOYMENT_SERVICE_TOPICS)).thenReturn(mockDeploymentService);
         lenient().when(mockDeploymentService.getGroupConfigsForUserComponent(anyString()))
-                .thenReturn(new HashSet<>(Collections.singletonList("testGroup2")));
+                .thenReturn(new HashSet<>(Collections.singletonList("arn:aws:greengrass:testRegion:12345:configuration:testGroup2:12")));
         lenient().when(mockDeploymentService.getAllGroupConfigs())
-                .thenReturn(new HashSet<>(Collections.singletonList("testGroup1")));
+                .thenReturn(new HashSet<>(Collections.singletonList("arn:aws:greengrass:testRegion:12345:configuration:testGroup1:12")));
     }
 
     @Test
@@ -163,6 +163,44 @@ public class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
                 .thenReturn(new HashSet<>(Collections.emptyList()));
         lenient().when(mockDeploymentService.getAllGroupConfigs())
                 .thenReturn(new HashSet<>(Collections.emptyList()));
+
+        File file1 = new File(getClass().getResource("testlogs2.log").toURI());
+        List<LogFileInformation> logFileInformationSet = new ArrayList<>();
+        logFileInformationSet.add(LogFileInformation.builder().startPosition(0).file(file1).build());
+        ComponentLogFileInformation componentLogFileInformation = ComponentLogFileInformation.builder()
+                .name("TestComponent")
+                .multiLineStartPattern(Pattern.compile("^[^\\s]+(\\s+[^\\s]+)*$"))
+                .desiredLogLevel(Level.INFO)
+                .componentType(ComponentType.GreengrassSystemComponent)
+                .logFileInformationList(logFileInformationSet)
+                .build();
+        logsProcessor = new CloudWatchAttemptLogsProcessor(mockDeviceConfiguration, mockKernel);
+        CloudWatchAttempt attempt = logsProcessor.processLogFiles(componentLogFileInformation);
+        assertNotNull(attempt);
+
+        assertNotNull(attempt.getLogStreamsToLogEventsMap());
+        assertThat(attempt.getLogStreamsToLogEventsMap().entrySet(), IsNot.not(IsEmptyCollection.empty()));
+        String logGroup = calculateLogGroupName(ComponentType.GreengrassSystemComponent, "testRegion", "TestComponent");
+        assertEquals(attempt.getLogGroupName(), logGroup);
+        String logStream = calculateLogStreamName("testThing", DEFAULT_GROUP_NAME);
+        assertTrue(attempt.getLogStreamsToLogEventsMap().containsKey(logStream));
+        CloudWatchAttemptLogInformation logEventsForStream1 = attempt.getLogStreamsToLogEventsMap().get(logStream);
+        assertNotNull(logEventsForStream1.getLogEvents());
+        assertEquals(7, logEventsForStream1.getLogEvents().size());
+        assertTrue(logEventsForStream1.getAttemptLogFileInformationMap().containsKey(file1.getAbsolutePath()));
+        assertEquals(0, logEventsForStream1.getAttemptLogFileInformationMap().get(file1.getAbsolutePath()).getStartPosition());
+        assertEquals(13, logEventsForStream1.getAttemptLogFileInformationMap().get(file1.getAbsolutePath()).getBytesRead());
+        assertEquals("TestComponent", logEventsForStream1.getComponentName());
+    }
+
+    @Test
+    public void GIVEN_one_component_one_file_less_than_max_WHEN_local_deployment_THEN_reads_entire_file_and_sets_group_correctly()
+            throws URISyntaxException, ServiceLoadException {
+        when(mockKernel.locate(DeploymentService.DEPLOYMENT_SERVICE_TOPICS)).thenReturn(mockDeploymentService);
+        lenient().when(mockDeploymentService.getGroupConfigsForUserComponent(anyString()))
+                .thenReturn(new HashSet<>(Collections.singletonList("RandomDeploymentId")));
+        lenient().when(mockDeploymentService.getAllGroupConfigs())
+                .thenReturn(new HashSet<>(Collections.singletonList("RandomDeploymentId2")));
 
         File file1 = new File(getClass().getResource("testlogs2.log").toURI());
         List<LogFileInformation> logFileInformationSet = new ArrayList<>();

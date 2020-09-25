@@ -5,7 +5,6 @@
 
 package com.aws.greengrass.logmanager;
 
-import com.amazonaws.arn.Arn;
 import com.aws.greengrass.deployment.DeploymentService;
 import com.aws.greengrass.deployment.DeviceConfiguration;
 import com.aws.greengrass.lifecyclemanager.GreengrassService;
@@ -101,18 +100,11 @@ public class CloudWatchAttemptLogsProcessor {
             logStreamName = logStreamName.replace("{ggFleetId}", DEFAULT_GROUP_NAME);
         } else {
             StringJoiner stringJoiner = new StringJoiner(":");
-            groups.forEach(groupConfigArn -> {
-                try {
-                    Arn arn = Arn.fromString(groupConfigArn);
-                    String groupName = arn.getResource().getResource();
-                    if (stringJoiner.length() + groupName.length() <= MAX_LOG_STREAM_NAME) {
-                        stringJoiner.add(groupName);
-                    }
-                } catch (IllegalArgumentException ignored) { }
+            groups.forEach(groupName -> {
+                if (stringJoiner.length() + groupName.length() <= MAX_LOG_STREAM_NAME) {
+                    stringJoiner.add(groupName);
+                }
             });
-            if (stringJoiner.length() == 0) {
-                stringJoiner.add(DEFAULT_GROUP_NAME);
-            }
             logStreamName = logStreamName.replace("{ggFleetId}", stringJoiner.toString());
         }
 
@@ -195,9 +187,9 @@ public class CloudWatchAttemptLogsProcessor {
                 DeploymentService deploymentService = (DeploymentService) deploymentServiceLocateResult;
                 if (ComponentType.GreengrassSystemComponent
                         .equals(componentType)) {
-                    groups = deploymentService.getAllGroupConfigs();
+                    groups = deploymentService.getAllGroupNames();
                 } else {
-                    groups = deploymentService.getGroupConfigsForUserComponent(componentName);
+                    groups = deploymentService.getGroupNamesForUserComponent(componentName);
                 }
             }
         } catch (ServiceLoadException e) {
@@ -334,7 +326,7 @@ public class CloudWatchAttemptLogsProcessor {
      * @param data                  The log line read from the file.
      * @return whether or not the maximum message size has reached or not.
      * @implNote We need to add extra bytes size for every input message as well as the timestamp byte size alongwith
-     *     the log line data size to get the exact size of the input log events.
+     * the log line data size to get the exact size of the input log events.
      */
     private boolean addNewLogEvent(AtomicInteger totalBytesRead, CloudWatchAttemptLogInformation attemptLogInformation,
                                    String data) {

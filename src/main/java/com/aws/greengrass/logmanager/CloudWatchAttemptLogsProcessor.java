@@ -326,7 +326,7 @@ public class CloudWatchAttemptLogsProcessor {
      * @param data                  The log line read from the file.
      * @return whether or not the maximum message size has reached or not.
      * @implNote We need to add extra bytes size for every input message as well as the timestamp byte size alongwith
-     * the log line data size to get the exact size of the input log events.
+     *     the log line data size to get the exact size of the input log events.
      */
     private boolean addNewLogEvent(AtomicInteger totalBytesRead, CloudWatchAttemptLogInformation attemptLogInformation,
                                    String data) {

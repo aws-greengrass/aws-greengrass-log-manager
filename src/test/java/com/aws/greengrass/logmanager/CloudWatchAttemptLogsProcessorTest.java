@@ -84,9 +84,9 @@ public class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
     private void mockDefaultGetGroups() throws ServiceLoadException {
         lenient().when(mockKernel.locate(DeploymentService.DEPLOYMENT_SERVICE_TOPICS)).thenReturn(mockDeploymentService);
         lenient().when(mockDeploymentService.getGroupNamesForUserComponent(anyString()))
-                .thenReturn(new HashSet<>(Collections.singletonList("arn:aws:greengrass:testRegion:12345:configuration:testGroup2:12")));
+                .thenReturn(new HashSet<>(Collections.singletonList("testGroup2")));
         lenient().when(mockDeploymentService.getAllGroupNames())
-                .thenReturn(new HashSet<>(Collections.singletonList("arn:aws:greengrass:testRegion:12345:configuration:testGroup1:12")));
+                .thenReturn(new HashSet<>(Collections.singletonList("testGroup1")));
     }
 
     @Test

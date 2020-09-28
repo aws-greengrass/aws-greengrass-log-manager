@@ -1,0 +1,12 @@
+---
+services:
+  aws.greengrass.LogManager:
+    parameters:
+      periodicUploadIntervalSec: 10
+      logsUploaderConfiguration: '{{logsUploaderConfiguration}}'
+  main:
+    lifecycle:
+      install:
+        all: echo All installed
+    dependencies:
+      - aws.greengrass.LogManager

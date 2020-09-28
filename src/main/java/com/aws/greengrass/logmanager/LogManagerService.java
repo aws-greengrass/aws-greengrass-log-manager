@@ -64,11 +64,11 @@ import java.util.stream.Collectors;
 import javax.inject.Inject;
 
 import static com.aws.greengrass.componentmanager.KernelConfigResolver.PARAMETERS_CONFIG_KEY;
-import static com.aws.greengrass.logmanager.LogManagerService.LOGS_UPLOADER_SERVICE_TOPICS;
+import static com.aws.greengrass.logmanager.LogManagerService.LOGS_MANAGER_SERVICE_TOPICS;
 
-@ImplementsService(name = LOGS_UPLOADER_SERVICE_TOPICS, version = "1.0.0")
+@ImplementsService(name = LOGS_MANAGER_SERVICE_TOPICS, version = "1.0.0")
 public class LogManagerService extends PluginService {
-    public static final String LOGS_UPLOADER_SERVICE_TOPICS = "aws.greengrass.LogManager";
+    public static final String LOGS_MANAGER_SERVICE_TOPICS = "aws.greengrass.LogManager";
     public static final String LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC = "periodicUploadIntervalSec";
     public static final String LOGS_UPLOADER_CONFIGURATION_TOPIC = "logsUploaderConfiguration";
     public static final String SYSTEM_LOGS_COMPONENT_NAME = "System";
@@ -82,8 +82,8 @@ public class LogManagerService extends PluginService {
             "lastFileProcessedTimeStamp";
     public static final String PERSISTED_CURRENT_PROCESSING_FILE_LAST_MODIFIED_TIME =
             "currentProcessingFileLastModified";
+    public static final String DEFAULT_FILE_REGEX = "^%s\\w*.log";
     private static final int DEFAULT_PERIODIC_UPDATE_INTERVAL_SEC = 300;
-    private static final String DEFAULT_FILE_REGEX = "^%s\\w*.log";
     private static final ObjectMapper DESERIALIZER = new ObjectMapper()
             .configure(MapperFeature.ACCEPT_CASE_INSENSITIVE_PROPERTIES, true);
     private final Object spaceManagementLock = new Object();
@@ -92,6 +92,7 @@ public class LogManagerService extends PluginService {
             Collections.synchronizedMap(new LinkedHashMap<>());
     final Map<String, CurrentProcessingFileInformation> componentCurrentProcessingLogFile =
             new ConcurrentHashMap<>();
+    @Getter
     private final CloudWatchLogsUploader uploader;
     private final CloudWatchAttemptLogsProcessor logsProcessor;
     private final ExecutorService executorService;
@@ -119,7 +120,7 @@ public class LogManagerService extends PluginService {
         topics.lookup(PARAMETERS_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC)
                 .dflt(DEFAULT_PERIODIC_UPDATE_INTERVAL_SEC)
                 .subscribe((why, newv) -> periodicUpdateIntervalSec = Coerce.toInt(newv));
-        this.uploader.registerAttemptStatus(LOGS_UPLOADER_SERVICE_TOPICS, this::handleCloudWatchAttemptStatus);
+        this.uploader.registerAttemptStatus(LOGS_MANAGER_SERVICE_TOPICS, this::handleCloudWatchAttemptStatus);
 
         topics.lookup(PARAMETERS_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC)
                 .subscribe((why, newv) -> {
@@ -140,7 +141,7 @@ public class LogManagerService extends PluginService {
 
     private void processConfiguration(LogsUploaderConfiguration config) {
         Map<String, ComponentLogConfiguration> newComponentLogConfigurations = new ConcurrentHashMap<>();
-        if (config.getSystemLogsConfiguration().isUploadToCloudWatch()) {
+        if (config.getSystemLogsConfiguration() != null && config.getSystemLogsConfiguration().isUploadToCloudWatch()) {
             addSystemLogsConfiguration(newComponentLogConfigurations, config.getSystemLogsConfiguration());
             loadStateFromConfiguration(SYSTEM_LOGS_COMPONENT_NAME);
         }

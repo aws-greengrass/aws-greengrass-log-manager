@@ -1,0 +1,11 @@
+---
+services:
+  aws.greengrass.LogManager:
+    parameters:
+      logsUploaderConfiguration: '{{logsUploaderConfiguration}}'
+  main:
+    lifecycle:
+      install:
+        all: echo All installed
+    dependencies:
+      - aws.greengrass.LogManager

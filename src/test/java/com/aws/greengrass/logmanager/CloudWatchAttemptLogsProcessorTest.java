@@ -83,9 +83,9 @@ public class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
 
     private void mockDefaultGetGroups() throws ServiceLoadException {
         lenient().when(mockKernel.locate(DeploymentService.DEPLOYMENT_SERVICE_TOPICS)).thenReturn(mockDeploymentService);
-        lenient().when(mockDeploymentService.getGroupConfigsForUserComponent(anyString()))
+        lenient().when(mockDeploymentService.getGroupNamesForUserComponent(anyString()))
                 .thenReturn(new HashSet<>(Collections.singletonList("testGroup2")));
-        lenient().when(mockDeploymentService.getAllGroupConfigs())
+        lenient().when(mockDeploymentService.getAllGroupNames())
                 .thenReturn(new HashSet<>(Collections.singletonList("testGroup1")));
     }
 
@@ -159,9 +159,9 @@ public class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
     public void GIVEN_one_component_one_file_less_than_max_WHEN_no_group_THEN_reads_entire_file_and_sets_group_correctly()
             throws URISyntaxException, ServiceLoadException {
         when(mockKernel.locate(DeploymentService.DEPLOYMENT_SERVICE_TOPICS)).thenReturn(mockDeploymentService);
-        lenient().when(mockDeploymentService.getGroupConfigsForUserComponent(anyString()))
+        lenient().when(mockDeploymentService.getGroupNamesForUserComponent(anyString()))
                 .thenReturn(new HashSet<>(Collections.emptyList()));
-        lenient().when(mockDeploymentService.getAllGroupConfigs())
+        lenient().when(mockDeploymentService.getAllGroupNames())
                 .thenReturn(new HashSet<>(Collections.emptyList()));
 
         File file1 = new File(getClass().getResource("testlogs2.log").toURI());

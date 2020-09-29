@@ -187,9 +187,9 @@ public class CloudWatchAttemptLogsProcessor {
                 DeploymentService deploymentService = (DeploymentService) deploymentServiceLocateResult;
                 if (ComponentType.GreengrassSystemComponent
                         .equals(componentType)) {
-                    groups = deploymentService.getAllGroupConfigs();
+                    groups = deploymentService.getAllGroupNames();
                 } else {
-                    groups = deploymentService.getGroupConfigsForUserComponent(componentName);
+                    groups = deploymentService.getGroupNamesForUserComponent(componentName);
                 }
             }
         } catch (ServiceLoadException e) {

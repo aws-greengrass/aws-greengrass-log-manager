@@ -83,7 +83,7 @@ jobs:
         run: mvn -ntp package
       - run: mkdir -p target/artifacts && cp target/LogManager.jar target/artifacts/aws.greengrass.LogManager.jar
       - uses: ./.github/actions/aws-greengrass-component-upload-action
-        name: Upload to GCS
+        name: Upload to GCS Gamma
         env:
           AWS_REGION: us-east-1
         with:
@@ -92,3 +92,15 @@ jobs:
           endpoint: https://evergreen-gamma.us-east-1.amazonaws.com
           autoBumpVersion: true
           publishAsPublic: true
+          additionalReplacements: '{"stage": "gamma"}'
+      - uses: ./.github/actions/aws-greengrass-component-upload-action
+        name: Upload to GCS Prod
+        env:
+          AWS_REGION: us-east-1
+        with:
+          recipePath: recipe.yaml
+          artifactDirectoryPath: target/artifacts
+          endpoint: https://evergreen.us-east-1.amazonaws.com
+          autoBumpVersion: true
+          publishAsPublic: true
+          additionalReplacements: '{"stage": "prod"}'

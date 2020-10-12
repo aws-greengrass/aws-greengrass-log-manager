@@ -596,4 +596,40 @@ public class CloudWatchLogsUploaderTest extends GGServiceTestUtil {
 
         verify(mockCloudWatchLogsClient, times(3)).putLogEvents(putLogEventsRequestArgumentCaptor.capture());
     }
+
+    @Test
+    public void GIVEN_mock_cloud_watch_attempt_with_no_log_events_WHEN_put_events_called_THEN_does_not_upload_to_cloud(
+            ExtensionContext context1) throws InterruptedException {
+        ignoreExceptionOfType(context1, ResourceNotFoundException.class);
+        String mockGroupName = "testGroup";
+        String mockStreamNameForGroup = "testStream";
+        String mockSequenceToken = UUID.randomUUID().toString();
+        CloudWatchAttempt attempt = new CloudWatchAttempt();
+        Map<String, CloudWatchAttemptLogInformation> logSteamForGroup1Map = new ConcurrentHashMap<>();
+        Map<String, CloudWatchAttemptLogFileInformation> attemptLogFileInformationMap = new HashMap<>();
+        attemptLogFileInformationMap.put("test.log", CloudWatchAttemptLogFileInformation.builder()
+                .startPosition(0)
+                .bytesRead(100)
+                .build());
+        logSteamForGroup1Map.put(mockStreamNameForGroup,
+                CloudWatchAttemptLogInformation.builder()
+                        .logEvents(new ArrayList<>())
+                        .attemptLogFileInformationMap(attemptLogFileInformationMap)
+                        .build());
+        attempt.setLogGroupName(mockGroupName);
+        attempt.setLogStreamsToLogEventsMap(logSteamForGroup1Map);
+
+        uploader = new CloudWatchLogsUploader(mockCloudWatchClientFactory);
+        uploader.addNextSequenceToken(mockGroupName, mockStreamNameForGroup, mockSequenceToken);
+        CountDownLatch attemptFinishedLatch = new CountDownLatch(1);
+        uploader.registerAttemptStatus(UUID.randomUUID().toString(), cloudWatchAttempt -> {
+            assertTrue(cloudWatchAttempt.getLogStreamUploadedSet().contains("testStream"));
+            attemptFinishedLatch.countDown();
+        });
+
+        uploader.upload(attempt, 1);
+
+        assertTrue(attemptFinishedLatch.await(5, TimeUnit.SECONDS));
+        verify(mockCloudWatchLogsClient, times(0)).putLogEvents(any(PutLogEventsRequest.class));
+    }
 }

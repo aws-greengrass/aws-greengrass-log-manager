@@ -123,7 +123,6 @@ public class LogManagerService extends PluginService {
                 .subscribe((why, newv) -> periodicUpdateIntervalSec = Coerce.toInt(newv));
         this.uploader.registerAttemptStatus(LOGS_UPLOADER_SERVICE_TOPICS, this::handleCloudWatchAttemptStatus);
         topics.lookup(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC)
-                .dflt(DEFAULT_PERIODIC_UPDATE_INTERVAL_SEC)
                 .subscribe((why, newv) -> periodicUpdateIntervalSec = Coerce.toInt(newv));
 
         //TODO: remove this.

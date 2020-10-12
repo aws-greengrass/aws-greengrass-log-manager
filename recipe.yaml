@@ -11,4 +11,4 @@ ComponentConfiguration:
         logsUploaderConfiguration: {}
 Manifests:
     - Artifacts:
-        - URI: s3://gg-dev-artifacts/$componentName/$version/aws.greengrass.LogManager.jar
+        - URI: s3://gg-dev-artifacts-$stage/$componentName/$version/aws.greengrass.LogManager.jar

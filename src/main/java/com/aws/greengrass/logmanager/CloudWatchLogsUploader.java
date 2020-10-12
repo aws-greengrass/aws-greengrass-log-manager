@@ -101,6 +101,12 @@ public class CloudWatchLogsUploader {
                     logEvents.size(), logGroupName, logStreamName, MAX_RETRIES);
             return false;
         }
+        // If there are no logs available to upload, then return true so that we don't read those files again.
+        // This can occur if the log files read have logs below the desired log level.
+        // By returning true, we will ensure that we won't read those log files again.
+        if (logEvents.isEmpty()) {
+            return true;
+        }
         logger.atTrace().log("Uploading {} logs to {}-{}", logEvents.size(), logGroupName, logStreamName);
         AtomicReference<String> sequenceToken = new AtomicReference<>();
         logGroupsToSequenceTokensMap.computeIfPresent(logGroupName, (groupName, streamToSequenceTokenMap) -> {

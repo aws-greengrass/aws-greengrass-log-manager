@@ -63,6 +63,7 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 
+import static com.aws.greengrass.componentmanager.KernelConfigResolver.CONFIGURATION_CONFIG_KEY;
 import static com.aws.greengrass.componentmanager.KernelConfigResolver.PARAMETERS_CONFIG_KEY;
 import static com.aws.greengrass.logmanager.LogManagerService.LOGS_UPLOADER_SERVICE_TOPICS;
 
@@ -116,12 +117,32 @@ public class LogManagerService extends PluginService {
         this.logsProcessor = logProcessor;
         this.executorService = executorService;
 
+        //TODO: remove this.
         topics.lookup(PARAMETERS_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC)
                 .dflt(DEFAULT_PERIODIC_UPDATE_INTERVAL_SEC)
                 .subscribe((why, newv) -> periodicUpdateIntervalSec = Coerce.toInt(newv));
         this.uploader.registerAttemptStatus(LOGS_UPLOADER_SERVICE_TOPICS, this::handleCloudWatchAttemptStatus);
+        topics.lookup(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC)
+                .dflt(DEFAULT_PERIODIC_UPDATE_INTERVAL_SEC)
+                .subscribe((why, newv) -> periodicUpdateIntervalSec = Coerce.toInt(newv));
 
+        //TODO: remove this.
         topics.lookup(PARAMETERS_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC)
+                .subscribe((why, newv) -> {
+                    try {
+                        if (newv == null || Coerce.toString(newv) == null) {
+                            //TODO: fail the deployment.
+                            return;
+                        }
+                        LogsUploaderConfiguration config = DESERIALIZER.readValue(Coerce.toString(newv),
+                                LogsUploaderConfiguration.class);
+                        processConfiguration(config);
+                    } catch (JsonProcessingException e) {
+                        //TODO: Add validation step and fail the deployment here.
+                        logger.atError().cause(e).log("Unable to parse configuration.");
+                    }
+                });
+        topics.lookup(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC)
                 .subscribe((why, newv) -> {
                     try {
                         if (newv == null || Coerce.toString(newv) == null) {

@@ -5,6 +5,10 @@ ComponentDescription: AWS Greengrass Log Manager
 ComponentPublisher: AWS
 ComponentVersion: '0.0.0'
 ComponentType: aws.greengrass.plugin
+ComponentConfiguration:
+    DefaultConfiguration:
+        periodicUploadIntervalSec: 300
+        logsUploaderConfiguration: {}
 Manifests:
     - Artifacts:
         - URI: s3://gg-dev-artifacts/$componentName/$version/aws.greengrass.LogManager.jar

@@ -183,9 +183,10 @@ public class LogManagerService extends PluginService {
 
     private void addSystemLogsConfiguration(Map<String, ComponentLogConfiguration> newComponentLogConfigurations,
                                             SystemLogsConfiguration systemLogsConfiguration) {
-        Path logsDirectoryPath = Paths.get(LogManager.getConfig().getStoreName()).getParent();
+        Path logsDirectoryPath = Paths.get(LogManager.getRootLogConfiguration().getStoreName()).getParent();
         ComponentLogConfiguration systemConfiguration = ComponentLogConfiguration.builder()
-                .fileNameRegex(Pattern.compile(String.format(DEFAULT_FILE_REGEX, LogManager.getConfig().getFileName())))
+                .fileNameRegex(Pattern.compile(String.format(DEFAULT_FILE_REGEX,
+                        LogManager.getRootLogConfiguration().getFileName())))
                 .directoryPath(logsDirectoryPath)
                 .name(SYSTEM_LOGS_COMPONENT_NAME)
                 .componentType(ComponentType.GreengrassSystemComponent)

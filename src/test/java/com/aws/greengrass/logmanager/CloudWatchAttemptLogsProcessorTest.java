@@ -232,7 +232,7 @@ public class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
     public void GIVEN_one_component_one_file_more_than_max_WHEN_merge_THEN_reads_partial_file()
             throws IOException, ServiceLoadException {
         mockDefaultGetGroups();
-        File file = new File(directoryPath.resolve("evergreen_test.log").toUri());
+        File file = new File(directoryPath.resolve("greengrass_test.log").toUri());
         assertTrue(file.createNewFile());
         assertTrue(file.setReadable(true));
         assertTrue(file.setWritable(true));

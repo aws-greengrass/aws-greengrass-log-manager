@@ -103,7 +103,7 @@ public class LogManagerService extends PluginService {
     /**
      * Constructor.
      *
-     * @param topics          The configuration coming from the kernel.
+     * @param topics          The configuration coming from the nucleus.
      * @param uploader        {@link CloudWatchLogsUploader}
      * @param logProcessor    {@link CloudWatchAttemptLogsProcessor}
      * @param executorService {@link ExecutorService}

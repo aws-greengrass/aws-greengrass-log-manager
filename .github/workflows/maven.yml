@@ -18,8 +18,6 @@ jobs:
           java-version: 1.8
       - run: rm -rf /tmp/*
         continue-on-error: true
-      - run: rm -rf ~/.m2/repository/com/aws/iot/evergreen-kernel
-        continue-on-error: true
       - name: Build with Maven
         run: mvn -ntp -U clean verify
       - name: Upload Failed Test Report

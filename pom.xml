@@ -8,14 +8,15 @@
          xmlns="http://maven.apache.org/POM/4.0.0"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
-    <groupId>com.aws.iot</groupId>
-    <artifactId>greengrass-log-manager</artifactId>
+    <groupId>com.aws.greengrass</groupId>
+    <artifactId>log-manager</artifactId>
+    <name>greengrass-log-manager</name>
     <packaging>jar</packaging>
     <version>1.0-SNAPSHOT</version>
     <repositories>
         <repository>
-            <id>evergreen-dev-snapshot</id>
-            <name>Kernel Snapshot</name>
+            <id>greengrass-dev-snapshot</id>
+            <name>Nucleus Snapshot</name>
             <url>https://d10d248laylpoq.cloudfront.net</url>
         </repository>
     </repositories>
@@ -32,14 +33,14 @@
     </dependencyManagement>
     <dependencies>
         <dependency>
-            <groupId>com.aws.iot</groupId>
-            <artifactId>evergreen-kernel</artifactId>
+            <groupId>com.aws.greengrass</groupId>
+            <artifactId>nucleus</artifactId>
             <version>1.0-SNAPSHOT</version>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.aws.iot</groupId>
-            <artifactId>evergreen-kernel</artifactId>
+            <groupId>com.aws.greengrass</groupId>
+            <artifactId>nucleus</artifactId>
             <version>1.0-SNAPSHOT</version>
             <type>test-jar</type>
             <scope>test</scope>

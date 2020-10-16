@@ -1,8 +1,8 @@
 ## Log Manager
 
 Log Manager is a Greengrass component that manages the system as well as user component logs. 
-Lambda Manager is an optional internal Evergreen service that runs in the same JVM as the 
-[Greengrass nucleus](https://github.com/aws/aws-greengrass-kernel).
+Lambda Manager is an optional internal Greengrass service that runs in the same JVM as the 
+[Greengrass nucleus](https://github.com/aws/aws-greengrass-nucleus).
 
 Log Manager has two major features: **Logs Uploader** and **Disk Space Management**
   

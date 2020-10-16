@@ -106,9 +106,9 @@ public class LogManagerServiceTest extends GGServiceTestUtil {
     static void setupBefore() throws IOException, InterruptedException {
         LogConfig.getInstance().setLevel(Level.TRACE);
         LogConfig.getInstance().setStoreType(LogStore.FILE);
-        LogConfig.getInstance().setStorePath(directoryPath.resolve("evergreen.log"));
+        LogConfig.getInstance().setStorePath(directoryPath.resolve("greengrass.log"));
         for (int i = 0; i < 5; i++) {
-            File file = new File(directoryPath.resolve("evergreen_test_" + i + ".log").toUri());
+            File file = new File(directoryPath.resolve("greengrass_test_" + i + ".log").toUri());
             assertTrue(file.createNewFile());
             assertTrue(file.setReadable(true));
             assertTrue(file.setWritable(true));
@@ -118,7 +118,7 @@ public class LogManagerServiceTest extends GGServiceTestUtil {
             }
             TimeUnit.SECONDS.sleep(1);
         }
-        File currentFile = new File(directoryPath.resolve("evergreen.log").toUri());
+        File currentFile = new File(directoryPath.resolve("greengrass.log").toUri());
         try (OutputStream currentFileOutputStream = Files.newOutputStream(currentFile.toPath())) {
             currentFileOutputStream.write("TEST".getBytes(StandardCharsets.UTF_8));
         }
@@ -132,7 +132,7 @@ public class LogManagerServiceTest extends GGServiceTestUtil {
         final File[] files = folder.listFiles();
         if (files != null) {
             for (final File file : files) {
-                if (file.getName().startsWith("evergreen") && !file.delete()) {
+                if (file.getName().startsWith("greengrass") && !file.delete()) {
                     System.err.println("Can't remove " + file.getAbsolutePath());
                 }
             }
@@ -383,8 +383,8 @@ public class LogManagerServiceTest extends GGServiceTestUtil {
                 .thenReturn(configTopic);
 
         logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor);
-        File file = new File(directoryPath.resolve("evergreen_test_2.log").toUri());
-        File currentProcessingFile = new File(directoryPath.resolve("evergreen_test_3.log").toUri());
+        File file = new File(directoryPath.resolve("greengrass_test_2.log").toUri());
+        File currentProcessingFile = new File(directoryPath.resolve("greengrass_test_3.log").toUri());
         logsUploaderService.lastComponentUploadedLogFileInstantMap.put(SYSTEM_LOGS_COMPONENT_NAME,
                 Instant.ofEpochMilli(file.lastModified()));
         logsUploaderService.componentCurrentProcessingLogFile.put(SYSTEM_LOGS_COMPONENT_NAME,
@@ -576,8 +576,8 @@ public class LogManagerServiceTest extends GGServiceTestUtil {
         logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor);
         startServiceOnAnotherThread();
 
-        File file = new File(directoryPath.resolve("evergreen.log_test_2").toUri());
-        File currentProcessingFile = new File(directoryPath.resolve("evergreen.log_test-3").toUri());
+        File file = new File(directoryPath.resolve("greengrass.log_test_2").toUri());
+        File currentProcessingFile = new File(directoryPath.resolve("greengrass.log_test-3").toUri());
         logsUploaderService.lastComponentUploadedLogFileInstantMap.put(SYSTEM_LOGS_COMPONENT_NAME,
                 Instant.ofEpochMilli(file.lastModified()));
         logsUploaderService.componentCurrentProcessingLogFile.put(SYSTEM_LOGS_COMPONENT_NAME,

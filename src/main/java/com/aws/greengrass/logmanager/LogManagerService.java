@@ -21,6 +21,7 @@ import com.aws.greengrass.logmanager.model.LogFileInformation;
 import com.aws.greengrass.logmanager.model.configuration.LogsUploaderConfiguration;
 import com.aws.greengrass.logmanager.model.configuration.SystemLogsConfiguration;
 import com.aws.greengrass.util.Coerce;
+import com.aws.greengrass.util.Utils;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.MapperFeature;
@@ -92,10 +93,10 @@ public class LogManagerService extends PluginService {
             Collections.synchronizedMap(new LinkedHashMap<>());
     final Map<String, CurrentProcessingFileInformation> componentCurrentProcessingLogFile =
             new ConcurrentHashMap<>();
+    Map<String, ComponentLogConfiguration> componentLogConfigurations = new ConcurrentHashMap<>();
     private final CloudWatchLogsUploader uploader;
     private final CloudWatchAttemptLogsProcessor logsProcessor;
     private final ExecutorService executorService;
-    private Map<String, ComponentLogConfiguration> componentLogConfigurations = new ConcurrentHashMap<>();
     private final AtomicBoolean isCurrentlyUploading = new AtomicBoolean(false);
     private int periodicUpdateIntervalSec;
     private Future<?> spaceManagementThread;
@@ -145,10 +146,23 @@ public class LogManagerService extends PluginService {
             loadStateFromConfiguration(SYSTEM_LOGS_COMPONENT_NAME);
         }
         config.getComponentLogInformation().forEach(componentConfiguration -> {
+            Pattern fileNameRegex;
+            Path directoryPath;
+            if (Utils.isEmpty(componentConfiguration.getLogFileDirectoryPath())
+                    && LogManager.getLogConfigurations().containsKey(componentConfiguration.getComponentName())) {
+                fileNameRegex = Pattern.compile(String.format(DEFAULT_FILE_REGEX,
+                        LogManager.getRootLogConfiguration().getFileName()));
+                directoryPath = LogManager.getLogConfigurations().get(componentConfiguration.getComponentName())
+                        .getStoreDirectory();
+            } else {
+                // If file regex is null, then Log Manager should error out and let the customer fix the configuration.
+                fileNameRegex = Pattern.compile(componentConfiguration.getLogFileRegex());
+                directoryPath = Paths.get(componentConfiguration.getLogFileDirectoryPath());
+            }
             ComponentLogConfiguration componentLogConfiguration = ComponentLogConfiguration.builder()
                     .name(componentConfiguration.getComponentName())
-                    .fileNameRegex(Pattern.compile(componentConfiguration.getLogFileRegex()))
-                    .directoryPath(Paths.get(componentConfiguration.getLogFileDirectoryPath()))
+                    .fileNameRegex(fileNameRegex)
+                    .directoryPath(directoryPath)
                     .componentType(ComponentType.UserComponent)
                     .build();
             setMinimumLogLevel(componentConfiguration.getMinimumLogLevel(), componentLogConfiguration);
@@ -183,7 +197,7 @@ public class LogManagerService extends PluginService {
 
     private void addSystemLogsConfiguration(Map<String, ComponentLogConfiguration> newComponentLogConfigurations,
                                             SystemLogsConfiguration systemLogsConfiguration) {
-        Path logsDirectoryPath = Paths.get(LogManager.getRootLogConfiguration().getStoreName()).getParent();
+        Path logsDirectoryPath = LogManager.getRootLogConfiguration().getStoreDirectory();
         ComponentLogConfiguration systemConfiguration = ComponentLogConfiguration.builder()
                 .fileNameRegex(Pattern.compile(String.format(DEFAULT_FILE_REGEX,
                         LogManager.getRootLogConfiguration().getFileName())))

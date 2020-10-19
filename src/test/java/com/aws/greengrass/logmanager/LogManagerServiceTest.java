@@ -106,7 +106,7 @@ public class LogManagerServiceTest extends GGServiceTestUtil {
     static void setupBefore() throws IOException, InterruptedException {
         LogConfig.getInstance().setLevel(Level.TRACE);
         LogConfig.getInstance().setStoreType(LogStore.FILE);
-        LogConfig.getInstance().setStorePath(directoryPath.resolve("greengrass.log"));
+        LogConfig.getInstance().setStoreDirectory(directoryPath);
         for (int i = 0; i < 5; i++) {
             File file = new File(directoryPath.resolve("greengrass_test_" + i + ".log").toUri());
             assertTrue(file.createNewFile());

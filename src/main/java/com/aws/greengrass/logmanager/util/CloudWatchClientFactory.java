@@ -63,6 +63,7 @@ public class CloudWatchClientFactory {
             try {
                 this.cloudWatchLogsClient = CloudWatchLogsClient.builder().credentialsProvider(credentialsProvider)
                         .endpointOverride(new URI(String.format(CW_LOGS_FIPS_ENDPOINT, region)))
+                        .httpClient(ProxyUtils.getSdkHttpClient())
                         .overrideConfiguration(ClientOverrideConfiguration.builder().retryPolicy(retryPolicy).build())
                         .region(region).build();
                 return;

@@ -33,7 +33,7 @@ Manifests:
       aws.greengrass.logmanager
   - aws.greengrass.logmanager:
       Parameters:
-        logsUploaderConfigurationJson: 
+        logsUploaderConfiguration: 
           componentLogInformation:
             componentName: 'ComponentName'
             logFileRegex: 'fileNameRegex'

@@ -117,10 +117,11 @@ class SpaceManagementTest extends BaseITCase {
     void GIVEN_user_component_config_with_space_management_WHEN_space_exceeds_THEN_excess_log_files_are_deleted()
             throws Exception {
         tempDirectoryPath = Files.createTempDirectory(tempRootDir, "IntegrationTestsTemporaryLogFiles");
+        createTempFileAndWriteData(tempDirectoryPath, "integTestRandomLogFiles.log_",  "");
 
         setupKernel(tempDirectoryPath);
         TimeUnit.SECONDS.sleep(10);
-        for (int i = 0; i < 15; i++) {
+        for (int i = 0; i < 14; i++) {
             createTempFileAndWriteData(tempDirectoryPath, "integTestRandomLogFiles.log_",  "");
         }
         TimeUnit.SECONDS.sleep(30);

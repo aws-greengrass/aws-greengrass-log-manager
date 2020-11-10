@@ -43,7 +43,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import javax.inject.Inject;
 
-import static com.aws.greengrass.deployment.converter.DeploymentDocumentConverter.DEFAULT_GROUP_NAME;
+import static com.aws.greengrass.deployment.converter.DeploymentDocumentConverter.LOCAL_DEPLOYMENT_GROUP_NAME;
 
 public class CloudWatchAttemptLogsProcessor {
     public static final String DEFAULT_LOG_GROUP_NAME = "/aws/greengrass/{componentType}/{region}/{componentName}";
@@ -97,7 +97,7 @@ public class CloudWatchAttemptLogsProcessor {
                 componentLogFileInformation.getComponentType());
         String logStreamName = DEFAULT_LOG_STREAM_NAME.replace("{thingName}", thingName);
         if (groups.isEmpty()) {
-            logStreamName = logStreamName.replace("{ggFleetId}", DEFAULT_GROUP_NAME);
+            logStreamName = logStreamName.replace("{ggFleetId}", LOCAL_DEPLOYMENT_GROUP_NAME);
         } else {
             StringJoiner stringJoiner = new StringJoiner(":");
             groups.forEach(groupName -> {

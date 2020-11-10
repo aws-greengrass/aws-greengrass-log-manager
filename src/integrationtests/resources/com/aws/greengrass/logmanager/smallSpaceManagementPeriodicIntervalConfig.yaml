@@ -1,0 +1,19 @@
+---
+services:
+  aws.greengrass.LogManager:
+    parameters:
+      logsUploaderConfiguration:
+        componentLogInformation:
+          componentName: 'UserComponentA'
+          logFileRegex: '^integTestRandomLogFiles.log\w*'
+          logFileDirectoryPath: '{{logFileDirectoryPath}}'
+          minimumLogLevel: 'INFO'
+          diskSpaceLimit: '105'
+          diskSpaceLimitUnit: 'KB'
+          deleteLogFileAfterCloudUpload: 'true'
+  main:
+    lifecycle:
+      install:
+        all: echo All installed
+    dependencies:
+      - aws.greengrass.LogManager

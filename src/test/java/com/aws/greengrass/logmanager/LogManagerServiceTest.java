@@ -210,19 +210,23 @@ class LogManagerServiceTest extends GGServiceTestUtil {
                 .thenReturn(periodicUpdateIntervalMsTopic);
         when(mockMerger.processLogFiles(componentLogsInformationCaptor.capture())).thenReturn(new CloudWatchAttempt());
 
-        String configuration =
-                "{\"ComponentLogInformation\": " +
-                        "[{\"LogFileRegex\": \"^log.txt\\\\w*\",\"LogFileDirectoryPath\": \"" +
-                        directoryPath.toAbsolutePath().toString() + "\", " +
-                        "\"MultiLineStartPattern\": \"\\\\{'timestamp\",\"MinimumLogLevel\": \"DEBUG\"," +
-                        "\"DiskSpaceLimit\": \"10\",\"ComponentName\": \"UserComponentA\"," +
-                        "\"DiskSpaceLimitUnit\": \"GB\",\"DeleteLogFileAfterCloudUpload\": \"false\"}]," +
-                        "\"SystemLogsConfiguration\":{\"UploadToCloudWatch\": true,\"MinimumLogLevel\": \"INFO\"," +
-                        "\"DiskSpaceLimit\": \"25\"," +
-                        "\"DiskSpaceLimitUnit\": \"MB\"}}";
-        Topic configTopic = Topic.of(context, LOGS_UPLOADER_CONFIGURATION_TOPIC, configuration);
-        when(config.lookup(PARAMETERS_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC))
-                .thenReturn(configTopic);
+        Topics configTopics = Topics.of(context, LOGS_UPLOADER_CONFIGURATION_TOPIC, null);
+        Topics componentConfigTopics = configTopics.createInteriorChild("componentLogInformation");
+        componentConfigTopics.createLeafChild("componentName").withValue("UserComponentA");
+        componentConfigTopics.createLeafChild("logFileRegex").withValue("^log.txt\\\\w*");
+        componentConfigTopics.createLeafChild("logFileDirectoryPath")
+                .withValue(directoryPath.toAbsolutePath().toString());
+        componentConfigTopics.createLeafChild("minimumLogLevel").withValue("DEBUG");
+        componentConfigTopics.createLeafChild("diskSpaceLimit").withValue("10");
+        componentConfigTopics.createLeafChild("diskSpaceLimitUnit").withValue("GB");
+        componentConfigTopics.createLeafChild("deleteLogFileAfterCloudUpload").withValue("false");
+        Topics systemConfigTopics = configTopics.createInteriorChild("systemLogsConfiguration");
+        systemConfigTopics.createLeafChild("uploadToCloudWatch").withValue("true");
+        systemConfigTopics.createLeafChild("minimumLogLevel").withValue("INFO");
+        systemConfigTopics.createLeafChild("diskSpaceLimit").withValue("25");
+        systemConfigTopics.createLeafChild("diskSpaceLimitUnit").withValue("MB");
+        when(config.lookupTopics(PARAMETERS_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC))
+                .thenReturn(configTopics);
         doNothing().when(mockUploader).registerAttemptStatus(anyString(), callbackCaptor.capture());
 
         logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor);
@@ -256,17 +260,24 @@ class LogManagerServiceTest extends GGServiceTestUtil {
                 .thenReturn(periodicUpdateIntervalMsTopic);
         when(mockMerger.processLogFiles(componentLogsInformationCaptor.capture())).thenReturn(new CloudWatchAttempt());
 
-        String configuration =
-                "{\"ComponentLogInformation\": " +
-                        "[{\"MinimumLogLevel\": \"DEBUG\"," +
-                        "\"DiskSpaceLimit\": \"10\",\"ComponentName\": \"UserComponentA\"," +
-                        "\"DiskSpaceLimitUnit\": \"GB\",\"DeleteLogFileAfterCloudUpload\": \"false\"}]," +
-                        "\"SystemLogsConfiguration\":{\"UploadToCloudWatch\": false,\"MinimumLogLevel\": \"INFO\"," +
-                        "\"DiskSpaceLimit\": \"25\"," +
-                        "\"DiskSpaceLimitUnit\": \"MB\"}}";
-        Topic configTopic = Topic.of(context, LOGS_UPLOADER_CONFIGURATION_TOPIC, configuration);
-        when(config.lookup(PARAMETERS_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC))
-                .thenReturn(configTopic);
+        Topics configTopics = Topics.of(context, LOGS_UPLOADER_CONFIGURATION_TOPIC, null);
+        Topics componentConfigTopics = configTopics.createInteriorChild("componentLogInformation");
+        componentConfigTopics.createLeafChild("componentName").withValue("UserComponentA");
+        componentConfigTopics.createLeafChild("logFileRegex").withValue("^UserComponentA\\w*\\.log");
+        componentConfigTopics.createLeafChild("logFileDirectoryPath")
+                .withValue(directoryPath.toAbsolutePath().toString());
+        componentConfigTopics.createLeafChild("minimumLogLevel").withValue("DEBUG");
+        componentConfigTopics.createLeafChild("diskSpaceLimit").withValue("10");
+        componentConfigTopics.createLeafChild("diskSpaceLimitUnit").withValue("GB");
+        componentConfigTopics.createLeafChild("deleteLogFileAfterCloudUpload").withValue("false");
+        Topics systemConfigTopics = configTopics.createInteriorChild("systemLogsConfiguration");
+        systemConfigTopics.createLeafChild("uploadToCloudWatch").withValue("false");
+        systemConfigTopics.createLeafChild("minimumLogLevel").withValue("INFO");
+        systemConfigTopics.createLeafChild("diskSpaceLimit").withValue("25");
+        systemConfigTopics.createLeafChild("diskSpaceLimitUnit").withValue("MB");
+        when(config.lookupTopics(PARAMETERS_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC))
+                .thenReturn(configTopics);
+
         doNothing().when(mockUploader).registerAttemptStatus(anyString(), callbackCaptor.capture());
 
         logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor);
@@ -299,36 +310,14 @@ class LogManagerServiceTest extends GGServiceTestUtil {
     }
 
     @Test
-    void GIVEN_invalid_config_WHEN_config_is_processed_THEN_no_component_config_is_added(
-            ExtensionContext context1) {
-        mockDefaultPersistedState();
-        ignoreExceptionOfType(context1, MismatchedInputException.class);
-        Topic periodicUpdateIntervalMsTopic = Topic.of(context, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC, "3");
-        when(config.lookup(PARAMETERS_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC))
-                .thenReturn(periodicUpdateIntervalMsTopic);
-        String configuration =
-                "{\"ComponentLogInformation\": {}" +
-                        "\"SystemLogsConfiguration\":{\"UploadToCloudWatch\": true,\"MinimumLogLevel\": \"INFO\"," +
-                        "\"DiskSpaceLimit\": \"25\"," +
-                        "\"DiskSpaceLimitUnit\": \"MB\"}}";
-        Topic configTopic = Topic.of(context, LOGS_UPLOADER_CONFIGURATION_TOPIC, configuration);
-        when(config.lookup(PARAMETERS_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC))
-                .thenReturn(configTopic);
-
-        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor);
-        startServiceOnAnotherThread();
-        assertThat(logsUploaderService.componentCurrentProcessingLogFile.values(), IsEmptyCollection.empty());
-    }
-
-    @Test
     void GIVEN_null_config_WHEN_config_is_processed_THEN_no_component_config_is_added(
             ExtensionContext context1) {
         ignoreExceptionOfType(context1, MismatchedInputException.class);
         Topic periodicUpdateIntervalMsTopic = Topic.of(context, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC, "3");
         when(config.lookup(PARAMETERS_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC))
                 .thenReturn(periodicUpdateIntervalMsTopic);
-        Topic configTopic = Topic.of(context, LOGS_UPLOADER_CONFIGURATION_TOPIC, null);
-        when(config.lookup(PARAMETERS_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC))
+        Topics configTopic = Topics.of(context, LOGS_UPLOADER_CONFIGURATION_TOPIC, null);
+        when(config.lookupTopics(PARAMETERS_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC))
                 .thenReturn(configTopic);
 
         logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor);
@@ -344,14 +333,14 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         when(config.lookup(PARAMETERS_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC))
                 .thenReturn(periodicUpdateIntervalMsTopic);
 
-        String configuration =
-                "{\"ComponentLogInformation\": " +
-                        "[],\"SystemLogsConfiguration\":{\"UploadToCloudWatch\": true,\"MinimumLogLevel\": \"INFO\"," +
-                        "\"DiskSpaceLimit\": \"25\"," +
-                        "\"DiskSpaceLimitUnit\": \"MB\"}}";
-        Topic configTopic = Topic.of(context, LOGS_UPLOADER_CONFIGURATION_TOPIC, configuration);
-        when(config.lookup(PARAMETERS_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC))
-                .thenReturn(configTopic);
+        Topics configTopics = Topics.of(context, LOGS_UPLOADER_CONFIGURATION_TOPIC, null);
+        Topics systemConfigTopics = configTopics.createInteriorChild("systemLogsConfiguration");
+        systemConfigTopics.createLeafChild("uploadToCloudWatch").withValue("false");
+        systemConfigTopics.createLeafChild("minimumLogLevel").withValue("INFO");
+        systemConfigTopics.createLeafChild("diskSpaceLimit").withValue("25");
+        systemConfigTopics.createLeafChild("diskSpaceLimitUnit").withValue("MB");
+        when(config.lookupTopics(PARAMETERS_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC))
+                .thenReturn(configTopics);
 
         Topics componentTopics2 = mock(Topics.class);
         Topic lastFileProcessedTimeStampTopics = mock(Topic.class);
@@ -439,14 +428,14 @@ class LogManagerServiceTest extends GGServiceTestUtil {
                 .thenReturn(periodicUpdateIntervalMsTopic);
         when(mockMerger.processLogFiles(componentLogsInformationCaptor.capture())).thenReturn(new CloudWatchAttempt());
 
-        String configuration =
-                "{\"ComponentLogInformation\": " +
-                        "[],\"SystemLogsConfiguration\":{\"UploadToCloudWatch\": true,\"MinimumLogLevel\": \"INFO\"," +
-                        "\"DiskSpaceLimit\": \"25\"," +
-                        "\"DiskSpaceLimitUnit\": \"MB\"}}";
-        Topic configTopic = Topic.of(context, LOGS_UPLOADER_CONFIGURATION_TOPIC, configuration);
-        when(config.lookup(PARAMETERS_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC))
-                .thenReturn(configTopic);
+        Topics configTopics = Topics.of(context, LOGS_UPLOADER_CONFIGURATION_TOPIC, null);
+        Topics systemConfigTopics = configTopics.createInteriorChild("systemLogsConfiguration");
+        systemConfigTopics.createLeafChild("uploadToCloudWatch").withValue("true");
+        systemConfigTopics.createLeafChild("minimumLogLevel").withValue("INFO");
+        systemConfigTopics.createLeafChild("diskSpaceLimit").withValue("25");
+        systemConfigTopics.createLeafChild("diskSpaceLimitUnit").withValue("MB");
+        when(config.lookupTopics(PARAMETERS_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC))
+                .thenReturn(configTopics);
 
         logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor);
         File file = new File(directoryPath.resolve("greengrass_test_2.log").toUri());
@@ -490,19 +479,23 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         when(config.lookup(PARAMETERS_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC))
                 .thenReturn(periodicUpdateIntervalMsTopic);
 
-        String configuration =
-                "{\"ComponentLogInformation\": " +
-                        "[{\"LogFileRegex\": \"^log.txt\\\\w*\",\"LogFileDirectoryPath\": \"" +
-                        directoryPath.toAbsolutePath().toString() + "\", " +
-                        "\"MultiLineStartPattern\": \"\\\\{'timestamp\",\"MinimumLogLevel\": \"DEBUG\"," +
-                        "\"DiskSpaceLimit\": \"2\",\"ComponentName\": \"UserComponentA\"," +
-                        "\"DiskSpaceLimitUnit\": \"KB\",\"DeleteLogFileAfterCloudUpload\": \"true\"}]," +
-                        "\"SystemLogsConfiguration\":{\"UploadToCloudWatch\": true,\"MinimumLogLevel\": \"INFO\"," +
-                        "\"DiskSpaceLimit\": \"25\"," +
-                        "\"DiskSpaceLimitUnit\": \"KB\"}}";
-        Topic configTopic = Topic.of(context, LOGS_UPLOADER_CONFIGURATION_TOPIC, configuration);
-        when(config.lookup(PARAMETERS_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC))
-                .thenReturn(configTopic);
+        Topics configTopics = Topics.of(context, LOGS_UPLOADER_CONFIGURATION_TOPIC, null);
+        Topics componentConfigTopics = configTopics.createInteriorChild("componentLogInformation");
+        componentConfigTopics.createLeafChild("componentName").withValue("UserComponentA");
+        componentConfigTopics.createLeafChild("logFileRegex").withValue("^log.txt\\w*");
+        componentConfigTopics.createLeafChild("logFileDirectoryPath")
+                .withValue(directoryPath.toAbsolutePath().toString());
+        componentConfigTopics.createLeafChild("minimumLogLevel").withValue("DEBUG");
+        componentConfigTopics.createLeafChild("diskSpaceLimit").withValue("2");
+        componentConfigTopics.createLeafChild("diskSpaceLimitUnit").withValue("KB");
+        componentConfigTopics.createLeafChild("deleteLogFileAfterCloudUpload").withValue("false");
+        Topics systemConfigTopics = configTopics.createInteriorChild("systemLogsConfiguration");
+        systemConfigTopics.createLeafChild("uploadToCloudWatch").withValue("true");
+        systemConfigTopics.createLeafChild("minimumLogLevel").withValue("INFO");
+        systemConfigTopics.createLeafChild("diskSpaceLimit").withValue("25");
+        systemConfigTopics.createLeafChild("diskSpaceLimitUnit").withValue("KB");
+        when(config.lookupTopics(PARAMETERS_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC))
+                .thenReturn(configTopics);
 
         logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor);
         startServiceOnAnotherThread();
@@ -542,19 +535,23 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         when(config.lookup(PARAMETERS_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC))
                 .thenReturn(periodicUpdateIntervalMsTopic);
 
-        String configuration =
-                "{\"ComponentLogInformation\": " +
-                        "[{\"LogFileRegex\": \"^log2.txt\\\\w*\",\"LogFileDirectoryPath\": \"" +
-                        directoryPath.toAbsolutePath().toString() + "\", " +
-                        "\"MultiLineStartPattern\": \"\\\\{'timestamp\",\"MinimumLogLevel\": \"DEBUG\"," +
-                        "\"DiskSpaceLimit\": \"25\",\"ComponentName\": \"UserComponentA\"," +
-                        "\"DiskSpaceLimitUnit\": \"KB\",\"DeleteLogFileAfterCloudUpload\": \"true\"}]," +
-                        "\"SystemLogsConfiguration\":{\"UploadToCloudWatch\": true,\"MinimumLogLevel\": \"INFO\"," +
-                        "\"DiskSpaceLimit\": \"25\"," +
-                        "\"DiskSpaceLimitUnit\": \"KB\"}}";
-        Topic configTopic = Topic.of(context, LOGS_UPLOADER_CONFIGURATION_TOPIC, configuration);
-        when(config.lookup(PARAMETERS_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC))
-                .thenReturn(configTopic);
+        Topics configTopics = Topics.of(context, LOGS_UPLOADER_CONFIGURATION_TOPIC, null);
+        Topics componentConfigTopics = configTopics.createInteriorChild("componentLogInformation");
+        componentConfigTopics.createLeafChild("componentName").withValue("UserComponentA");
+        componentConfigTopics.createLeafChild("logFileRegex").withValue("^log2.txt\\w*");
+        componentConfigTopics.createLeafChild("logFileDirectoryPath")
+                .withValue(directoryPath.toAbsolutePath().toString());
+        componentConfigTopics.createLeafChild("minimumLogLevel").withValue("DEBUG");
+        componentConfigTopics.createLeafChild("diskSpaceLimit").withValue("25");
+        componentConfigTopics.createLeafChild("diskSpaceLimitUnit").withValue("KB");
+        componentConfigTopics.createLeafChild("deleteLogFileAfterCloudUpload").withValue("true");
+        Topics systemConfigTopics = configTopics.createInteriorChild("systemLogsConfiguration");
+        systemConfigTopics.createLeafChild("uploadToCloudWatch").withValue("true");
+        systemConfigTopics.createLeafChild("minimumLogLevel").withValue("INFO");
+        systemConfigTopics.createLeafChild("diskSpaceLimit").withValue("25");
+        systemConfigTopics.createLeafChild("diskSpaceLimitUnit").withValue("KB");
+        when(config.lookupTopics(PARAMETERS_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC))
+                .thenReturn(configTopics);
 
         List<String> fileNames = new ArrayList<>();
         for (int i = 0; i < 5; i++) {
@@ -630,14 +627,14 @@ class LogManagerServiceTest extends GGServiceTestUtil {
                 .thenReturn(periodicUpdateIntervalMsTopic);
         when(mockMerger.processLogFiles(componentLogsInformationCaptor.capture())).thenReturn(new CloudWatchAttempt());
 
-        String configuration =
-                "{\"ComponentLogInformation\": " +
-                        "[],\"SystemLogsConfiguration\":{\"UploadToCloudWatch\": true,\"MinimumLogLevel\": \"INFO\"," +
-                        "\"DiskSpaceLimit\": \"25\"," +
-                        "\"DiskSpaceLimitUnit\": \"MB\"}}";
-        Topic configTopic = Topic.of(context, LOGS_UPLOADER_CONFIGURATION_TOPIC, configuration);
-        when(config.lookup(PARAMETERS_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC))
-                .thenReturn(configTopic);
+        Topics configTopics = Topics.of(context, LOGS_UPLOADER_CONFIGURATION_TOPIC, null);
+        Topics systemConfigTopics = configTopics.createInteriorChild("systemLogsConfiguration");
+        systemConfigTopics.createLeafChild("uploadToCloudWatch").withValue("true");
+        systemConfigTopics.createLeafChild("minimumLogLevel").withValue("INFO");
+        systemConfigTopics.createLeafChild("diskSpaceLimit").withValue("25");
+        systemConfigTopics.createLeafChild("diskSpaceLimitUnit").withValue("MB");
+        when(config.lookupTopics(PARAMETERS_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC))
+                .thenReturn(configTopics);
 
         logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor);
         startServiceOnAnotherThread();
@@ -674,19 +671,23 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         Topic periodicUpdateIntervalMsTopic = Topic.of(context, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC, "3");
         when(config.lookup(PARAMETERS_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC))
                 .thenReturn(periodicUpdateIntervalMsTopic);
-        String configuration =
-                "{\"ComponentLogInformation\": " +
-                        "[{\"LogFileRegex\": \"^log.txt\\\\w*\",\"LogFileDirectoryPath\": \"" +
-                        directoryPath.toAbsolutePath().toString() + "\", " +
-                        "\"MultiLineStartPattern\": \"\\\\{'timestamp\",\"MinimumLogLevel\": \"DEBUG\"," +
-                        "\"DiskSpaceLimit\": \"10\",\"ComponentName\": \"UserComponentA\"," +
-                        "\"DiskSpaceLimitUnit\": \"GB\",\"DeleteLogFileAfterCloudUpload\": \"false\"}]," +
-                        "\"SystemLogsConfiguration\":{\"UploadToCloudWatch\": true,\"MinimumLogLevel\": \"INFO\"," +
-                        "\"DiskSpaceLimit\": \"25\"," +
-                        "\"DiskSpaceLimitUnit\": \"MB\"}}";
-        Topic configTopic = Topic.of(context, LOGS_UPLOADER_CONFIGURATION_TOPIC, configuration);
-        when(config.lookup(PARAMETERS_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC))
-                .thenReturn(configTopic);
+        Topics configTopics = Topics.of(context, LOGS_UPLOADER_CONFIGURATION_TOPIC, null);
+        Topics componentConfigTopics = configTopics.createInteriorChild("componentLogInformation");
+        componentConfigTopics.createLeafChild("componentName").withValue("UserComponentA");
+        componentConfigTopics.createLeafChild("logFileRegex").withValue("^log.txt\\w*");
+        componentConfigTopics.createLeafChild("logFileDirectoryPath")
+                .withValue(directoryPath.toAbsolutePath().toString());
+        componentConfigTopics.createLeafChild("minimumLogLevel").withValue("DEBUG");
+        componentConfigTopics.createLeafChild("diskSpaceLimit").withValue("10");
+        componentConfigTopics.createLeafChild("diskSpaceLimitUnit").withValue("GB");
+        componentConfigTopics.createLeafChild("deleteLogFileAfterCloudUpload").withValue("false");
+        Topics systemConfigTopics = configTopics.createInteriorChild("systemLogsConfiguration");
+        systemConfigTopics.createLeafChild("uploadToCloudWatch").withValue("true");
+        systemConfigTopics.createLeafChild("minimumLogLevel").withValue("INFO");
+        systemConfigTopics.createLeafChild("diskSpaceLimit").withValue("25");
+        systemConfigTopics.createLeafChild("diskSpaceLimitUnit").withValue("MB");
+        when(config.lookupTopics(PARAMETERS_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC))
+                .thenReturn(configTopics);
 
         Instant now = Instant.now();
         Instant tenSecondsAgo = Instant.now().minusSeconds(10);
@@ -708,12 +709,10 @@ class LogManagerServiceTest extends GGServiceTestUtil {
                         .lastModifiedTime(now.toEpochMilli())
                         .startPosition(10000)
                         .build();
-        currentProcessingComponentTopics1.updateFromMap(now.toEpochMilli(),
-                currentProcessingFileInformation1.convertToMapOfObjects(),
-                new UpdateBehaviorTree(UpdateBehaviorTree.UpdateBehavior.REPLACE));
-        currentProcessingComponentTopics2.updateFromMap(now.toEpochMilli(),
-                currentProcessingFileInformation2.convertToMapOfObjects(),
-                new UpdateBehaviorTree(UpdateBehaviorTree.UpdateBehavior.REPLACE));
+        currentProcessingComponentTopics1.updateFromMap(currentProcessingFileInformation1.convertToMapOfObjects(),
+                new UpdateBehaviorTree(UpdateBehaviorTree.UpdateBehavior.REPLACE, now.toEpochMilli()));
+        currentProcessingComponentTopics2.updateFromMap(currentProcessingFileInformation2.convertToMapOfObjects(),
+                new UpdateBehaviorTree(UpdateBehaviorTree.UpdateBehavior.REPLACE, now.toEpochMilli()));
 
         Topics allLastFileProcessedComponentTopics =
                 Topics.of(context, PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP, null);

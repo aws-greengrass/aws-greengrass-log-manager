@@ -34,7 +34,7 @@ Manifests:
   - aws.greengrass.logmanager:
       Parameters:
         logsUploaderConfiguration: 
-          componentLogInformation:
+          componentLogsConfiguration:
             - componentName: 'ComponentName'
               logFileRegex: 'fileNameRegex'
               logFileDirectoryPath: '/path/to/file'

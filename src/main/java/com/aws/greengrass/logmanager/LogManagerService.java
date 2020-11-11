@@ -79,6 +79,17 @@ public class LogManagerService extends PluginService {
     public static final String PERSISTED_CURRENT_PROCESSING_FILE_LAST_MODIFIED_TIME =
             "currentProcessingFileLastModified";
     public static final String DEFAULT_FILE_REGEX = "^%s\\w*.log";
+    public static final String COMPONENT_LOGS_CONFIG_TOPIC_NAME = "componentLogsInformation";
+    public static final String SYSTEM_LOGS_CONFIG_TOPIC_NAME = "systemLogsConfiguration";
+    public static final String COMPONENT_NAME_CONFIG_TOPIC_NAME = "componentName";
+    public static final String FILE_REGEX_CONFIG_TOPIC_NAME = "logFileRegex";
+    public static final String FILE_DIRECTORY_PATH_CONFIG_TOPIC_NAME = "logFileDirectoryPath";
+    public static final String MIN_LOG_LEVEL_CONFIG_TOPIC_NAME = "minimumLogLevel";
+    public static final String DISK_SPACE_LIMIT_CONFIG_TOPIC_NAME = "diskSpaceLimit";
+    public static final String DISK_SPACE_LIMIT_UNIT_CONFIG_TOPIC_NAME = "diskSpaceLimitUnit";
+    public static final String DELETE_LOG_FILES_AFTER_UPLOAD_CONFIG_TOPIC_NAME = "deleteLogFileAfterCloudUpload";
+    public static final String UPLOAD_TO_CW_CONFIG_TOPIC_NAME = "uploadToCloudWatch";
+    public static final String MULTILINE_PATTERN_CONFIG_TOPIC_NAME = "multiLineStartPattern";
     private static final int DEFAULT_PERIODIC_UPDATE_INTERVAL_SEC = 300;
     private final Object spaceManagementLock = new Object();
 
@@ -129,23 +140,21 @@ public class LogManagerService extends PluginService {
 
     private void processConfiguration(Map<String, Object> configTopicsPojo) {
         Map<String, ComponentLogConfiguration> newComponentLogConfigurations = new ConcurrentHashMap<>();
-        configTopicsPojo.computeIfPresent("componentLogInformation", (s, o) -> {
+        configTopicsPojo.computeIfPresent(COMPONENT_LOGS_CONFIG_TOPIC_NAME, (s, o) -> {
             if (o instanceof ArrayList) {
                 List<Object> list = (ArrayList) o;
                 list.forEach(componentConfigObject -> {
                     if (componentConfigObject instanceof Map) {
-                        handleUserComponentConfiguration(o, newComponentLogConfigurations);
+                        handleUserComponentConfiguration(componentConfigObject, newComponentLogConfigurations);
                     }
                 });
-            } else if (o instanceof Map) {
-                handleUserComponentConfiguration(o, newComponentLogConfigurations);
             }
             return o;
         });
-        configTopicsPojo.computeIfPresent("systemLogsConfiguration", (s, o) -> {
+        configTopicsPojo.computeIfPresent(SYSTEM_LOGS_CONFIG_TOPIC_NAME, (s, o) -> {
             Map<String, Object> systemConfigMap = (Map) o;
             AtomicBoolean isUploadToCloudWatch = new AtomicBoolean(false);
-            systemConfigMap.computeIfPresent("uploadToCloudWatch", (s1, o1) -> {
+            systemConfigMap.computeIfPresent(UPLOAD_TO_CW_CONFIG_TOPIC_NAME, (s1, o1) -> {
                 isUploadToCloudWatch.set(Coerce.toBoolean(o1));
                 return o1;
             });
@@ -191,10 +200,10 @@ public class LogManagerService extends PluginService {
         AtomicReference<Path> directoryPath = new AtomicReference<>();
         componentConfigMap.forEach((key, val) -> {
             switch (key) {
-                case "componentName":
+                case COMPONENT_NAME_CONFIG_TOPIC_NAME:
                     componentLogConfiguration.setName(Coerce.toString(val));
                     break;
-                case "logFileRegex":
+                case FILE_REGEX_CONFIG_TOPIC_NAME:
                     String logFileRegexString = Coerce.toString(val);
                     if (Utils.isNotEmpty(logFileRegexString)) {
                         fileNameRegex.set(Pattern.compile(logFileRegexString));
@@ -203,13 +212,13 @@ public class LogManagerService extends PluginService {
                                 LogManager.getRootLogConfiguration().getFileName())));
                     }
                     break;
-                case "logFileDirectoryPath":
+                case FILE_DIRECTORY_PATH_CONFIG_TOPIC_NAME:
                     String logFileDirectoryPathString = Coerce.toString(val);
                     if (Utils.isNotEmpty(logFileDirectoryPathString)) {
                         directoryPath.set(Paths.get(logFileDirectoryPathString));
                     }
                     break;
-                case "multiLineStartPattern":
+                case MULTILINE_PATTERN_CONFIG_TOPIC_NAME:
                     String multiLineStartPatternString = Coerce.toString(val);
                     if (Utils.isNotEmpty(multiLineStartPatternString)) {
                         componentLogConfiguration.setMultiLineStartPattern(Pattern
@@ -239,16 +248,16 @@ public class LogManagerService extends PluginService {
         AtomicReference<String> diskSpaceLimitUnitString = new AtomicReference<>();
         componentConfigMap.forEach((key, val) -> {
             switch (key) {
-                case "minimumLogLevel":
+                case MIN_LOG_LEVEL_CONFIG_TOPIC_NAME:
                     setMinimumLogLevel(Coerce.toString(val), componentLogConfiguration);
                     break;
-                case "diskSpaceLimit":
+                case DISK_SPACE_LIMIT_CONFIG_TOPIC_NAME:
                     diskSpaceLimitString.set(Coerce.toString(val));
                     break;
-                case "diskSpaceLimitUnit":
+                case DISK_SPACE_LIMIT_UNIT_CONFIG_TOPIC_NAME:
                     diskSpaceLimitUnitString.set(Coerce.toString(val));
                     break;
-                case "deleteLogFileAfterCloudUpload":
+                case DELETE_LOG_FILES_AFTER_UPLOAD_CONFIG_TOPIC_NAME:
                     setDeleteLogFileAfterCloudUpload(Coerce.toString(val), componentLogConfiguration);
                     break;
                 default:

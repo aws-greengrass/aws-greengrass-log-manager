@@ -91,7 +91,7 @@ class SpaceManagementTest extends BaseITCase {
         content = content.replaceAll("\\{\\{logFileDirectoryPath}}",
                 storeDirectory.toAbsolutePath().toString());
 
-        Path tempConfigPath = Files.createTempDirectory(tempRootDir, "config").resolve("smallPeriodicIntervalConfig.yaml");
+        Path tempConfigPath = Files.createTempDirectory(tempRootDir, "config").resolve("smallSpaceManagementPeriodicIntervalConfig.yaml");
         Files.write(tempConfigPath, content.getBytes(StandardCharsets.UTF_8));
 
         kernel.parseArgs("-i", tempConfigPath.toAbsolutePath().toString());

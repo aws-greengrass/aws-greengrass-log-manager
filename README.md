@@ -35,13 +35,13 @@ Manifests:
       Parameters:
         logsUploaderConfiguration: 
           componentLogInformation:
-            componentName: 'ComponentName'
-            logFileRegex: 'fileNameRegex'
-            logFileDirectoryPath: '/path/to/file'
-            minimumLogLevel: 'INFO'
-            diskSpaceLimit: '25'
-            diskSpaceLimitUnit: 'MB'
-            deleteLogFileAfterCloudUpload: true
+            - componentName: 'ComponentName'
+              logFileRegex: 'fileNameRegex'
+              logFileDirectoryPath: '/path/to/file'
+              minimumLogLevel: 'INFO'
+              diskSpaceLimit: '25'
+              diskSpaceLimitUnit: 'MB'
+              deleteLogFileAfterCloudUpload: true
           systemLogsConfiguration:
             uploadToCloudWatch: true
             minimumLogLevel: 'INFO'

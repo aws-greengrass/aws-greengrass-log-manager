@@ -9,6 +9,7 @@ import com.aws.greengrass.logging.api.Logger;
 import com.aws.greengrass.logging.impl.LogManager;
 import com.aws.greengrass.logmanager.model.CloudWatchAttempt;
 import com.aws.greengrass.logmanager.util.CloudWatchClientFactory;
+import lombok.Setter;
 import software.amazon.awssdk.awscore.exception.AwsServiceException;
 import software.amazon.awssdk.core.exception.SdkException;
 import software.amazon.awssdk.services.cloudwatchlogs.CloudWatchLogsClient;
@@ -33,7 +34,8 @@ import javax.inject.Inject;
 public class CloudWatchLogsUploader {
     private final Logger logger = LogManager.getLogger(CloudWatchLogsUploader.class);
     private final Map<String, Consumer<CloudWatchAttempt>> listeners = new ConcurrentHashMap<>();
-    private final CloudWatchLogsClient cloudWatchLogsClient;
+    @Setter
+    private CloudWatchLogsClient cloudWatchLogsClient;
     private static final int MAX_RETRIES = 3;
 
     final Map<String, Map<String, String>> logGroupsToSequenceTokensMap = new ConcurrentHashMap<>();

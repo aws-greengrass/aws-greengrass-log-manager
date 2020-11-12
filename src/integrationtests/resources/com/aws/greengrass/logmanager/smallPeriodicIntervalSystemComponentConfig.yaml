@@ -1,0 +1,18 @@
+---
+services:
+  aws.greengrass.LogManager:
+    parameters:
+      periodicUploadIntervalSec: 10
+      logsUploaderConfiguration:
+        systemLogsConfiguration:
+          uploadToCloudWatch: true
+          minimumLogLevel: 'INFO'
+          diskSpaceLimit: '25'
+          diskSpaceLimitUnit: 'MB'
+          deleteLogFileAfterCloudUpload: 'true'
+  main:
+    lifecycle:
+      install:
+        all: echo All installed
+    dependencies:
+      - aws.greengrass.LogManager

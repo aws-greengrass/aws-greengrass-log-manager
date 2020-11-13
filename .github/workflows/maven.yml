@@ -93,6 +93,8 @@ jobs:
       - name: Package with Maven
         run: mvn -ntp package
       - run: mkdir -p target/artifacts && cp target/LogManager.jar target/artifacts/aws.greengrass.LogManager.jar
+      - name: Upload to S3
+         run: aws s3 cp target/LogManager.jar s3://greengrass-artifacts-releases/${{github.repository}}/${{github.ref}}/greengrass-log-manager-${{github.sha}}.jar
       - uses: ./.github/actions/aws-greengrass-component-upload-action
         name: Upload to GCS Gamma
         env:

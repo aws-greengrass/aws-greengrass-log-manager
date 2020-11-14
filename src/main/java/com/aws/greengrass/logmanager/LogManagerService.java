@@ -18,14 +18,9 @@ import com.aws.greengrass.logmanager.model.ComponentLogConfiguration;
 import com.aws.greengrass.logmanager.model.ComponentLogFileInformation;
 import com.aws.greengrass.logmanager.model.ComponentType;
 import com.aws.greengrass.logmanager.model.LogFileInformation;
-import com.aws.greengrass.logmanager.model.configuration.LogsUploaderConfiguration;
-import com.aws.greengrass.logmanager.model.configuration.SystemLogsConfiguration;
 import com.aws.greengrass.util.Coerce;
 import com.aws.greengrass.util.Utils;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.MapperFeature;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.Builder;
 import lombok.Data;
 import lombok.Getter;
@@ -83,10 +78,19 @@ public class LogManagerService extends PluginService {
             "lastFileProcessedTimeStamp";
     public static final String PERSISTED_CURRENT_PROCESSING_FILE_LAST_MODIFIED_TIME =
             "currentProcessingFileLastModified";
+    public static final String DEFAULT_FILE_REGEX = "^%s\\w*.log";
+    public static final String COMPONENT_LOGS_CONFIG_TOPIC_NAME = "componentLogsConfiguration";
+    public static final String SYSTEM_LOGS_CONFIG_TOPIC_NAME = "systemLogsConfiguration";
+    public static final String COMPONENT_NAME_CONFIG_TOPIC_NAME = "componentName";
+    public static final String FILE_REGEX_CONFIG_TOPIC_NAME = "logFileRegex";
+    public static final String FILE_DIRECTORY_PATH_CONFIG_TOPIC_NAME = "logFileDirectoryPath";
+    public static final String MIN_LOG_LEVEL_CONFIG_TOPIC_NAME = "minimumLogLevel";
+    public static final String DISK_SPACE_LIMIT_CONFIG_TOPIC_NAME = "diskSpaceLimit";
+    public static final String DISK_SPACE_LIMIT_UNIT_CONFIG_TOPIC_NAME = "diskSpaceLimitUnit";
+    public static final String DELETE_LOG_FILES_AFTER_UPLOAD_CONFIG_TOPIC_NAME = "deleteLogFileAfterCloudUpload";
+    public static final String UPLOAD_TO_CW_CONFIG_TOPIC_NAME = "uploadToCloudWatch";
+    public static final String MULTILINE_PATTERN_CONFIG_TOPIC_NAME = "multiLineStartPattern";
     private static final int DEFAULT_PERIODIC_UPDATE_INTERVAL_SEC = 300;
-    private static final String DEFAULT_FILE_REGEX = "^%s\\w*.log";
-    private static final ObjectMapper DESERIALIZER = new ObjectMapper()
-            .configure(MapperFeature.ACCEPT_CASE_INSENSITIVE_PROPERTIES, true);
     private final Object spaceManagementLock = new Object();
 
     final Map<String, Instant> lastComponentUploadedLogFileInstantMap =
@@ -94,6 +98,7 @@ public class LogManagerService extends PluginService {
     final Map<String, CurrentProcessingFileInformation> componentCurrentProcessingLogFile =
             new ConcurrentHashMap<>();
     Map<String, ComponentLogConfiguration> componentLogConfigurations = new ConcurrentHashMap<>();
+    @Getter
     private final CloudWatchLogsUploader uploader;
     private final CloudWatchAttemptLogsProcessor logsProcessor;
     private final ExecutorService executorService;
@@ -122,61 +127,144 @@ public class LogManagerService extends PluginService {
                 .subscribe((why, newv) -> periodicUpdateIntervalSec = Coerce.toInt(newv));
         this.uploader.registerAttemptStatus(LOGS_UPLOADER_SERVICE_TOPICS, this::handleCloudWatchAttemptStatus);
 
-        topics.lookup(PARAMETERS_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC)
-                .subscribe((why, newv) -> {
-                    try {
-                        if (newv == null || Coerce.toString(newv) == null) {
-                            //TODO: fail the deployment.
-                            return;
-                        }
-                        LogsUploaderConfiguration config = DESERIALIZER.readValue(Coerce.toString(newv),
-                                LogsUploaderConfiguration.class);
-                        processConfiguration(config);
-                    } catch (JsonProcessingException e) {
-                        //TODO: Add validation step and fail the deployment here.
-                        logger.atError().cause(e).log("Unable to parse configuration.");
-                    }
-                });
+        Topics configTopics = topics.lookupTopics(PARAMETERS_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC);
+        configTopics.subscribe((why, newv) -> {
+            Map<String, Object> configTopicsPojo = configTopics.toPOJO();
+            if (configTopicsPojo == null) {
+                //TODO: fail the deployment.
+                return;
+            }
+            processConfiguration(configTopicsPojo);
+        });
     }
 
-    private void processConfiguration(LogsUploaderConfiguration config) {
+    private void processConfiguration(Map<String, Object> configTopicsPojo) {
         Map<String, ComponentLogConfiguration> newComponentLogConfigurations = new ConcurrentHashMap<>();
-        if (config.getSystemLogsConfiguration().isUploadToCloudWatch()) {
-            addSystemLogsConfiguration(newComponentLogConfigurations, config.getSystemLogsConfiguration());
-            loadStateFromConfiguration(SYSTEM_LOGS_COMPONENT_NAME);
-        }
-        config.getComponentLogInformation().forEach(componentConfiguration -> {
-            Pattern fileNameRegex;
-            Path directoryPath;
-            if (Utils.isEmpty(componentConfiguration.getLogFileDirectoryPath())
-                    && LogManager.getLogConfigurations().containsKey(componentConfiguration.getComponentName())) {
-                fileNameRegex = Pattern.compile(String.format(DEFAULT_FILE_REGEX,
-                        LogManager.getRootLogConfiguration().getFileName()));
-                directoryPath = LogManager.getLogConfigurations().get(componentConfiguration.getComponentName())
-                        .getStoreDirectory();
-            } else {
-                // If file regex is null, then Log Manager should error out and let the customer fix the configuration.
-                fileNameRegex = Pattern.compile(componentConfiguration.getLogFileRegex());
-                directoryPath = Paths.get(componentConfiguration.getLogFileDirectoryPath());
+        configTopicsPojo.computeIfPresent(COMPONENT_LOGS_CONFIG_TOPIC_NAME, (s, o) -> {
+            if (o instanceof ArrayList) {
+                List<Object> list = (ArrayList) o;
+                list.forEach(componentConfigObject -> {
+                    if (componentConfigObject instanceof Map) {
+                        handleUserComponentConfiguration(componentConfigObject, newComponentLogConfigurations);
+                    }
+                });
             }
-            ComponentLogConfiguration componentLogConfiguration = ComponentLogConfiguration.builder()
-                    .name(componentConfiguration.getComponentName())
-                    .fileNameRegex(fileNameRegex)
-                    .directoryPath(directoryPath)
-                    .componentType(ComponentType.UserComponent)
+            return o;
+        });
+        configTopicsPojo.computeIfPresent(SYSTEM_LOGS_CONFIG_TOPIC_NAME, (s, o) -> {
+            Map<String, Object> systemConfigMap = (Map) o;
+            AtomicBoolean isUploadToCloudWatch = new AtomicBoolean(false);
+            systemConfigMap.computeIfPresent(UPLOAD_TO_CW_CONFIG_TOPIC_NAME, (s1, o1) -> {
+                isUploadToCloudWatch.set(Coerce.toBoolean(o1));
+                return o1;
+            });
+            if (!isUploadToCloudWatch.get()) {
+                return true;
+            }
+            Path logsDirectoryPath = LogManager.getRootLogConfiguration().getStoreDirectory();
+            ComponentLogConfiguration systemConfiguration = ComponentLogConfiguration.builder()
+                    .fileNameRegex(Pattern.compile(String.format(DEFAULT_FILE_REGEX,
+                            LogManager.getRootLogConfiguration().getFileName())))
+                    .directoryPath(logsDirectoryPath)
+                    .name(SYSTEM_LOGS_COMPONENT_NAME)
+                    .componentType(ComponentType.GreengrassSystemComponent)
                     .build();
-            setMinimumLogLevel(componentConfiguration.getMinimumLogLevel(), componentLogConfiguration);
-            setDeleteLogFileAfterCloudUpload(componentConfiguration.getDeleteLogFileAfterCloudUpload(),
-                    componentLogConfiguration);
-            setDiskSpaceLimit(componentConfiguration.getDiskSpaceLimit(),
-                    componentConfiguration.getDiskSpaceLimitUnit(), componentLogConfiguration);
-            newComponentLogConfigurations.put(componentConfiguration.getComponentName(), componentLogConfiguration);
-            loadStateFromConfiguration(componentConfiguration.getComponentName());
+
+            setCommonComponentConfiguration(systemConfigMap, systemConfiguration);
+            newComponentLogConfigurations.put(systemConfiguration.getName(), systemConfiguration);
+            loadStateFromConfiguration(systemConfiguration.getName());
+            return o;
         });
 
         this.componentLogConfigurations = newComponentLogConfigurations;
 
         scheduleSpaceManagementThread();
+    }
+
+    private void handleUserComponentConfiguration(Object componentConfigObject,
+                                                  Map<String, ComponentLogConfiguration>
+                                                          newComponentLogConfigurations) {
+        Map<String, Object> componentConfigMap = (Map) componentConfigObject;
+        ComponentLogConfiguration componentLogConfiguration = ComponentLogConfiguration.builder()
+                .componentType(ComponentType.UserComponent)
+                .build();
+        setUserComponentConfiguration(componentConfigMap, componentLogConfiguration);
+        setCommonComponentConfiguration(componentConfigMap, componentLogConfiguration);
+        newComponentLogConfigurations.put(componentLogConfiguration.getName(), componentLogConfiguration);
+        loadStateFromConfiguration(componentLogConfiguration.getName());
+    }
+
+    private void setUserComponentConfiguration(Map<String, Object> componentConfigMap,
+                                               ComponentLogConfiguration componentLogConfiguration) {
+        AtomicReference<Pattern> fileNameRegex = new AtomicReference<>();
+        AtomicReference<Path> directoryPath = new AtomicReference<>();
+        componentConfigMap.forEach((key, val) -> {
+            switch (key) {
+                case COMPONENT_NAME_CONFIG_TOPIC_NAME:
+                    componentLogConfiguration.setName(Coerce.toString(val));
+                    break;
+                case FILE_REGEX_CONFIG_TOPIC_NAME:
+                    String logFileRegexString = Coerce.toString(val);
+                    if (Utils.isNotEmpty(logFileRegexString)) {
+                        fileNameRegex.set(Pattern.compile(logFileRegexString));
+                    } else {
+                        fileNameRegex.set(Pattern.compile(String.format(DEFAULT_FILE_REGEX,
+                                LogManager.getRootLogConfiguration().getFileName())));
+                    }
+                    break;
+                case FILE_DIRECTORY_PATH_CONFIG_TOPIC_NAME:
+                    String logFileDirectoryPathString = Coerce.toString(val);
+                    if (Utils.isNotEmpty(logFileDirectoryPathString)) {
+                        directoryPath.set(Paths.get(logFileDirectoryPathString));
+                    }
+                    break;
+                case MULTILINE_PATTERN_CONFIG_TOPIC_NAME:
+                    String multiLineStartPatternString = Coerce.toString(val);
+                    if (Utils.isNotEmpty(multiLineStartPatternString)) {
+                        componentLogConfiguration.setMultiLineStartPattern(Pattern
+                                .compile(multiLineStartPatternString));
+                    }
+                    break;
+                default:
+                    break;
+            }
+
+        });
+        componentLogConfiguration.setFileNameRegex(fileNameRegex.get());
+        if (directoryPath.get() == null) {
+            LogManager.getLogConfigurations().computeIfPresent(componentLogConfiguration.getName(), (s, logConfig) -> {
+                componentLogConfiguration.setDirectoryPath(logConfig.getStoreDirectory());
+                return logConfig;
+            });
+        } else {
+            componentLogConfiguration.setDirectoryPath(directoryPath.get());
+        }
+
+    }
+
+    private void setCommonComponentConfiguration(Map<String, Object> componentConfigMap,
+                                                 ComponentLogConfiguration componentLogConfiguration) {
+        AtomicReference<String> diskSpaceLimitString = new AtomicReference<>();
+        AtomicReference<String> diskSpaceLimitUnitString = new AtomicReference<>();
+        componentConfigMap.forEach((key, val) -> {
+            switch (key) {
+                case MIN_LOG_LEVEL_CONFIG_TOPIC_NAME:
+                    setMinimumLogLevel(Coerce.toString(val), componentLogConfiguration);
+                    break;
+                case DISK_SPACE_LIMIT_CONFIG_TOPIC_NAME:
+                    diskSpaceLimitString.set(Coerce.toString(val));
+                    break;
+                case DISK_SPACE_LIMIT_UNIT_CONFIG_TOPIC_NAME:
+                    diskSpaceLimitUnitString.set(Coerce.toString(val));
+                    break;
+                case DELETE_LOG_FILES_AFTER_UPLOAD_CONFIG_TOPIC_NAME:
+                    setDeleteLogFileAfterCloudUpload(Coerce.toString(val), componentLogConfiguration);
+                    break;
+                default:
+                    break;
+            }
+        });
+        setDiskSpaceLimit(diskSpaceLimitString.get(), diskSpaceLimitUnitString.get(), componentLogConfiguration);
     }
 
     private void scheduleSpaceManagementThread() {
@@ -193,24 +281,6 @@ public class LogManagerService extends PluginService {
                 }
             });
         }
-    }
-
-    private void addSystemLogsConfiguration(Map<String, ComponentLogConfiguration> newComponentLogConfigurations,
-                                            SystemLogsConfiguration systemLogsConfiguration) {
-        Path logsDirectoryPath = LogManager.getRootLogConfiguration().getStoreDirectory();
-        ComponentLogConfiguration systemConfiguration = ComponentLogConfiguration.builder()
-                .fileNameRegex(Pattern.compile(String.format(DEFAULT_FILE_REGEX,
-                        LogManager.getRootLogConfiguration().getFileName())))
-                .directoryPath(logsDirectoryPath)
-                .name(SYSTEM_LOGS_COMPONENT_NAME)
-                .componentType(ComponentType.GreengrassSystemComponent)
-                .build();
-        setMinimumLogLevel(systemLogsConfiguration.getMinimumLogLevel(), systemConfiguration);
-        setDeleteLogFileAfterCloudUpload(systemLogsConfiguration.getDeleteLogFileAfterCloudUpload(),
-                systemConfiguration);
-        setDiskSpaceLimit(systemLogsConfiguration.getDiskSpaceLimit(), systemLogsConfiguration.getDiskSpaceLimitUnit(),
-                systemConfiguration);
-        newComponentLogConfigurations.put(SYSTEM_LOGS_COMPONENT_NAME, systemConfiguration);
     }
 
     private void setMinimumLogLevel(String minimumLogLevel, ComponentLogConfiguration componentLogConfiguration) {
@@ -586,9 +656,9 @@ public class LogManagerService extends PluginService {
      * Deletes the oldest log files which matches the file name pattern. The log files will be deleted until the
      * minimum number of bytes have been deleted.
      *
-     * @param minimumBytesToBeDeleted   The minimum number of bytes that need to be deleted.
-     * @param directoryPath             The directory path for the log files.
-     * @param fileNameRegex             The file name regex.
+     * @param minimumBytesToBeDeleted The minimum number of bytes that need to be deleted.
+     * @param directoryPath           The directory path for the log files.
+     * @param fileNameRegex           The file name regex.
      */
     private void deleteFiles(long minimumBytesToBeDeleted, Path directoryPath, Pattern fileNameRegex) {
         long bytesDeleted = 0;

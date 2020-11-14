@@ -47,7 +47,7 @@ import java.util.regex.Pattern;
 
 import static com.aws.greengrass.deployment.DeviceConfiguration.DEVICE_PARAM_AWS_REGION;
 import static com.aws.greengrass.deployment.DeviceConfiguration.DEVICE_PARAM_THING_NAME;
-import static com.aws.greengrass.deployment.converter.DeploymentDocumentConverter.DEFAULT_GROUP_NAME;
+import static com.aws.greengrass.deployment.converter.DeploymentDocumentConverter.LOCAL_DEPLOYMENT_GROUP_NAME;
 import static com.aws.greengrass.logmanager.CloudWatchAttemptLogsProcessor.DEFAULT_LOG_GROUP_NAME;
 import static com.aws.greengrass.logmanager.CloudWatchAttemptLogsProcessor.DEFAULT_LOG_STREAM_NAME;
 import static com.aws.greengrass.testcommons.testutilities.ExceptionLogProtector.ignoreExceptionOfType;
@@ -182,7 +182,7 @@ public class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
         assertThat(attempt.getLogStreamsToLogEventsMap().entrySet(), IsNot.not(IsEmptyCollection.empty()));
         String logGroup = calculateLogGroupName(ComponentType.GreengrassSystemComponent, "testRegion", "TestComponent");
         assertEquals(attempt.getLogGroupName(), logGroup);
-        String logStream = calculateLogStreamName("testThing", DEFAULT_GROUP_NAME);
+        String logStream = calculateLogStreamName("testThing", LOCAL_DEPLOYMENT_GROUP_NAME);
         assertTrue(attempt.getLogStreamsToLogEventsMap().containsKey(logStream));
         CloudWatchAttemptLogInformation logEventsForStream1 = attempt.getLogStreamsToLogEventsMap().get(logStream);
         assertNotNull(logEventsForStream1.getLogEvents());
@@ -217,7 +217,7 @@ public class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
         assertThat(attempt.getLogStreamsToLogEventsMap().entrySet(), IsNot.not(IsEmptyCollection.empty()));
         String logGroup = calculateLogGroupName(ComponentType.GreengrassSystemComponent, "testRegion", "TestComponent");
         assertEquals(attempt.getLogGroupName(), logGroup);
-        String logStream = calculateLogStreamName("testThing", DEFAULT_GROUP_NAME);
+        String logStream = calculateLogStreamName("testThing", LOCAL_DEPLOYMENT_GROUP_NAME);
         assertTrue(attempt.getLogStreamsToLogEventsMap().containsKey(logStream));
         CloudWatchAttemptLogInformation logEventsForStream1 = attempt.getLogStreamsToLogEventsMap().get(logStream);
         assertNotNull(logEventsForStream1.getLogEvents());

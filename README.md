@@ -33,7 +33,22 @@ Manifests:
       aws.greengrass.logmanager
   - aws.greengrass.logmanager:
       Parameters:
-        logsUploaderConfigurationJson: "{\"ComponentLogInformation\": [{\"LogFileRegex\": \"^log.txt\\\\w*\",\"LogFileDirectoryPath\": \"/var/usr/\", \"MultiLineStartPattern\": \"\\{'timestamp\",\"MinimumLogLevel\": \"DEBUG\",\"DiskSpaceLimit\": \"10\",\"ComponentName\": \"UserComponentA\",\"DiskSpaceLimitUnit\": \"GB\",\"DeleteLogFileAfterCloudUpload\": \"true\"}],\"SystemLogsConfiguration\":{\"UploadToCloudWatch\": true,\"MinimumLogLevel\": \"INFO\",\"DiskSpaceLimit\": \"25\",\"DiskSpaceLimitUnit\": \"MB\"}}"
+        logsUploaderConfiguration: 
+          componentLogsConfiguration:
+            - componentName: 'ComponentName'
+              logFileRegex: 'fileNameRegex'
+              logFileDirectoryPath: '/path/to/file'
+              minimumLogLevel: 'INFO'
+              diskSpaceLimit: '25'
+              diskSpaceLimitUnit: 'MB'
+              deleteLogFileAfterCloudUpload: true
+          systemLogsConfiguration:
+            uploadToCloudWatch: true
+            minimumLogLevel: 'INFO'
+            diskSpaceLimit: '25'
+            diskSpaceLimitUnit: 'MB'
+            deleteLogFileAfterCloudUpload: true
+        
 ```
 
 ## Security

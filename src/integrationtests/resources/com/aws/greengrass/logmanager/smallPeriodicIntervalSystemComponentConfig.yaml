@@ -1,7 +1,17 @@
 ---
 services:
   aws.greengrass.LogManager:
+    #TODO: remove after parameters -> configuration switch over
     parameters:
+      periodicUploadIntervalSec: 10
+      logsUploaderConfiguration:
+        systemLogsConfiguration:
+          uploadToCloudWatch: true
+          minimumLogLevel: 'INFO'
+          diskSpaceLimit: '25'
+          diskSpaceLimitUnit: 'MB'
+          deleteLogFileAfterCloudUpload: 'true'
+    configuration:
       periodicUploadIntervalSec: 10
       logsUploaderConfiguration:
         systemLogsConfiguration:

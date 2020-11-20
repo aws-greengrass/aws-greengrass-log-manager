@@ -59,7 +59,7 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 
-import static com.aws.greengrass.componentmanager.KernelConfigResolver.PARAMETERS_CONFIG_KEY;
+import static com.aws.greengrass.componentmanager.KernelConfigResolver.CONFIGURATION_CONFIG_KEY;
 import static com.aws.greengrass.logmanager.LogManagerService.LOGS_UPLOADER_SERVICE_TOPICS;
 
 @ImplementsService(name = LOGS_UPLOADER_SERVICE_TOPICS, version = "2.0.0")
@@ -122,12 +122,12 @@ public class LogManagerService extends PluginService {
         this.logsProcessor = logProcessor;
         this.executorService = executorService;
 
-        topics.lookup(PARAMETERS_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC)
+        topics.lookup(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC)
                 .dflt(DEFAULT_PERIODIC_UPDATE_INTERVAL_SEC)
                 .subscribe((why, newv) -> periodicUpdateIntervalSec = Coerce.toInt(newv));
         this.uploader.registerAttemptStatus(LOGS_UPLOADER_SERVICE_TOPICS, this::handleCloudWatchAttemptStatus);
 
-        Topics configTopics = topics.lookupTopics(PARAMETERS_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC);
+        Topics configTopics = topics.lookupTopics(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC);
         configTopics.subscribe((why, newv) -> {
             Map<String, Object> configTopicsPojo = configTopics.toPOJO();
             if (configTopicsPojo == null) {

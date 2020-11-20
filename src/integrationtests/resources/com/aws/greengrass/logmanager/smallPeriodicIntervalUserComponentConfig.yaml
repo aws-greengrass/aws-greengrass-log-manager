@@ -1,7 +1,19 @@
 ---
 services:
   aws.greengrass.LogManager:
+    #TODO: remove after parameters -> configuration switch over
     parameters:
+      periodicUploadIntervalSec: 10
+      logsUploaderConfiguration:
+        componentLogsConfiguration:
+          - componentName: 'UserComponentA'
+            logFileRegex: '^integTestRandomLogFiles.log\w*'
+            logFileDirectoryPath: '{{logFileDirectoryPath}}'
+            minimumLogLevel: 'INFO'
+            diskSpaceLimit: '25'
+            diskSpaceLimitUnit: 'MB'
+            deleteLogFileAfterCloudUpload: 'true'
+    configuration:
       periodicUploadIntervalSec: 10
       logsUploaderConfiguration:
         componentLogsConfiguration:

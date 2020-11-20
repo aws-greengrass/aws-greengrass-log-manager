@@ -59,7 +59,7 @@ import static org.mockito.Mockito.when;
 @ExtendWith({GGExtension.class, MockitoExtension.class})
 class LogManagerTest extends BaseITCase {
     private static final String THING_NAME = "ThingName";
-    private static final String AWS_REGION = "awsRegion";
+    private static final String AWS_REGION = "us-east-1";
     private static Kernel kernel;
     private static final SimpleDateFormat DATE_FORMATTER = new SimpleDateFormat("yyyy/MM/dd", Locale.ENGLISH);
     private static DeviceConfiguration deviceConfiguration;

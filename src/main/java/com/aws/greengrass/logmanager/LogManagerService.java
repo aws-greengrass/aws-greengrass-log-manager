@@ -62,7 +62,7 @@ import javax.inject.Inject;
 import static com.aws.greengrass.componentmanager.KernelConfigResolver.PARAMETERS_CONFIG_KEY;
 import static com.aws.greengrass.logmanager.LogManagerService.LOGS_UPLOADER_SERVICE_TOPICS;
 
-@ImplementsService(name = LOGS_UPLOADER_SERVICE_TOPICS, version = "1.0.0")
+@ImplementsService(name = LOGS_UPLOADER_SERVICE_TOPICS, version = "2.0.0")
 public class LogManagerService extends PluginService {
     public static final String LOGS_UPLOADER_SERVICE_TOPICS = "aws.greengrass.LogManager";
     public static final String LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC = "periodicUploadIntervalSec";

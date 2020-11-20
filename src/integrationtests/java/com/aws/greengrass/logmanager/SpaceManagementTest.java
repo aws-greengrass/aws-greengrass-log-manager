@@ -51,7 +51,7 @@ import static org.mockito.Mockito.lenient;
 @ExtendWith({GGExtension.class, MockitoExtension.class})
 class SpaceManagementTest extends BaseITCase {
     private static final String THING_NAME = "ThingName";
-    private static final String AWS_REGION = "awsRegion";
+    private static final String AWS_REGION = "us-east-1";
     private static Kernel kernel;
     private static DeviceConfiguration deviceConfiguration;
     private LogManagerService logManagerService;

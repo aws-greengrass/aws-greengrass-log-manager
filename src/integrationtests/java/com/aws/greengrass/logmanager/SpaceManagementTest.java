@@ -30,13 +30,13 @@ import java.io.IOException;
 import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
@@ -64,6 +64,7 @@ class SpaceManagementTest extends BaseITCase {
     void beforeEach(ExtensionContext context) {
         ignoreExceptionOfType(context, InterruptedException.class);
         ignoreExceptionOfType(context, TLSAuthException.class);
+        ignoreExceptionOfType(context, NoSuchFileException.class);
         LogManager.getRootLogConfiguration().setLevel(Level.DEBUG);
     }
 
@@ -81,8 +82,6 @@ class SpaceManagementTest extends BaseITCase {
         System.setProperty("root", tempRootDir.toAbsolutePath().toString());
         CountDownLatch logManagerRunning = new CountDownLatch(1);
 
-        CompletableFuture cf = new CompletableFuture();
-        cf.complete(null);
         kernel = new Kernel();
 
         Path testRecipePath = Paths.get(LogManagerTest.class
@@ -116,7 +115,7 @@ class SpaceManagementTest extends BaseITCase {
     @Test
     void GIVEN_user_component_config_with_space_management_WHEN_space_exceeds_THEN_excess_log_files_are_deleted()
             throws Exception {
-        tempDirectoryPath = Files.createTempDirectory(tempRootDir, "IntegrationTestsTemporaryLogFiles");
+        tempDirectoryPath = Files.createDirectory(tempRootDir.resolve("IntegrationTestsTemporaryLogFiles"));
         createTempFileAndWriteData(tempDirectoryPath, "integTestRandomLogFiles.log_",  "");
 
         setupKernel(tempDirectoryPath);

@@ -1,17 +1,6 @@
 ---
 services:
   aws.greengrass.LogManager:
-    #TODO: remove after parameters -> configuration switch over
-    parameters:
-      logsUploaderConfiguration:
-        componentLogsConfiguration:
-          - componentName: 'UserComponentA'
-            logFileRegex: '^integTestRandomLogFiles.log\w*'
-            logFileDirectoryPath: '{{logFileDirectoryPath}}'
-            minimumLogLevel: 'INFO'
-            diskSpaceLimit: '105'
-            diskSpaceLimitUnit: 'KB'
-            deleteLogFileAfterCloudUpload: 'true'
     configuration:
       logsUploaderConfiguration:
         componentLogsConfiguration:
@@ -24,7 +13,6 @@ services:
             deleteLogFileAfterCloudUpload: 'true'
   main:
     lifecycle:
-      install:
-        all: echo All installed
+      install: echo All installed
     dependencies:
       - aws.greengrass.LogManager

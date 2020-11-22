@@ -15,7 +15,8 @@ public final class LogFileHelper {
     private LogFileHelper() { }
 
     public static void addDataToFile(String data, Path filePath) throws IOException {
-        try (BufferedWriter writer = Files.newBufferedWriter(filePath, StandardOpenOption.APPEND)) {
+        try (BufferedWriter writer = Files.newBufferedWriter(filePath, StandardOpenOption.APPEND,
+                StandardOpenOption.CREATE)) {
             writer.write(data + System.lineSeparator());
         }
     }

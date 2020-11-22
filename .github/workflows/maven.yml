@@ -91,7 +91,7 @@ jobs:
         with:
           java-version: 1.8
       - name: Package with Maven
-        run: mvn -ntp package
+        run: mvn -U -ntp package -DskipTests
       - run: mkdir -p target/artifacts && cp target/LogManager.jar target/artifacts/aws.greengrass.LogManager.jar
       - name: Upload to S3
         run: aws s3 cp target/LogManager.jar s3://greengrass-artifacts-releases/${{github.repository}}/${{github.ref}}/greengrass-log-manager-${{github.sha}}.jar

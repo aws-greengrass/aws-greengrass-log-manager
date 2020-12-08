@@ -21,9 +21,10 @@
     <version>1.0-SNAPSHOT</version>
     <repositories>
         <repository>
-            <id>greengrass-dev-snapshot</id>
-            <name>Nucleus Snapshot</name>
-            <url>https://d10d248laylpoq.cloudfront.net</url>
+            <id>greengrass-common</id>
+            <name>greengrass common</name>
+            <!-- CloudFront url fronting the device sdk,logging library and component common in S3-->
+            <url>https://d10d248laylpoq.cloudfront.net/</url>
         </repository>
     </repositories>
     <dependencyManagement>
@@ -93,6 +94,16 @@
         </dependency>
     </dependencies>
     <build>
+        <resources>
+            <resource>
+                <directory>${basedir}</directory>
+                <includes>
+                    <include>LICENSE</include>
+                    <include>NOTICE</include>
+                    <include>THIRD-PARTY-LICENSES</include>
+                </includes>
+            </resource>
+        </resources>
         <plugins>
             <plugin>
                 <groupId>org.codehaus.mojo</groupId>
@@ -385,6 +396,10 @@
                             <transformers>
                                 <transformer
                                         implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                                </transformer>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ApacheLicenseResourceTransformer"/>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ApacheNoticeResourceTransformer">
+                                    <addHeader>false</addHeader>
                                 </transformer>
                                 <transformer
                                         implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>

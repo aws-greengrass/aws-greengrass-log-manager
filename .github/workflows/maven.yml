@@ -80,12 +80,6 @@ jobs:
     if: github.event_name == 'push'
     steps:
       - uses: actions/checkout@v2
-      - name: Checkout Private Action
-        uses: daspn/private-actions-checkout@v2
-        with:
-          actions_list: '["aws/aws-greengrass-component-upload-action@master"]'
-          checkout_base_path: ./.github/actions
-          ssh_private_key: ${{ secrets.COMPONENT_UPLOAD_ACTION_PRIVATE_KEY }}
       - name: Set up JDK 1.8
         uses: actions/setup-java@v1
         with:
@@ -95,25 +89,3 @@ jobs:
       - run: mkdir -p target/artifacts && cp target/LogManager.jar target/artifacts/aws.greengrass.LogManager.jar
       - name: Upload to S3
         run: aws s3 cp target/LogManager.jar s3://greengrass-artifacts-releases/${{github.repository}}/${{github.ref}}/greengrass-log-manager-${{github.sha}}.jar
-      - uses: ./.github/actions/aws-greengrass-component-upload-action
-        name: Upload to GCS Gamma
-        env:
-          AWS_REGION: us-east-1
-        with:
-          recipePath: recipe.yaml
-          artifactDirectoryPath: target/artifacts
-          endpoint: https://evergreen-gamma.us-east-1.amazonaws.com
-          autoBumpVersion: true
-          publishAsPublic: true
-          additionalReplacements: '{"stage": "gamma"}'
-      - uses: ./.github/actions/aws-greengrass-component-upload-action
-        name: Upload to GCS Prod
-        env:
-          AWS_REGION: us-east-1
-        with:
-          recipePath: recipe.yaml
-          artifactDirectoryPath: target/artifacts
-          endpoint: https://evergreen.us-east-1.amazonaws.com
-          autoBumpVersion: true
-          publishAsPublic: true
-          additionalReplacements: '{"stage": "prod"}'

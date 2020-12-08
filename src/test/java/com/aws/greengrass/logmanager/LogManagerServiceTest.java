@@ -118,7 +118,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
     @BeforeAll
     static void setupBefore() throws IOException, InterruptedException {
         LogConfig.getInstance().setLevel(Level.TRACE);
-        LogConfig.getInstance().setStoreType(LogStore.FILE);
+        LogConfig.getInstance().setStore(LogStore.FILE);
         LogConfig.getInstance().setStoreDirectory(directoryPath);
         LogManager.getLogConfigurations().putIfAbsent("UserComponentA",
                 new LogConfig(LoggerConfiguration.builder().fileName("UserComponentA.log").build()));
@@ -157,7 +157,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
     @AfterAll
     static void cleanUpAfter() {
         LogConfig.getInstance().setLevel(Level.INFO);
-        LogConfig.getInstance().setStoreType(LogStore.CONSOLE);
+        LogConfig.getInstance().setStore(LogStore.CONSOLE);
         final File folder = new File(directoryPath.toUri());
         final File[] files = folder.listFiles();
         if (files != null) {

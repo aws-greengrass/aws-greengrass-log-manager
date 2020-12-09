@@ -57,6 +57,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import java.util.stream.LongStream;
 import javax.inject.Inject;
 
 import static com.aws.greengrass.componentmanager.KernelConfigResolver.CONFIGURATION_CONFIG_KEY;
@@ -618,20 +619,21 @@ public class LogManagerService extends PluginService {
                         // until the minimum bytes have been deleted.
                         for (ComponentLogConfiguration componentLogConfiguration :
                                 updatedComponentsConfiguration.values()) {
-                            long totalDirectorySize = Files.walk(componentLogConfiguration.getDirectoryPath())
-                                    .filter(p -> {
-                                        File file = p.toFile();
-                                        return file.isFile() && componentLogConfiguration.getFileNameRegex()
-                                                .matcher(file.getName()).find();
-                                    })
-                                    .mapToLong(p -> p.toFile().length())
-                                    .sum();
+                            try (LongStream fileSizes = Files.walk(componentLogConfiguration.getDirectoryPath())
+                                         .filter(p -> {
+                                             File file = p.toFile();
+                                             return file.isFile() && componentLogConfiguration.getFileNameRegex()
+                                                     .matcher(file.getName()).find();
+                                         })
+                                         .mapToLong(p -> p.toFile().length())) {
+                                long totalDirectorySize = fileSizes.sum();
 
-                            if (totalDirectorySize > componentLogConfiguration.getDiskSpaceLimit()) {
-                                long minimumBytesToBeDeleted = totalDirectorySize
-                                        - componentLogConfiguration.getDiskSpaceLimit();
-                                deleteFiles(minimumBytesToBeDeleted, componentLogConfiguration.getDirectoryPath(),
-                                        componentLogConfiguration.getFileNameRegex());
+                                if (totalDirectorySize > componentLogConfiguration.getDiskSpaceLimit()) {
+                                    long minimumBytesToBeDeleted =
+                                            totalDirectorySize - componentLogConfiguration.getDiskSpaceLimit();
+                                    deleteFiles(minimumBytesToBeDeleted, componentLogConfiguration.getDirectoryPath(),
+                                            componentLogConfiguration.getFileNameRegex());
+                                }
                             }
                         }
                     }

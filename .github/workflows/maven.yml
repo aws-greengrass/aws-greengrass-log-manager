@@ -74,18 +74,3 @@ jobs:
           show_class_names: true
           # Use a unique name for the report and comment
           report_name: Integration Tests Coverage Report
-  publish:
-    needs: build
-    runs-on: [self-hosted, Linux, greengrass]
-    if: github.event_name == 'push'
-    steps:
-      - uses: actions/checkout@v2
-      - name: Set up JDK 1.8
-        uses: actions/setup-java@v1
-        with:
-          java-version: 1.8
-      - name: Package with Maven
-        run: mvn -U -ntp package -DskipTests
-      - run: mkdir -p target/artifacts && cp target/LogManager.jar target/artifacts/aws.greengrass.LogManager.jar
-      - name: Upload to S3
-        run: aws s3 cp target/LogManager.jar s3://greengrass-artifacts-releases/${{github.repository}}/${{github.ref}}/greengrass-log-manager-${{github.sha}}.jar

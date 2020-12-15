@@ -1,7 +1,7 @@
 ## Log Manager
 
-Log Manager is a Greengrass component that manages the system as well as user component logs. 
-Lambda Manager is an optional internal Greengrass service that runs in the same JVM as the 
+The log manager component collects and optionally uploads logs from Greengrass core devices to Amazon CloudWatch Logs. 
+You can configure system logs and logs for each component. Log Manager is an optional internal Greengrass service that runs in the same JVM as the 
 [Greengrass nucleus](https://github.com/aws/aws-greengrass-nucleus).
 
 Log Manager has two major features: **Logs Uploader** and **Disk Space Management**
@@ -30,9 +30,9 @@ the threshold specified by the customer.
 ```
 Manifests:
   - Dependencies:
-      aws.greengrass.logmanager
-  - aws.greengrass.logmanager:
-      Parameters:
+      aws.greengrass.LogManager
+  - aws.greengrass.LogManager:
+      Configuration:
         logsUploaderConfiguration: 
           componentLogsConfiguration:
             - componentName: 'ComponentName'

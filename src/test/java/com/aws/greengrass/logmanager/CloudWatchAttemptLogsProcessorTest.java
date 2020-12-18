@@ -28,6 +28,7 @@ import org.junit.jupiter.api.io.TempDir;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.slf4j.event.Level;
+import software.amazon.awssdk.services.cloudwatchlogs.model.InputLogEvent;
 
 import java.io.File;
 import java.io.IOException;
@@ -37,6 +38,10 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.text.SimpleDateFormat;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
@@ -60,7 +65,7 @@ import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
 @ExtendWith({MockitoExtension.class, GGExtension.class})
-public class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
+class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
     private static final SimpleDateFormat DATE_FORMATTER = new SimpleDateFormat("yyyy/MM/dd", Locale.ENGLISH);
     @Mock
     private DeviceConfiguration mockDeviceConfiguration;
@@ -90,7 +95,7 @@ public class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
     }
 
     @Test
-    public void GIVEN_one_system_component_one_file_less_than_max_WHEN_merge_THEN_reads_entire_file()
+    void GIVEN_one_system_component_one_file_less_than_max_WHEN_merge_THEN_reads_entire_file()
             throws URISyntaxException, ServiceLoadException {
         mockDefaultGetGroups();
         File file1 = new File(getClass().getResource("testlogs2.log").toURI());
@@ -115,15 +120,23 @@ public class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
         assertTrue(attempt.getLogStreamsToLogEventsMap().containsKey(logStream));
         CloudWatchAttemptLogInformation logEventsForStream1 = attempt.getLogStreamsToLogEventsMap().get(logStream);
         assertNotNull(logEventsForStream1.getLogEvents());
-        assertEquals(7, logEventsForStream1.getLogEvents().size());
+        assertEquals(13, logEventsForStream1.getLogEvents().size());
         assertTrue(logEventsForStream1.getAttemptLogFileInformationMap().containsKey(file1.getAbsolutePath()));
         assertEquals(0, logEventsForStream1.getAttemptLogFileInformationMap().get(file1.getAbsolutePath()).getStartPosition());
-        assertEquals(13, logEventsForStream1.getAttemptLogFileInformationMap().get(file1.getAbsolutePath()).getBytesRead());
+        assertEquals(2943, logEventsForStream1.getAttemptLogFileInformationMap().get(file1.getAbsolutePath()).getBytesRead());
         assertEquals("TestComponent", logEventsForStream1.getComponentName());
+        for (InputLogEvent logEvent: logEventsForStream1.getLogEvents()) {
+            Instant logTimestamp = Instant.ofEpochMilli(logEvent.timestamp());
+            assertTrue(logTimestamp.isBefore(Instant.now()));
+            LocalDateTime localDate = LocalDateTime.ofInstant(logTimestamp, ZoneOffset.UTC);
+            assertEquals(2020, localDate.getYear());
+            assertEquals(12, localDate.getMonth().getValue());
+            assertEquals(17, localDate.getDayOfMonth());
+        }
     }
 
     @Test
-    public void GIVEN_one_user_component_one_file_less_than_max_WHEN_merge_THEN_reads_entire_file()
+    void GIVEN_one_user_component_one_file_less_than_max_WHEN_merge_THEN_reads_entire_file()
             throws URISyntaxException, ServiceLoadException {
         mockDefaultGetGroups();
         File file1 = new File(getClass().getResource("testlogs2.log").toURI());
@@ -148,15 +161,23 @@ public class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
         assertTrue(attempt.getLogStreamsToLogEventsMap().containsKey(logStream));
         CloudWatchAttemptLogInformation logEventsForStream1 = attempt.getLogStreamsToLogEventsMap().get(logStream);
         assertNotNull(logEventsForStream1.getLogEvents());
-        assertEquals(7, logEventsForStream1.getLogEvents().size());
+        assertEquals(13, logEventsForStream1.getLogEvents().size());
         assertTrue(logEventsForStream1.getAttemptLogFileInformationMap().containsKey(file1.getAbsolutePath()));
         assertEquals(0, logEventsForStream1.getAttemptLogFileInformationMap().get(file1.getAbsolutePath()).getStartPosition());
-        assertEquals(13, logEventsForStream1.getAttemptLogFileInformationMap().get(file1.getAbsolutePath()).getBytesRead());
+        assertEquals(2943, logEventsForStream1.getAttemptLogFileInformationMap().get(file1.getAbsolutePath()).getBytesRead());
         assertEquals("TestComponent", logEventsForStream1.getComponentName());
+        for (InputLogEvent logEvent: logEventsForStream1.getLogEvents()) {
+            Instant logTimestamp = Instant.ofEpochMilli(logEvent.timestamp());
+            assertTrue(logTimestamp.isBefore(Instant.now()));
+            LocalDateTime localDate = LocalDateTime.ofInstant(logTimestamp, ZoneOffset.UTC);
+            assertEquals(2020, localDate.getYear());
+            assertEquals(12, localDate.getMonth().getValue());
+            assertEquals(17, localDate.getDayOfMonth());
+        }
     }
 
     @Test
-    public void GIVEN_one_component_one_file_less_than_max_WHEN_no_group_THEN_reads_entire_file_and_sets_group_correctly()
+    void GIVEN_one_component_one_file_less_than_max_WHEN_no_group_THEN_reads_entire_file_and_sets_group_correctly()
             throws URISyntaxException, ServiceLoadException {
         when(mockKernel.locate(DeploymentService.DEPLOYMENT_SERVICE_TOPICS)).thenReturn(mockDeploymentService);
         lenient().when(mockDeploymentService.getGroupNamesForUserComponent(anyString()))
@@ -186,15 +207,23 @@ public class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
         assertTrue(attempt.getLogStreamsToLogEventsMap().containsKey(logStream));
         CloudWatchAttemptLogInformation logEventsForStream1 = attempt.getLogStreamsToLogEventsMap().get(logStream);
         assertNotNull(logEventsForStream1.getLogEvents());
-        assertEquals(7, logEventsForStream1.getLogEvents().size());
+        assertEquals(13, logEventsForStream1.getLogEvents().size());
         assertTrue(logEventsForStream1.getAttemptLogFileInformationMap().containsKey(file1.getAbsolutePath()));
         assertEquals(0, logEventsForStream1.getAttemptLogFileInformationMap().get(file1.getAbsolutePath()).getStartPosition());
-        assertEquals(13, logEventsForStream1.getAttemptLogFileInformationMap().get(file1.getAbsolutePath()).getBytesRead());
+        assertEquals(2943, logEventsForStream1.getAttemptLogFileInformationMap().get(file1.getAbsolutePath()).getBytesRead());
         assertEquals("TestComponent", logEventsForStream1.getComponentName());
+        for (InputLogEvent logEvent: logEventsForStream1.getLogEvents()) {
+            Instant logTimestamp = Instant.ofEpochMilli(logEvent.timestamp());
+            assertTrue(logTimestamp.isBefore(Instant.now()));
+            LocalDateTime localDate = LocalDateTime.ofInstant(logTimestamp, ZoneOffset.UTC);
+            assertEquals(2020, localDate.getYear());
+            assertEquals(12, localDate.getMonth().getValue());
+            assertEquals(17, localDate.getDayOfMonth());
+        }
     }
 
     @Test
-    public void GIVEN_one_component_one_file_less_than_max_WHEN_locate_throws_ServiceLoadException_THEN_reads_entire_file_and_sets_group_correctly(
+    void GIVEN_one_component_one_file_less_than_max_WHEN_locate_throws_ServiceLoadException_THEN_reads_entire_file_and_sets_group_correctly(
             ExtensionContext context1) throws URISyntaxException, ServiceLoadException {
         ignoreExceptionOfType(context1, ServiceLoadException.class);
         when(mockKernel.locate(DeploymentService.DEPLOYMENT_SERVICE_TOPICS)).thenThrow(ServiceLoadException.class);
@@ -221,17 +250,26 @@ public class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
         assertTrue(attempt.getLogStreamsToLogEventsMap().containsKey(logStream));
         CloudWatchAttemptLogInformation logEventsForStream1 = attempt.getLogStreamsToLogEventsMap().get(logStream);
         assertNotNull(logEventsForStream1.getLogEvents());
-        assertEquals(7, logEventsForStream1.getLogEvents().size());
+        assertEquals(13, logEventsForStream1.getLogEvents().size());
         assertTrue(logEventsForStream1.getAttemptLogFileInformationMap().containsKey(file1.getAbsolutePath()));
         assertEquals(0, logEventsForStream1.getAttemptLogFileInformationMap().get(file1.getAbsolutePath()).getStartPosition());
-        assertEquals(13, logEventsForStream1.getAttemptLogFileInformationMap().get(file1.getAbsolutePath()).getBytesRead());
+        assertEquals(2943, logEventsForStream1.getAttemptLogFileInformationMap().get(file1.getAbsolutePath()).getBytesRead());
         assertEquals("TestComponent", logEventsForStream1.getComponentName());
+        for (InputLogEvent logEvent: logEventsForStream1.getLogEvents()) {
+            Instant logTimestamp = Instant.ofEpochMilli(logEvent.timestamp());
+            assertTrue(logTimestamp.isBefore(Instant.now()));
+            LocalDateTime localDate = LocalDateTime.ofInstant(logTimestamp, ZoneOffset.UTC);
+            assertEquals(2020, localDate.getYear());
+            assertEquals(12, localDate.getMonth().getValue());
+            assertEquals(17, localDate.getDayOfMonth());
+        }
     }
 
     @Test
-    public void GIVEN_one_component_one_file_more_than_max_WHEN_merge_THEN_reads_partial_file()
+    void GIVEN_one_component_one_file_more_than_max_WHEN_merge_THEN_reads_partial_file(ExtensionContext context1)
             throws IOException, ServiceLoadException {
         mockDefaultGetGroups();
+        ignoreExceptionOfType(context1, DateTimeParseException.class);
         File file = new File(directoryPath.resolve("greengrass_test.log").toUri());
         assertTrue(file.createNewFile());
         assertTrue(file.setReadable(true));
@@ -275,13 +313,22 @@ public class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
             assertEquals(0, logEventsForStream1.getAttemptLogFileInformationMap().get(file.getAbsolutePath()).getStartPosition());
             assertEquals(1016766, logEventsForStream1.getAttemptLogFileInformationMap().get(file.getAbsolutePath()).getBytesRead());
             assertEquals("TestComponent", logEventsForStream1.getComponentName());
+            LocalDateTime localDateTimeNow = LocalDateTime.now();
+            for (InputLogEvent logEvent: logEventsForStream1.getLogEvents()) {
+                Instant logTimestamp = Instant.ofEpochMilli(logEvent.timestamp());
+                assertTrue(logTimestamp.isBefore(Instant.now()));
+                LocalDateTime localDate = LocalDateTime.ofInstant(logTimestamp, ZoneOffset.UTC);
+                assertEquals(localDateTimeNow.getYear(), localDate.getYear());
+                assertEquals(localDateTimeNow.getMonth().getValue(), localDate.getMonth().getValue());
+                assertEquals(localDateTimeNow.getDayOfMonth(), localDate.getDayOfMonth());
+            }
         } finally {
             assertTrue(file.delete());
         }
     }
 
     @Test
-    public void GIVEN_one_components_two_file_less_than_max_WHEN_merge_THEN_reads_and_merges_both_files()
+    void GIVEN_one_components_two_file_less_than_max_WHEN_merge_THEN_reads_and_merges_both_files()
             throws URISyntaxException, ServiceLoadException {
         mockDefaultGetGroups();
         File file1 = new File(getClass().getResource("testlogs2.log").toURI());
@@ -312,11 +359,19 @@ public class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
         CloudWatchAttemptLogInformation logEventsForStream1 = attempt.getLogStreamsToLogEventsMap().get(logStream);
         CloudWatchAttemptLogInformation logEventsForStream2 = attempt.getLogStreamsToLogEventsMap().get(logStream2);
         assertNotNull(logEventsForStream1.getLogEvents());
-        assertEquals(7, logEventsForStream1.getLogEvents().size());
+        assertEquals(13, logEventsForStream1.getLogEvents().size());
         assertTrue(logEventsForStream1.getAttemptLogFileInformationMap().containsKey(file1.getAbsolutePath()));
         assertEquals(0, logEventsForStream1.getAttemptLogFileInformationMap().get(file1.getAbsolutePath()).getStartPosition());
-        assertEquals(13, logEventsForStream1.getAttemptLogFileInformationMap().get(file1.getAbsolutePath()).getBytesRead());
+        assertEquals(2943, logEventsForStream1.getAttemptLogFileInformationMap().get(file1.getAbsolutePath()).getBytesRead());
         assertEquals("TestComponent", logEventsForStream1.getComponentName());
+        for (InputLogEvent logEvent: logEventsForStream1.getLogEvents()) {
+            Instant logTimestamp = Instant.ofEpochMilli(logEvent.timestamp());
+            assertTrue(logTimestamp.isBefore(Instant.now()));
+            LocalDateTime localDate = LocalDateTime.ofInstant(logTimestamp, ZoneOffset.UTC);
+            assertEquals(2020, localDate.getYear());
+            assertEquals(12, localDate.getMonth().getValue());
+            assertEquals(17, localDate.getDayOfMonth());
+        }
 
         assertNotNull(logEventsForStream2.getLogEvents());
         assertEquals(4, logEventsForStream2.getLogEvents().size());

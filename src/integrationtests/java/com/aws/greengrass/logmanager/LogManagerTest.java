@@ -34,6 +34,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.text.SimpleDateFormat;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -123,6 +124,7 @@ class LogManagerTest extends BaseITCase {
     void beforeEach(ExtensionContext context) {
         ignoreExceptionOfType(context, TLSAuthException.class);
         ignoreExceptionOfType(context, InterruptedException.class);
+        ignoreExceptionOfType(context, DateTimeParseException.class);
     }
 
     @AfterEach

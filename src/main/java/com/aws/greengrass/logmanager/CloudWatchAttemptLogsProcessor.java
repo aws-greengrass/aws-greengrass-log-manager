@@ -31,6 +31,9 @@ import java.io.RandomAccessFile;
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.time.Instant;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
+import java.time.temporal.TemporalAccessor;
 import java.util.Date;
 import java.util.HashSet;
 import java.util.Locale;
@@ -41,6 +44,8 @@ import java.util.StringJoiner;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import javax.inject.Inject;
 
 import static com.aws.greengrass.deployment.converter.DeploymentDocumentConverter.LOCAL_DEPLOYMENT_GROUP_NAME;
@@ -61,6 +66,7 @@ public class CloudWatchAttemptLogsProcessor {
     private final Kernel kernel;
     private final DeviceConfiguration deviceConfiguration;
     private static final Logger logger = LogManager.getLogger(CloudWatchAttemptLogsProcessor.class);
+    private static Pattern textTimestampPattern = Pattern.compile("([\\w-:.+]+)");
 
     /**
      * Constructor.
@@ -246,7 +252,22 @@ public class CloudWatchAttemptLogsProcessor {
                     key -> CloudWatchAttemptLogInformation.builder()
                             .componentName(componentName)
                             .build());
-            reachedMaxSize = addNewLogEvent(totalBytesRead, attemptLogInformation, data.toString());
+            Matcher matcher = textTimestampPattern.matcher(data);
+            Instant logTimestamp = Instant.now();
+            if (matcher.find()) {
+                String match = matcher.group(1);
+                Optional<Instant> parsedInstant = tryParseInstant(match, DateTimeFormatter.ISO_INSTANT);
+                if (parsedInstant.isPresent()) {
+                    logTimestamp = parsedInstant.get();
+                } else {
+                    parsedInstant = tryParseInstant(match, DateTimeFormatter.ISO_OFFSET_DATE_TIME);
+                    if (parsedInstant.isPresent()) {
+                        logTimestamp = parsedInstant.get();
+                    }
+                }
+            }
+            reachedMaxSize = addNewLogEvent(totalBytesRead, attemptLogInformation, data.toString(),
+                    logTimestamp.toEpochMilli());
         }
         if (!reachedMaxSize) {
             updateCloudWatchAttemptLogInformation(fileName, startPosition, currentPosition, attemptLogInformation,
@@ -314,7 +335,7 @@ public class CloudWatchAttemptLogsProcessor {
         if (currentLogLevel.toInt() < desiredLogLevel.toInt()) {
             return false;
         }
-        return addNewLogEvent(totalBytesRead, attemptLogInformation, data.toString());
+        return addNewLogEvent(totalBytesRead, attemptLogInformation, data.toString(), logMessage.getTimestamp());
     }
 
     /**
@@ -329,7 +350,7 @@ public class CloudWatchAttemptLogsProcessor {
      *     the log line data size to get the exact size of the input log events.
      */
     private boolean addNewLogEvent(AtomicInteger totalBytesRead, CloudWatchAttemptLogInformation attemptLogInformation,
-                                   String data) {
+                                   String data, long timestamp) {
         int dataSize = data.getBytes(StandardCharsets.UTF_8).length;
         // Total bytes equal the number of bytes of the data plus 8 bytes for the timestamp since its a long
         // and there is an overhead for each log event on the cloud watch side which needs to be added.
@@ -340,8 +361,18 @@ public class CloudWatchAttemptLogsProcessor {
 
         InputLogEvent inputLogEvent = InputLogEvent.builder()
                 .message(data)
-                .timestamp(Instant.now().toEpochMilli()).build();
+                .timestamp(timestamp).build();
         attemptLogInformation.getLogEvents().add(inputLogEvent);
         return false;
+    }
+
+    private Optional<Instant> tryParseInstant(String instantString, DateTimeFormatter formatter) {
+        try {
+            TemporalAccessor ta = formatter.parse(instantString);
+            return Optional.of(Instant.from(ta));
+        } catch (DateTimeParseException e) {
+            logger.atTrace().cause(e).log("Unable to parse timestamp: {}", instantString);
+            return Optional.empty();
+        }
     }
 }

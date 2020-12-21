@@ -34,6 +34,7 @@ import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Instant;
+import java.time.format.DateTimeParseException;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
@@ -65,6 +66,7 @@ class SpaceManagementTest extends BaseITCase {
         ignoreExceptionOfType(context, InterruptedException.class);
         ignoreExceptionOfType(context, TLSAuthException.class);
         ignoreExceptionOfType(context, NoSuchFileException.class);
+        ignoreExceptionOfType(context, DateTimeParseException.class);
         LogManager.getRootLogConfiguration().setLevel(Level.DEBUG);
     }
 

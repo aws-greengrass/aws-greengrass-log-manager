@@ -367,6 +367,13 @@ class LogManagerServiceTest extends GGServiceTestUtil {
 
         Topics componentTopics3 = mock(Topics.class);
         doNothing().when(componentTopics3).replaceAndWait(replaceAndWaitCaptor.capture());
+        Topics runtimeConfig = mock(Topics.class);
+        when(config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC))
+                .thenReturn(runtimeConfig);
+        when(runtimeConfig.lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION, "TestComponent2"))
+                .thenReturn(componentTopics3);
+        when(runtimeConfig.lookupTopics(PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP, "TestComponent"))
+                .thenReturn(componentTopics2);
 
         CloudWatchAttempt attempt = new CloudWatchAttempt();
         Map<String, CloudWatchAttemptLogInformation> logStreamsToLogInformationMap = new HashMap<>();
@@ -375,7 +382,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         Map<String, CloudWatchAttemptLogFileInformation> attemptLogFileInformationMap1 = new HashMap<>();
         attemptLogFileInformationMap1.put(file1.getAbsolutePath(), CloudWatchAttemptLogFileInformation.builder()
                 .startPosition(0)
-                .bytesRead(13)
+                .bytesRead(2943)
                 .lastModifiedTime(file1.lastModified())
                 .build());
         Map<String, CloudWatchAttemptLogFileInformation> attemptLogFileInformationMap2 = new HashMap<>();
@@ -398,12 +405,6 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         attempt.setLogStreamsToLogEventsMap(logStreamsToLogInformationMap);
         attempt.setLogStreamUploadedSet(new HashSet<>(Arrays.asList("testStream", "testStream2")));
         doNothing().when(mockUploader).registerAttemptStatus(anyString(), callbackCaptor.capture());
-        when(config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC)
-                .lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION, "TestComponent2"))
-                .thenReturn(componentTopics3);
-        when(config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC)
-                .lookupTopics(PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP, "TestComponent"))
-                .thenReturn(componentTopics2);
 
         logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor);
         startServiceOnAnotherThread();

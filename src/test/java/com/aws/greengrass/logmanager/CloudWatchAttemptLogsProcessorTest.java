@@ -313,7 +313,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
             assertEquals(0, logEventsForStream1.getAttemptLogFileInformationMap().get(file.getAbsolutePath()).getStartPosition());
             assertEquals(1016766, logEventsForStream1.getAttemptLogFileInformationMap().get(file.getAbsolutePath()).getBytesRead());
             assertEquals("TestComponent", logEventsForStream1.getComponentName());
-            LocalDateTime localDateTimeNow = LocalDateTime.now();
+            LocalDateTime localDateTimeNow = LocalDateTime.now(ZoneOffset.UTC);
             for (InputLogEvent logEvent: logEventsForStream1.getLogEvents()) {
                 Instant logTimestamp = Instant.ofEpochMilli(logEvent.timestamp());
                 assertTrue(logTimestamp.isBefore(Instant.now()));

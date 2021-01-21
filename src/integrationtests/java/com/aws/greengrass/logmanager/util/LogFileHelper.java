@@ -53,4 +53,17 @@ public final class LogFileHelper {
             addDataToFile(messageBytes, file.toPath());
         }
     }
+
+    public static void createFileAndWriteData(Path tempDirectoryPath, String fileName)
+            throws IOException {
+        Path filePath = tempDirectoryPath.resolve(fileName + ".log");
+        if (!Files.exists(filePath)) {
+            Files.createFile(filePath);
+        }
+        File file = filePath.toFile();
+        List<String> randomMessages = generateRandomMessages();
+        for (String messageBytes : randomMessages) {
+            addDataToFile(messageBytes, file.toPath());
+        }
+    }
 }

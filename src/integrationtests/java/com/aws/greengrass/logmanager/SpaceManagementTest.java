@@ -51,8 +51,6 @@ import static org.mockito.Mockito.lenient;
 
 @ExtendWith({GGExtension.class, MockitoExtension.class})
 class SpaceManagementTest extends BaseITCase {
-    private static final String THING_NAME = "ThingName";
-    private static final String AWS_REGION = "us-east-1";
     private static Kernel kernel;
     private static DeviceConfiguration deviceConfiguration;
     private LogManagerService logManagerService;
@@ -103,8 +101,8 @@ class SpaceManagementTest extends BaseITCase {
                 logManagerService = (LogManagerService) service;
             }
         });
-        deviceConfiguration = new DeviceConfiguration(kernel, THING_NAME, "dataEndpoint", "credEndpoint",
-                "privKeyFilePath", "certFilePath", "caFilePath", AWS_REGION, "roleAlias");
+        deviceConfiguration = new DeviceConfiguration(kernel, "ThingName", "xxxxxx-ats.iot.us-east-1.amazonaws.com", "xxxxxx.credentials.iot.us-east-1.amazonaws.com", "privKeyFilePath",
+                "certFilePath", "caFilePath", "us-east-1", "roleAliasName");
         kernel.getContext().put(DeviceConfiguration.class, deviceConfiguration);
         // set required instances from context
         kernel.launch();

@@ -109,8 +109,8 @@ class LogManagerTest extends BaseITCase {
                 logManagerService = (LogManagerService) service;
             }
         });
-        deviceConfiguration = new DeviceConfiguration(kernel, THING_NAME, "dataEndpoint", "credEndpoint",
-                "privKeyFilePath", "certFilePath", "caFilePath", AWS_REGION, "roleAlias");
+        deviceConfiguration = new DeviceConfiguration(kernel, "ThingName", "xxxxxx-ats.iot.us-east-1.amazonaws.com", "xxxxxx.credentials.iot.us-east-1.amazonaws.com", "privKeyFilePath",
+                "certFilePath", "caFilePath", "us-east-1", "roleAliasName");
 
         kernel.getContext().put(DeviceConfiguration.class, deviceConfiguration);
         // set required instances from context

@@ -27,6 +27,7 @@ the threshold specified by the customer.
 ## FAQ
 
 ## Sample Configuration
+**YAML example**
 ```
 Manifests:
   - Dependencies:
@@ -35,9 +36,9 @@ Manifests:
       Configuration:
         logsUploaderConfiguration: 
           componentLogsConfiguration:
-            - componentName: 'ComponentName'
-              logFileRegex: 'fileNameRegex'
-              logFileDirectoryPath: '/path/to/file'
+            - componentName: '<ComponentName>'
+              logFileRegex: '<ComponentName>\\w*.log'
+              logFileDirectoryPath: '/path/to/logs/directory/'
               minimumLogLevel: 'INFO'
               diskSpaceLimit: '25'
               diskSpaceLimitUnit: 'MB'
@@ -51,6 +52,32 @@ Manifests:
         
 ```
 
+**JSON example**
+```
+{
+   "logsUploaderConfiguration":{
+      "systemLogsConfiguration":{
+         "uploadToCloudWatch":true,
+         "minimumLogLevel":"INFO",
+         "diskSpaceLimit":25,
+         "diskSpaceLimitUnit":"MB",
+         "deleteLogFileAfterCloudUpload":true
+      },
+      "componentLogsConfiguration":[
+         {
+            "componentName":"<ComponentName>",
+            "minimumLogLevel":"INFO",
+            "logFileDirectoryPath":"/path/to/logs/directory/",
+            "logFileRegex":"<ComponentName>\\w*.log",
+            "diskSpaceLimit":25,
+            "diskSpaceLimitUnit":"MB",
+            "deleteLogFileAfterCloudUpload":true
+         }
+      ]
+   },
+   "periodicUploadIntervalSec":600
+}
+```
 ## Security
 
 See [CONTRIBUTING](CONTRIBUTING.md#security-issue-notifications) for more information.

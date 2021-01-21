@@ -231,6 +231,13 @@ public class LogManagerService extends PluginService {
             }
 
         });
+        if (fileNameRegex.get() == null) {
+            LogManager.getLogConfigurations().computeIfPresent(componentLogConfiguration.getName(), (s, logConfig) -> {
+                fileNameRegex.set(Pattern.compile(String.format(DEFAULT_FILE_REGEX,
+                        logConfig.getFileName())));
+                return logConfig;
+            });
+        }
         componentLogConfiguration.setFileNameRegex(fileNameRegex.get());
         if (directoryPath.get() == null) {
             LogManager.getLogConfigurations().computeIfPresent(componentLogConfiguration.getName(), (s, logConfig) -> {

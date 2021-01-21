@@ -11,6 +11,9 @@ import com.aws.greengrass.deployment.exceptions.DeviceConfigurationException;
 import com.aws.greengrass.integrationtests.BaseITCase;
 import com.aws.greengrass.lifecyclemanager.Kernel;
 import com.aws.greengrass.logging.impl.LogManager;
+import com.aws.greengrass.logging.impl.config.LogConfig;
+import com.aws.greengrass.logging.impl.config.LogStore;
+import com.aws.greengrass.logging.impl.config.model.LoggerConfiguration;
 import com.aws.greengrass.testcommons.testutilities.GGExtension;
 import com.aws.greengrass.util.exceptions.TLSAuthException;
 import org.junit.jupiter.api.AfterEach;
@@ -22,6 +25,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.slf4j.event.Level;
 import software.amazon.awssdk.services.cloudwatchlogs.CloudWatchLogsClient;
 import software.amazon.awssdk.services.cloudwatchlogs.model.PutLogEventsRequest;
 import software.amazon.awssdk.services.cloudwatchlogs.model.PutLogEventsResponse;
@@ -47,6 +51,7 @@ import java.util.regex.Pattern;
 import static com.aws.greengrass.deployment.converter.DeploymentDocumentConverter.LOCAL_DEPLOYMENT_GROUP_NAME;
 import static com.aws.greengrass.logmanager.CloudWatchAttemptLogsProcessor.DEFAULT_LOG_STREAM_NAME;
 import static com.aws.greengrass.logmanager.LogManagerService.DEFAULT_FILE_REGEX;
+import static com.aws.greengrass.logmanager.util.LogFileHelper.createFileAndWriteData;
 import static com.aws.greengrass.logmanager.util.LogFileHelper.createTempFileAndWriteData;
 import static com.aws.greengrass.testcommons.testutilities.ExceptionLogProtector.ignoreExceptionOfType;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -159,6 +164,51 @@ class LogManagerTest extends BaseITCase {
         }
         File folder = tempDirectoryPath.toFile();
         Pattern logFileNamePattern = Pattern.compile("^integTestRandomLogFiles.log\\w*");
+        List<File> allFiles = new ArrayList<>();
+        File[] files = folder.listFiles();
+        if (files != null) {
+            for (File file : files) {
+                if (file.isFile()
+                        && logFileNamePattern.matcher(file.getName()).find()
+                        && file.length() > 0) {
+                    allFiles.add(file);
+                }
+            }
+        }
+        assertEquals(1, allFiles.size());
+    }
+
+    @Test
+    void GIVEN_user_component_config_with_small_periodic_interval_and_only_required_config_WHEN_interval_elapses_THEN_logs_are_uploaded_to_cloud()
+            throws Exception {
+        tempDirectoryPath = Files.createDirectory(tempRootDir.resolve("logs"));
+        LogConfig.getInstance().setLevel(Level.TRACE);
+        LogConfig.getInstance().setStore(LogStore.FILE);
+        LogManager.getLogConfigurations().putIfAbsent("UserComponentB",
+                new LogConfig(LoggerConfiguration.builder().fileName("UserComponentB.log").build()));
+
+        for (int i = 0; i < 5; i++) {
+            createFileAndWriteData(tempDirectoryPath, "UserComponentB_" + i);
+        }
+        createFileAndWriteData(tempDirectoryPath, "UserComponentB");
+
+        setupKernel(tempDirectoryPath, "smallPeriodicIntervalOnlyReqUserComponentConfig.yaml");
+        TimeUnit.SECONDS.sleep(30);
+        verify(cloudWatchLogsClient, atLeastOnce()).putLogEvents(captor.capture());
+
+        List<PutLogEventsRequest> putLogEventsRequests = captor.getAllValues();
+        assertEquals(1, putLogEventsRequests.size());
+        for (PutLogEventsRequest request : putLogEventsRequests) {
+            assertEquals(calculateLogStreamName(THING_NAME, LOCAL_DEPLOYMENT_GROUP_NAME), request.logStreamName());
+            assertEquals("/aws/greengrass/UserComponent/" + AWS_REGION + "/UserComponentB",
+                    request.logGroupName());
+            assertNotNull(request.logEvents());
+            assertEquals(50, request.logEvents().size());
+            assertEquals(51200, request.logEvents().stream().mapToLong(value -> value.message().length())
+                    .sum());
+        }
+        File folder = tempDirectoryPath.toFile();
+        Pattern logFileNamePattern = Pattern.compile("^UserComponentB\\w*.log");
         List<File> allFiles = new ArrayList<>();
         File[] files = folder.listFiles();
         if (files != null) {

@@ -137,9 +137,11 @@ public class LogManagerService extends PluginService {
             }
             processConfiguration(configTopicsPojo);
         });
+        // Process initial configuration
+        processConfiguration(configTopics.toPOJO());
     }
 
-    private void processConfiguration(Map<String, Object> configTopicsPojo) {
+    private synchronized void processConfiguration(Map<String, Object> configTopicsPojo) {
         Map<String, ComponentLogConfiguration> newComponentLogConfigurations = new ConcurrentHashMap<>();
         configTopicsPojo.computeIfPresent(COMPONENT_LOGS_CONFIG_TOPIC_NAME, (s, o) -> {
             if (o instanceof ArrayList) {

@@ -10,6 +10,7 @@ import com.aws.greengrass.deployment.DeviceConfiguration;
 import com.aws.greengrass.deployment.exceptions.DeviceConfigurationException;
 import com.aws.greengrass.integrationtests.BaseITCase;
 import com.aws.greengrass.lifecyclemanager.Kernel;
+import com.aws.greengrass.logging.impl.GreengrassLogMessage;
 import com.aws.greengrass.logging.impl.LogManager;
 import com.aws.greengrass.testcommons.testutilities.GGExtension;
 import com.aws.greengrass.util.exceptions.TLSAuthException;
@@ -40,10 +41,12 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 import java.util.regex.Pattern;
 
 import static com.aws.greengrass.logmanager.util.LogFileHelper.createTempFileAndWriteData;
 import static com.aws.greengrass.testcommons.testutilities.ExceptionLogProtector.ignoreExceptionOfType;
+import static com.aws.greengrass.testcommons.testutilities.TestUtils.createCloseableLogListener;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -75,8 +78,8 @@ class SpaceManagementTest extends BaseITCase {
     }
 
 
-    void setupKernel(Path storeDirectory) throws InterruptedException,
-            URISyntaxException, IOException, DeviceConfigurationException {
+    void setupKernel(Path storeDirectory)
+            throws InterruptedException, URISyntaxException, IOException, DeviceConfigurationException {
         lenient().when(cloudWatchLogsClient.putLogEvents(any(PutLogEventsRequest.class)))
                 .thenReturn(PutLogEventsResponse.builder().nextSequenceToken("nextToken").build());
         System.setProperty("root", tempRootDir.toAbsolutePath().toString());
@@ -87,8 +90,7 @@ class SpaceManagementTest extends BaseITCase {
         Path testRecipePath = Paths.get(LogManagerTest.class
                 .getResource("smallSpaceManagementPeriodicIntervalConfig.yaml").toURI());
         String content = new String(Files.readAllBytes(testRecipePath), StandardCharsets.UTF_8);
-        content = content.replaceAll("\\{\\{logFileDirectoryPath}}",
-                storeDirectory.toAbsolutePath().toString());
+        content = content.replaceAll("\\{\\{logFileDirectoryPath}}", storeDirectory.toAbsolutePath().toString());
 
         Path tempConfigPath = Files.createTempDirectory(tempRootDir, "config").resolve("smallSpaceManagementPeriodicIntervalConfig.yaml");
         Files.write(tempConfigPath, content.getBytes(StandardCharsets.UTF_8));
@@ -101,8 +103,9 @@ class SpaceManagementTest extends BaseITCase {
                 logManagerService = (LogManagerService) service;
             }
         });
-        deviceConfiguration = new DeviceConfiguration(kernel, "ThingName", "xxxxxx-ats.iot.us-east-1.amazonaws.com", "xxxxxx.credentials.iot.us-east-1.amazonaws.com", "privKeyFilePath",
-                "certFilePath", "caFilePath", "us-east-1", "roleAliasName");
+        deviceConfiguration = new DeviceConfiguration(kernel, "ThingName", "xxxxxx-ats.iot.us-east-1.amazonaws.com",
+                "xxxxxx.credentials.iot.us-east-1.amazonaws.com", "privKeyFilePath", "certFilePath", "caFilePath",
+                "us-east-1", "roleAliasName");
         kernel.getContext().put(DeviceConfiguration.class, deviceConfiguration);
         // set required instances from context
         kernel.launch();
@@ -116,14 +119,23 @@ class SpaceManagementTest extends BaseITCase {
     void GIVEN_user_component_config_with_space_management_WHEN_space_exceeds_THEN_excess_log_files_are_deleted()
             throws Exception {
         tempDirectoryPath = Files.createDirectory(tempRootDir.resolve("IntegrationTestsTemporaryLogFiles"));
-        createTempFileAndWriteData(tempDirectoryPath, "integTestRandomLogFiles.log_",  "");
+        createTempFileAndWriteData(tempDirectoryPath, "integTestRandomLogFiles.log_", "");
 
         setupKernel(tempDirectoryPath);
         TimeUnit.SECONDS.sleep(10);
-        for (int i = 0; i < 14; i++) {
-            createTempFileAndWriteData(tempDirectoryPath, "integTestRandomLogFiles.log_",  "");
+
+        CountDownLatch cdl = new CountDownLatch(5);
+        Consumer<GreengrassLogMessage> listener = (m) -> {
+            if (m.getMessage().contains("Successfully deleted file with name")) {
+                cdl.countDown();
+            }
+        };
+        try (AutoCloseable l = createCloseableLogListener(listener)) {
+            for (int i = 0; i < 14; i++) {
+                createTempFileAndWriteData(tempDirectoryPath, "integTestRandomLogFiles.log_", "");
+            }
+            cdl.await(60, TimeUnit.SECONDS);
         }
-        TimeUnit.SECONDS.sleep(30);
 
         File folder = tempDirectoryPath.toFile();
         Pattern logFileNamePattern = Pattern.compile("^integTestRandomLogFiles.log\\w*");

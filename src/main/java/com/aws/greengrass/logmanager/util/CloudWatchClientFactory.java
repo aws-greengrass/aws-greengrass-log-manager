@@ -8,6 +8,7 @@ package com.aws.greengrass.logmanager.util;
 import com.aws.greengrass.deployment.DeviceConfiguration;
 import com.aws.greengrass.tes.LazyCredentialProvider;
 import com.aws.greengrass.util.Coerce;
+import com.aws.greengrass.util.ProxyUtils;
 import lombok.Getter;
 import software.amazon.awssdk.core.client.config.ClientOverrideConfiguration;
 import software.amazon.awssdk.core.retry.RetryPolicy;
@@ -53,6 +54,7 @@ public class CloudWatchClientFactory {
         Region region = Region.of(Coerce.toString(deviceConfiguration.getAWSRegion()));
 
         this.cloudWatchLogsClient = CloudWatchLogsClient.builder().credentialsProvider(credentialsProvider)
+                .httpClient(ProxyUtils.getSdkHttpClient())
                 .overrideConfiguration(ClientOverrideConfiguration.builder().retryPolicy(retryPolicy).build())
                 .region(region).build();
     }

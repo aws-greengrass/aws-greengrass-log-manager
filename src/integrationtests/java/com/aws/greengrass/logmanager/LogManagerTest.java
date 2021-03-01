@@ -9,6 +9,7 @@ import com.aws.greengrass.dependency.State;
 import com.aws.greengrass.deployment.DeviceConfiguration;
 import com.aws.greengrass.deployment.exceptions.DeviceConfigurationException;
 import com.aws.greengrass.integrationtests.BaseITCase;
+import com.aws.greengrass.integrationtests.util.ConfigPlatformResolver;
 import com.aws.greengrass.lifecyclemanager.Kernel;
 import com.aws.greengrass.logging.impl.LogManager;
 import com.aws.greengrass.logging.impl.config.LogConfig;
@@ -16,6 +17,8 @@ import com.aws.greengrass.logging.impl.config.LogStore;
 import com.aws.greengrass.logging.impl.config.model.LoggerConfiguration;
 import com.aws.greengrass.testcommons.testutilities.GGExtension;
 import com.aws.greengrass.util.exceptions.TLSAuthException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -35,6 +38,7 @@ import java.io.IOException;
 import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.text.SimpleDateFormat;
@@ -43,6 +47,7 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -71,6 +76,7 @@ class LogManagerTest extends BaseITCase {
     private static DeviceConfiguration deviceConfiguration;
     private LogManagerService logManagerService;
     private Path tempDirectoryPath;
+    private final static ObjectMapper YAML_OBJECT_MAPPER = new ObjectMapper(new YAMLFactory());
 
     @Mock
     private CloudWatchLogsClient cloudWatchLogsClient;
@@ -103,10 +109,10 @@ class LogManagerTest extends BaseITCase {
         content = content.replaceAll("\\{\\{logFileDirectoryPath}}",
                 storeDirectory.toAbsolutePath().toString());
 
-        Path tempConfigPath = Files.createTempDirectory(tempRootDir, "config").resolve("smallPeriodicIntervalConfig.yaml");
-        Files.write(tempConfigPath, content.getBytes(StandardCharsets.UTF_8));
+        Map<String, Object> objectMap = YAML_OBJECT_MAPPER.readValue(content, Map.class);
+        kernel.parseArgs();
+        kernel.getConfig().mergeMap(System.currentTimeMillis(), ConfigPlatformResolver.resolvePlatformMap(objectMap));
 
-        kernel.parseArgs("-i", tempConfigPath.toAbsolutePath().toString());
         kernel.getContext().addGlobalStateChangeListener((service, oldState, newState) -> {
             if (service.getName().equals(LogManagerService.LOGS_UPLOADER_SERVICE_TOPICS)
                     && newState.equals(State.RUNNING)) {
@@ -224,8 +230,9 @@ class LogManagerTest extends BaseITCase {
     }
 
     @Test
-    void GIVEN_system_config_with_small_periodic_interval_WHEN_interval_elapses_THEN_logs_are_uploaded_to_cloud()
-            throws Exception {
+    void GIVEN_system_config_with_small_periodic_interval_WHEN_interval_elapses_THEN_logs_are_uploaded_to_cloud(
+            ExtensionContext ec) throws Exception {
+        ignoreExceptionOfType(ec, NoSuchFileException.class);
         LogManager.getRootLogConfiguration().setStoreDirectory(tempRootDir);
         tempDirectoryPath = LogManager.getRootLogConfiguration().getStoreDirectory().resolve("logs");
         String fileName = LogManager.getRootLogConfiguration().getFileName();

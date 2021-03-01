@@ -54,7 +54,6 @@ import static com.aws.greengrass.deployment.DeviceConfiguration.DEVICE_PARAM_AWS
 import static com.aws.greengrass.deployment.DeviceConfiguration.DEVICE_PARAM_THING_NAME;
 import static com.aws.greengrass.deployment.converter.DeploymentDocumentConverter.LOCAL_DEPLOYMENT_GROUP_NAME;
 import static com.aws.greengrass.logmanager.CloudWatchAttemptLogsProcessor.DEFAULT_LOG_GROUP_NAME;
-import static com.aws.greengrass.logmanager.CloudWatchAttemptLogsProcessor.DEFAULT_LOG_STREAM_NAME;
 import static com.aws.greengrass.testcommons.testutilities.ExceptionLogProtector.ignoreExceptionOfType;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -95,8 +94,9 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
     }
 
     @Test
-    void GIVEN_one_system_component_one_file_less_than_max_WHEN_merge_THEN_reads_entire_file()
+    void GIVEN_one_system_component_one_file_less_than_max_WHEN_merge_THEN_reads_entire_file(ExtensionContext ec)
             throws URISyntaxException, ServiceLoadException {
+        ignoreExceptionOfType(ec, DateTimeParseException.class);
         mockDefaultGetGroups();
         File file1 = new File(getClass().getResource("testlogs2.log").toURI());
         List<LogFileInformation> logFileInformationSet = new ArrayList<>();
@@ -136,8 +136,9 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
     }
 
     @Test
-    void GIVEN_one_user_component_one_file_less_than_max_WHEN_merge_THEN_reads_entire_file()
+    void GIVEN_one_user_component_one_file_less_than_max_WHEN_merge_THEN_reads_entire_file(ExtensionContext ec)
             throws URISyntaxException, ServiceLoadException {
+        ignoreExceptionOfType(ec, DateTimeParseException.class);
         mockDefaultGetGroups();
         File file1 = new File(getClass().getResource("testlogs2.log").toURI());
         List<LogFileInformation> logFileInformationSet = new ArrayList<>();
@@ -177,8 +178,9 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
     }
 
     @Test
-    void GIVEN_one_component_one_file_less_than_max_WHEN_no_group_THEN_reads_entire_file_and_sets_group_correctly()
-            throws URISyntaxException, ServiceLoadException {
+    void GIVEN_one_component_one_file_less_than_max_WHEN_no_group_THEN_reads_entire_file_and_sets_group_correctly(
+            ExtensionContext ec) throws URISyntaxException, ServiceLoadException {
+        ignoreExceptionOfType(ec, DateTimeParseException.class);
         when(mockKernel.locate(DeploymentService.DEPLOYMENT_SERVICE_TOPICS)).thenReturn(mockDeploymentService);
         lenient().when(mockDeploymentService.getGroupNamesForUserComponent(anyString()))
                 .thenReturn(new HashSet<>(Collections.emptyList()));
@@ -226,6 +228,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
     void GIVEN_one_component_one_file_less_than_max_WHEN_locate_throws_ServiceLoadException_THEN_reads_entire_file_and_sets_group_correctly(
             ExtensionContext context1) throws URISyntaxException, ServiceLoadException {
         ignoreExceptionOfType(context1, ServiceLoadException.class);
+        ignoreExceptionOfType(context1, DateTimeParseException.class);
         when(mockKernel.locate(DeploymentService.DEPLOYMENT_SERVICE_TOPICS)).thenThrow(ServiceLoadException.class);
 
         File file1 = new File(getClass().getResource("testlogs2.log").toURI());
@@ -328,8 +331,9 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
     }
 
     @Test
-    void GIVEN_one_components_two_file_less_than_max_WHEN_merge_THEN_reads_and_merges_both_files()
+    void GIVEN_one_components_two_file_less_than_max_WHEN_merge_THEN_reads_and_merges_both_files(ExtensionContext ec)
             throws URISyntaxException, ServiceLoadException {
+        ignoreExceptionOfType(ec, DateTimeParseException.class);
         mockDefaultGetGroups();
         File file1 = new File(getClass().getResource("testlogs2.log").toURI());
         File file2 = new File(getClass().getResource("testlogs1.log").toURI());
@@ -390,7 +394,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
 
     private String calculateLogStreamName(String thingName, String group) {
         synchronized (DATE_FORMATTER) {
-            return DEFAULT_LOG_STREAM_NAME
+            return CloudWatchAttemptLogsProcessor.DEFAULT_LOG_STREAM_NAME
                     .replace("{thingName}", thingName)
                     .replace("{ggFleetId}", group)
                     .replace("{date}", DATE_FORMATTER.format(new Date()));

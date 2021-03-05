@@ -656,7 +656,7 @@ public class LogManagerService extends PluginService {
                 scheduleSpaceManagementThread();
             }
         } catch (InterruptedException e) {
-            logger.atError().cause(e).log("Log Space management interrupted. Returning.");
+            logger.atError().log("Log Space management interrupted. Returning.");
             Thread.currentThread().interrupt();
         }
     }

@@ -143,7 +143,7 @@ public class CloudWatchLogsUploader {
             return true;
         } catch (ResourceNotFoundException e) {
             // Handle no log group/log stream
-            logger.atInfo().cause(e).log("Unable to find log group- {} or log stream - {}. Creating them now.",
+            logger.atInfo().log("Unable to find log group- {} or log stream - {}. Creating them now.",
                     logGroupName, logStreamName);
             createNewLogGroup(logGroupName);
             createNewLogSteam(logGroupName, logStreamName);

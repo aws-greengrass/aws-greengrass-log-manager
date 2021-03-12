@@ -11,6 +11,7 @@ import com.aws.greengrass.config.Topics;
 import com.aws.greengrass.dependency.ImplementsService;
 import com.aws.greengrass.lifecyclemanager.PluginService;
 import com.aws.greengrass.logging.impl.LogManager;
+import com.aws.greengrass.logging.impl.config.LogConfig;
 import com.aws.greengrass.logmanager.model.CloudWatchAttempt;
 import com.aws.greengrass.logmanager.model.CloudWatchAttemptLogFileInformation;
 import com.aws.greengrass.logmanager.model.CloudWatchAttemptLogInformation;
@@ -139,7 +140,7 @@ public class LogManagerService extends PluginService {
         });
     }
 
-    private void processConfiguration(Map<String, Object> configTopicsPojo) {
+    private synchronized void processConfiguration(Map<String, Object> configTopicsPojo) {
         Map<String, ComponentLogConfiguration> newComponentLogConfigurations = new ConcurrentHashMap<>();
         configTopicsPojo.computeIfPresent(COMPONENT_LOGS_CONFIG_TOPIC_NAME, (s, o) -> {
             if (o instanceof ArrayList) {
@@ -153,6 +154,7 @@ public class LogManagerService extends PluginService {
             return o;
         });
         configTopicsPojo.computeIfPresent(SYSTEM_LOGS_CONFIG_TOPIC_NAME, (s, o) -> {
+            logger.atInfo().log("Process LogManager configuration for Greengrass system logs");
             Map<String, Object> systemConfigMap = (Map) o;
             AtomicBoolean isUploadToCloudWatch = new AtomicBoolean(false);
             systemConfigMap.computeIfPresent(UPLOAD_TO_CW_CONFIG_TOPIC_NAME, (s1, o1) -> {
@@ -178,6 +180,7 @@ public class LogManagerService extends PluginService {
         });
 
         this.componentLogConfigurations = newComponentLogConfigurations;
+        logger.atInfo().log("Finished processing LogManager configuration");
 
         scheduleSpaceManagementThread();
     }
@@ -190,11 +193,14 @@ public class LogManagerService extends PluginService {
                 .componentType(ComponentType.UserComponent)
                 .build();
         setUserComponentConfiguration(componentConfigMap, componentLogConfiguration);
+        logger.atInfo().kv("componentName", componentLogConfiguration.getName())
+                .log("Process LogManager configuration for Greengrass user component");
         setCommonComponentConfiguration(componentConfigMap, componentLogConfiguration);
         newComponentLogConfigurations.put(componentLogConfiguration.getName(), componentLogConfiguration);
         loadStateFromConfiguration(componentLogConfiguration.getName());
     }
 
+    @SuppressWarnings("PMD.ConfusingTernary")
     private void setUserComponentConfiguration(Map<String, Object> componentConfigMap,
                                                ComponentLogConfiguration componentLogConfiguration) {
         AtomicReference<Pattern> fileNameRegex = new AtomicReference<>();
@@ -231,21 +237,31 @@ public class LogManagerService extends PluginService {
             }
 
         });
-        if (fileNameRegex.get() == null) {
-            LogManager.getLogConfigurations().computeIfPresent(componentLogConfiguration.getName(), (s, logConfig) -> {
-                fileNameRegex.set(Pattern.compile(String.format(DEFAULT_FILE_REGEX,
-                        logConfig.getFileName())));
-                return logConfig;
-            });
+        LogConfig logConfig = null;
+        if (LogManager.getLogConfigurations().containsKey(componentLogConfiguration.getName())) {
+            logConfig = LogManager.getLogConfigurations().get(componentLogConfiguration.getName());
         }
-        componentLogConfiguration.setFileNameRegex(fileNameRegex.get());
-        if (directoryPath.get() == null) {
-            LogManager.getLogConfigurations().computeIfPresent(componentLogConfiguration.getName(), (s, logConfig) -> {
-                componentLogConfiguration.setDirectoryPath(logConfig.getStoreDirectory());
-                return logConfig;
-            });
+
+        if (fileNameRegex.get() != null) {
+            componentLogConfiguration.setFileNameRegex(fileNameRegex.get());
+        } else if (logConfig != null) {
+            // If details missing in log manager configuration, get component log file name from its logger config
+            componentLogConfiguration.setFileNameRegex(Pattern.compile(String.format(DEFAULT_FILE_REGEX,
+                    logConfig.getFileName())));
         } else {
+            // If logger config is missing, default to <componentName>_*.log
+            componentLogConfiguration.setFileNameRegex(Pattern.compile(String.format(DEFAULT_FILE_REGEX,
+                    componentLogConfiguration.getName())));
+        }
+
+        if (directoryPath.get() != null) {
             componentLogConfiguration.setDirectoryPath(directoryPath.get());
+        } else if (logConfig != null) {
+            // If details missing in log manager configuration, get component log directory from its logger config
+            componentLogConfiguration.setDirectoryPath(logConfig.getStoreDirectory());
+        } else {
+            // If log config is missing, default to root log directory
+            componentLogConfiguration.setDirectoryPath(LogManager.getRootLogConfiguration().getStoreDirectory());
         }
 
     }
@@ -282,6 +298,7 @@ public class LogManagerService extends PluginService {
             }
             spaceManagementThread = this.executorService.submit(() -> {
                 try {
+                    logger.atInfo().log("Starting space management thread");
                     startWatchServiceOnLogFilePaths();
                 } catch (IOException e) {
                     //TODO: fail the deployment?
@@ -481,8 +498,7 @@ public class LogManagerService extends PluginService {
                     new AtomicReference<>(Optional.empty());
             // Get the latest known configurations because the componentLogConfigurations can change if a new
             // configuration is received from the customer.
-            final Map<String, ComponentLogConfiguration> currentComponentLogConfigurations = componentLogConfigurations;
-            for (ComponentLogConfiguration componentLogConfiguration : currentComponentLogConfigurations.values()) {
+            for (ComponentLogConfiguration componentLogConfiguration : componentLogConfigurations.values()) {
                 if (componentLogFileInformation.get().isPresent()) {
                     break;
                 }
@@ -584,6 +600,7 @@ public class LogManagerService extends PluginService {
                         try {
                             path.register(watchService, StandardWatchEventKinds.ENTRY_CREATE,
                                     StandardWatchEventKinds.ENTRY_MODIFY);
+                            logger.atDebug().kv("filePath", path).log("Start watching file for log space management.");
                         } catch (IOException e) {
                             logger.atError().cause(e).log("Unable to watch {} for log space management.",
                                     path);

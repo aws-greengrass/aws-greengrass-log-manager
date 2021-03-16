@@ -52,14 +52,20 @@ import static com.aws.greengrass.deployment.converter.DeploymentDocumentConverte
 
 public class CloudWatchAttemptLogsProcessor {
     public static final String DEFAULT_LOG_GROUP_NAME = "/aws/greengrass/{componentType}/{region}/{componentName}";
+    // Log stream names can be 1-512 chars long, thing name 1-128 chars, thing group name 1-128 chars.
+    // Constant lengths are date of 10 characters and divider "/" of 3 characters. In conclusion,
+    // {ggFleetId} should be long enough to capture at least two deployment groups associated with a component
+    // Example format: /2020/12/15/thing/thing-name/thinggroup/group1/thinggroup/group2/thing-name
     public static final String DEFAULT_LOG_STREAM_NAME = "/{date}/{ggFleetId}/{thingName}";
+    private static final int LOG_STREAM_DATE_DIVIDER_LENGTH = 13;
+    static final int MAX_LOG_STREAM_NAME_LENGTH = 512;
+
     // https://docs.aws.amazon.com/AmazonCloudWatchLogs/latest/APIReference/API_PutLogEvents.html
     // The maximum batch size is 1,048,576 bytes. This size is calculated as the sum of all event messages in UTF-8,
     // plus 26 bytes for each log event which is defined in the API definition.
     private static final int EVENT_STORAGE_OVERHEAD = 26;
     private static final int TIMESTAMP_BYTES = 8;
     private static final int MAX_BATCH_SIZE = 1024 * 1024;
-    private static final int MAX_LOG_STREAM_NAME = 512;
     private static final ObjectMapper DESERIALIZER = new ObjectMapper()
             .configure(MapperFeature.ACCEPT_CASE_INSENSITIVE_PROPERTIES, true);
     private final SimpleDateFormat dateFormatter = new SimpleDateFormat("yyyy/MM/dd", Locale.ENGLISH);
@@ -78,6 +84,28 @@ public class CloudWatchAttemptLogsProcessor {
     public CloudWatchAttemptLogsProcessor(DeviceConfiguration deviceConfiguration, Kernel kernel) {
         this.kernel = kernel;
         this.deviceConfiguration = deviceConfiguration;
+    }
+
+    String getLogStreamName(String thingName, Set<String> groups) {
+        String logStreamName = DEFAULT_LOG_STREAM_NAME.replace("{thingName}", thingName);
+
+        int maxFleetIdLength = MAX_LOG_STREAM_NAME_LENGTH - LOG_STREAM_DATE_DIVIDER_LENGTH - thingName.length();
+        if (groups.isEmpty()) {
+            // LOCAL_DEPLOYMENT_GROUP_NAME length is a constant, so definitely smaller than maxFleetIdLength
+            logStreamName = logStreamName.replace("{ggFleetId}", LOCAL_DEPLOYMENT_GROUP_NAME);
+        } else {
+            StringJoiner fleetIds = new StringJoiner("/");
+            groups.forEach(groupName -> {
+                // After appending the groupname and a delimiter, the length should be <= maxFleetIdLength
+                if (fleetIds.length() + groupName.length() < maxFleetIdLength) {
+                    fleetIds.add(groupName);
+                }
+            });
+            logStreamName = logStreamName.replace("{ggFleetId}", fleetIds.toString());
+        }
+        // Thing name and thinggroup name can be [a-zA-Z0-9:_-]+
+        // while log stream name has to be [^:*]*
+        return logStreamName.replace(":", "+");
     }
 
     /**
@@ -101,18 +129,7 @@ public class CloudWatchAttemptLogsProcessor {
         attempt.setLogGroupName(logGroupName);
         Set<String> groups = getGroupsForComponent(componentLogFileInformation.getName(),
                 componentLogFileInformation.getComponentType());
-        String logStreamName = DEFAULT_LOG_STREAM_NAME.replace("{thingName}", thingName);
-        if (groups.isEmpty()) {
-            logStreamName = logStreamName.replace("{ggFleetId}", LOCAL_DEPLOYMENT_GROUP_NAME);
-        } else {
-            StringJoiner stringJoiner = new StringJoiner(":");
-            groups.forEach(groupName -> {
-                if (stringJoiner.length() + groupName.length() <= MAX_LOG_STREAM_NAME) {
-                    stringJoiner.add(groupName);
-                }
-            });
-            logStreamName = logStreamName.replace("{ggFleetId}", stringJoiner.toString());
-        }
+        String logStreamName = getLogStreamName(thingName, groups);
 
         // Run the loop until all the log files from the component have been read or the max message
         // size has been reached.

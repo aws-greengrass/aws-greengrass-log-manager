@@ -18,6 +18,7 @@ import com.aws.greengrass.logmanager.model.LogFileInformation;
 import com.aws.greengrass.testcommons.testutilities.GGExtension;
 import com.aws.greengrass.testcommons.testutilities.GGServiceTestUtil;
 import org.apache.commons.lang3.RandomStringUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.hamcrest.collection.IsEmptyCollection;
 import org.hamcrest.core.IsNot;
 import org.junit.jupiter.api.BeforeEach;
@@ -48,12 +49,14 @@ import java.util.Date;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 import static com.aws.greengrass.deployment.DeviceConfiguration.DEVICE_PARAM_AWS_REGION;
 import static com.aws.greengrass.deployment.DeviceConfiguration.DEVICE_PARAM_THING_NAME;
 import static com.aws.greengrass.deployment.converter.DeploymentDocumentConverter.LOCAL_DEPLOYMENT_GROUP_NAME;
 import static com.aws.greengrass.logmanager.CloudWatchAttemptLogsProcessor.DEFAULT_LOG_GROUP_NAME;
+import static com.aws.greengrass.logmanager.CloudWatchAttemptLogsProcessor.MAX_LOG_STREAM_NAME_LENGTH;
 import static com.aws.greengrass.testcommons.testutilities.ExceptionLogProtector.ignoreExceptionOfType;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -81,8 +84,8 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
     public void startup() {
         Topic thingNameTopic = Topic.of(context, DEVICE_PARAM_THING_NAME, "testThing");
         Topic regionTopic = Topic.of(context, DEVICE_PARAM_AWS_REGION, "testRegion");
-        when(mockDeviceConfiguration.getThingName()).thenReturn(thingNameTopic);
-        when(mockDeviceConfiguration.getAWSRegion()).thenReturn(regionTopic);
+        lenient().when(mockDeviceConfiguration.getThingName()).thenReturn(thingNameTopic);
+        lenient().when(mockDeviceConfiguration.getAWSRegion()).thenReturn(regionTopic);
     }
 
     private void mockDefaultGetGroups() throws ServiceLoadException {
@@ -383,6 +386,43 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
         assertEquals(0, logEventsForStream2.getAttemptLogFileInformationMap().get(file2.getAbsolutePath()).getStartPosition());
         assertEquals(1239, logEventsForStream2.getAttemptLogFileInformationMap().get(file2.getAbsolutePath()).getBytesRead());
         assertEquals("TestComponent", logEventsForStream2.getComponentName());
+    }
+
+    @Test
+    void GIVEN_componentsToGroups_WHEN_getLogStreamName_THEN_return_valid_log_stream_name() {
+        logsProcessor = new CloudWatchAttemptLogsProcessor(mockDeviceConfiguration, mockKernel);
+        Set<String> groups = new HashSet<>();
+        String groupName1 = "thing/" + StringUtils.repeat("a", 128);
+        String groupName2 = "thinggroup/" + StringUtils.repeat("b", 128);
+        String groupName3 = "thinggroup/" + StringUtils.repeat("c", 128);
+        groups.add(groupName1);
+        groups.add(groupName2);
+        groups.add(groupName3);
+
+        String thingName1 = StringUtils.repeat("1", 86);
+        String logStream1 = logsProcessor.getLogStreamName(thingName1, groups);
+        assertEquals(String.format("/{date}/%s/%s/%s", groupName1, groupName2, thingName1), logStream1);
+        String finalLogStream1;
+        synchronized (DATE_FORMATTER) {
+            finalLogStream1 = logStream1.replace("{date}", DATE_FORMATTER.format(new Date()));
+        }
+        assertTrue(finalLogStream1.length() < MAX_LOG_STREAM_NAME_LENGTH);
+
+        String thingName2 = StringUtils.repeat("2", 85);
+        String logStream2 = logsProcessor.getLogStreamName(thingName2, groups);
+        assertEquals(String.format("/{date}/%s/%s/%s/%s", groupName1, groupName2, groupName3, thingName2), logStream2);
+        String finalLogStream2;
+        synchronized (DATE_FORMATTER) {
+            finalLogStream2 = logStream2.replace("{date}", DATE_FORMATTER.format(new Date()));
+        }
+        assertEquals(MAX_LOG_STREAM_NAME_LENGTH, finalLogStream2.length());
+
+        String thingName3 = "a:zA_Z:0-9";
+        groups.clear();
+        groups.add("thinggroup/myns:mygroup:myfleet");
+        groups.add("thing/" + thingName3);
+        String logStream3 = logsProcessor.getLogStreamName(thingName3, groups);
+        assertEquals("/{date}/thinggroup/myns+mygroup+myfleet/thing/a+zA_Z+0-9/a+zA_Z+0-9", logStream3);
     }
 
     private String calculateLogGroupName(ComponentType componentType, String awsRegion, String componentName) {

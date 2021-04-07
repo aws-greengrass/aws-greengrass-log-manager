@@ -29,6 +29,7 @@ import org.mockito.Captor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.slf4j.event.Level;
+import software.amazon.awssdk.crt.CrtRuntimeException;
 import software.amazon.awssdk.services.cloudwatchlogs.CloudWatchLogsClient;
 import software.amazon.awssdk.services.cloudwatchlogs.model.PutLogEventsRequest;
 import software.amazon.awssdk.services.cloudwatchlogs.model.PutLogEventsResponse;
@@ -136,6 +137,7 @@ class LogManagerTest extends BaseITCase {
         ignoreExceptionOfType(context, TLSAuthException.class);
         ignoreExceptionOfType(context, InterruptedException.class);
         ignoreExceptionOfType(context, DateTimeParseException.class);
+        ignoreExceptionOfType(context, CrtRuntimeException.class);
     }
 
     @AfterEach

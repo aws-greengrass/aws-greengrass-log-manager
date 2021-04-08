@@ -58,7 +58,7 @@ public class CloudWatchLogsUploader {
         try {
             attempt.getLogStreamsToLogEventsMap().forEach((streamName, attemptLogInformation) -> {
                 boolean success = uploadLogs(attempt.getLogGroupName(), streamName,
-                        attemptLogInformation.getLogEvents(), tryCount);
+                        attemptLogInformation.getSortedLogEvents(), tryCount);
                 if (success) {
                     attempt.getLogStreamUploadedSet().add(streamName);
                 }

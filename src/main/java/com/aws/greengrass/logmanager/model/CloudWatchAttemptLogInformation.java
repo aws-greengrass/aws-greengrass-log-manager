@@ -12,6 +12,7 @@ import lombok.Setter;
 import software.amazon.awssdk.services.cloudwatchlogs.model.InputLogEvent;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -21,9 +22,21 @@ import java.util.Map;
 @Getter
 @Setter
 public class CloudWatchAttemptLogInformation {
+    protected static final Comparator<InputLogEvent> EVENT_COMPARATOR = Comparator.comparing(InputLogEvent::timestamp);
     @Builder.Default
     private List<InputLogEvent> logEvents = new ArrayList<>();
     @Builder.Default
     private Map<String, CloudWatchAttemptLogFileInformation> attemptLogFileInformationMap = new HashMap<>();
     private String componentName;
+
+    /**
+     * Get the log events in chronological order.
+     *
+     * @return sorted events
+     */
+    public List<InputLogEvent> getSortedLogEvents() {
+        // Sort by timestamp because CloudWatch requires that the logs are in chronological order
+        logEvents.sort(EVENT_COMPARATOR);
+        return logEvents;
+    }
 }

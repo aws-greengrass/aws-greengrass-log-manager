@@ -95,7 +95,8 @@ public class LogManagerService extends PluginService {
     private static final int DEFAULT_PERIODIC_UPDATE_INTERVAL_SEC = 300;
     private final Object spaceManagementLock = new Object();
 
-    final Map<String, Instant> lastComponentUploadedLogFileInstantMap =
+    // public only for integ tests
+    public final Map<String, Instant> lastComponentUploadedLogFileInstantMap =
             Collections.synchronizedMap(new LinkedHashMap<>());
     final Map<String, CurrentProcessingFileInformation> componentCurrentProcessingLogFile =
             new ConcurrentHashMap<>();

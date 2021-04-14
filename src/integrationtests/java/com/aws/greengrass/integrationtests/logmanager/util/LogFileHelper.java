@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-package com.aws.greengrass.logmanager.util;
+package com.aws.greengrass.integrationtests.logmanager.util;
 
 import java.io.BufferedWriter;
 import java.io.File;

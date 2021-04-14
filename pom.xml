@@ -270,6 +270,7 @@
                             <includes>
                                 <include>**/integrationtests/**</include>
                             </includes>
+                            <groups>${groups}</groups>
                         </configuration>
                     </execution>
                 </executions>
@@ -378,12 +379,12 @@
                                         <limit>
                                             <counter>INSTRUCTION</counter>
                                             <value>COVEREDRATIO</value>
-                                            <minimum>0.88</minimum>
+                                            <minimum>0.71</minimum>
                                         </limit>
                                         <limit>
                                             <counter>BRANCH</counter>
                                             <value>COVEREDRATIO</value>
-                                            <minimum>0.83</minimum>
+                                            <minimum>0.59</minimum>
                                         </limit>
                                     </limits>
                                 </rule>

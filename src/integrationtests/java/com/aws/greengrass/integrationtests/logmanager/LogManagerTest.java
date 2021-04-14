@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-package com.aws.greengrass.logmanager;
+package com.aws.greengrass.integrationtests.logmanager;
 
 import com.aws.greengrass.dependency.State;
 import com.aws.greengrass.deployment.DeviceConfiguration;
@@ -15,6 +15,7 @@ import com.aws.greengrass.logging.impl.LogManager;
 import com.aws.greengrass.logging.impl.config.LogConfig;
 import com.aws.greengrass.logging.impl.config.LogStore;
 import com.aws.greengrass.logging.impl.config.model.LoggerConfiguration;
+import com.aws.greengrass.logmanager.LogManagerService;
 import com.aws.greengrass.testcommons.testutilities.GGExtension;
 import com.aws.greengrass.util.exceptions.TLSAuthException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -55,10 +56,10 @@ import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
 import static com.aws.greengrass.deployment.converter.DeploymentDocumentConverter.LOCAL_DEPLOYMENT_GROUP_NAME;
+import static com.aws.greengrass.integrationtests.logmanager.util.LogFileHelper.createFileAndWriteData;
+import static com.aws.greengrass.integrationtests.logmanager.util.LogFileHelper.createTempFileAndWriteData;
 import static com.aws.greengrass.logmanager.CloudWatchAttemptLogsProcessor.DEFAULT_LOG_STREAM_NAME;
 import static com.aws.greengrass.logmanager.LogManagerService.DEFAULT_FILE_REGEX;
-import static com.aws.greengrass.logmanager.util.LogFileHelper.createFileAndWriteData;
-import static com.aws.greengrass.logmanager.util.LogFileHelper.createTempFileAndWriteData;
 import static com.aws.greengrass.testcommons.testutilities.ExceptionLogProtector.ignoreExceptionOfType;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;

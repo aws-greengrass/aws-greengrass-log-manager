@@ -47,6 +47,8 @@ import java.util.concurrent.TimeUnit;
 
 import static com.aws.greengrass.testcommons.testutilities.ExceptionLogProtector.ignoreExceptionOfType;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.lessThan;
+import static org.hamcrest.core.Is.is;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -84,7 +86,8 @@ public class CloudWatchLogsUploaderTest extends GGServiceTestUtil {
         Map<String, CloudWatchAttemptLogInformation> logSteamForGroup1Map = new ConcurrentHashMap<>();
         List<InputLogEvent> inputLogEventsForStream1OfGroup1 = new ArrayList<>();
         inputLogEventsForStream1OfGroup1.add(InputLogEvent.builder()
-                .timestamp(Instant.now().toEpochMilli())
+                .timestamp(Instant.now().toEpochMilli() + 5_000) // Put this in the future to show that sorting on
+                // timestamp works
                 .message("test")
                 .build());
         inputLogEventsForStream1OfGroup1.add(InputLogEvent.builder()
@@ -96,11 +99,14 @@ public class CloudWatchLogsUploaderTest extends GGServiceTestUtil {
                 .startPosition(0)
                 .bytesRead(100)
                 .build());
-        logSteamForGroup1Map.put(mockStreamNameForGroup,
-                CloudWatchAttemptLogInformation.builder()
-                        .logEvents(inputLogEventsForStream1OfGroup1)
-                        .attemptLogFileInformationMap(attemptLogFileInformationMap)
-                        .build());
+        CloudWatchAttemptLogInformation logInfo =
+                CloudWatchAttemptLogInformation.builder().logEvents(inputLogEventsForStream1OfGroup1)
+                        .attemptLogFileInformationMap(attemptLogFileInformationMap).build();
+        logSteamForGroup1Map.put(mockStreamNameForGroup, logInfo);
+
+        // Verify that log events were sorted correctly
+        assertThat(logInfo.getSortedLogEvents().get(0).timestamp(), is(lessThan(logInfo.getLogEvents().get(1).timestamp())));
+
         attempt.setLogGroupName(mockGroupName);
         attempt.setLogStreamsToLogEventsMap(logSteamForGroup1Map);
         PutLogEventsResponse response = PutLogEventsResponse.builder().nextSequenceToken(mockNextSequenceToken).build();

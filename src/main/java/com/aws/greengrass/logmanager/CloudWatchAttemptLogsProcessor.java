@@ -5,11 +5,7 @@
 
 package com.aws.greengrass.logmanager;
 
-import com.aws.greengrass.deployment.DeploymentService;
 import com.aws.greengrass.deployment.DeviceConfiguration;
-import com.aws.greengrass.lifecyclemanager.GreengrassService;
-import com.aws.greengrass.lifecyclemanager.Kernel;
-import com.aws.greengrass.lifecyclemanager.exceptions.ServiceLoadException;
 import com.aws.greengrass.logging.api.Logger;
 import com.aws.greengrass.logging.impl.GreengrassLogMessage;
 import com.aws.greengrass.logging.impl.LogManager;
@@ -17,7 +13,6 @@ import com.aws.greengrass.logmanager.model.CloudWatchAttempt;
 import com.aws.greengrass.logmanager.model.CloudWatchAttemptLogFileInformation;
 import com.aws.greengrass.logmanager.model.CloudWatchAttemptLogInformation;
 import com.aws.greengrass.logmanager.model.ComponentLogFileInformation;
-import com.aws.greengrass.logmanager.model.ComponentType;
 import com.aws.greengrass.util.Coerce;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.MapperFeature;
@@ -35,12 +30,9 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.time.temporal.TemporalAccessor;
 import java.util.Date;
-import java.util.HashSet;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
-import java.util.StringJoiner;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -48,17 +40,12 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import javax.inject.Inject;
 
-import static com.aws.greengrass.deployment.converter.DeploymentDocumentConverter.LOCAL_DEPLOYMENT_GROUP_NAME;
-
 public class CloudWatchAttemptLogsProcessor {
     public static final String DEFAULT_LOG_GROUP_NAME = "/aws/greengrass/{componentType}/{region}/{componentName}";
-    // Log stream names can be 1-512 chars long, thing name 1-128 chars, thing group name 1-128 chars.
-    // Constant lengths are date of 10 characters and divider "/" of 3 characters. In conclusion,
-    // {ggFleetId} should be long enough to capture at least two deployment groups associated with a component
-    // Example format: /2020/12/15/thing/thing-name/thinggroup/group1/thinggroup/group2/thing-name
-    public static final String DEFAULT_LOG_STREAM_NAME = "/{date}/{ggFleetId}/{thingName}";
-    private static final int LOG_STREAM_DATE_DIVIDER_LENGTH = 13;
-    static final int MAX_LOG_STREAM_NAME_LENGTH = 512;
+    // Log stream names can be 1-512 chars long, thing name 1-128 chars.
+    // Constant lengths are date of 10 characters and divider "/" of 3 characters.
+    // Example format: /2020/12/15/thing/thing-name
+    public static final String DEFAULT_LOG_STREAM_NAME = "/{date}/thing/{thingName}";
 
     // https://docs.aws.amazon.com/AmazonCloudWatchLogs/latest/APIReference/API_PutLogEvents.html
     // The maximum batch size is 1,048,576 bytes. This size is calculated as the sum of all event messages in UTF-8,
@@ -69,7 +56,6 @@ public class CloudWatchAttemptLogsProcessor {
     private static final ObjectMapper DESERIALIZER = new ObjectMapper()
             .configure(MapperFeature.ACCEPT_CASE_INSENSITIVE_PROPERTIES, true);
     private final SimpleDateFormat dateFormatter = new SimpleDateFormat("yyyy/MM/dd", Locale.ENGLISH);
-    private final Kernel kernel;
     private final DeviceConfiguration deviceConfiguration;
     private static final Logger logger = LogManager.getLogger(CloudWatchAttemptLogsProcessor.class);
     private static Pattern textTimestampPattern = Pattern.compile("([\\w-:.+]+)");
@@ -78,32 +64,15 @@ public class CloudWatchAttemptLogsProcessor {
      * Constructor.
      *
      * @param deviceConfiguration {@link DeviceConfiguration}
-     * @param kernel              {@link Kernel}
      */
     @Inject
-    public CloudWatchAttemptLogsProcessor(DeviceConfiguration deviceConfiguration, Kernel kernel) {
-        this.kernel = kernel;
+    public CloudWatchAttemptLogsProcessor(DeviceConfiguration deviceConfiguration) {
         this.deviceConfiguration = deviceConfiguration;
     }
 
-    String getLogStreamName(String thingName, Set<String> groups) {
+    String getLogStreamName(String thingName) {
         String logStreamName = DEFAULT_LOG_STREAM_NAME.replace("{thingName}", thingName);
-
-        int maxFleetIdLength = MAX_LOG_STREAM_NAME_LENGTH - LOG_STREAM_DATE_DIVIDER_LENGTH - thingName.length();
-        if (groups.isEmpty()) {
-            // LOCAL_DEPLOYMENT_GROUP_NAME length is a constant, so definitely smaller than maxFleetIdLength
-            logStreamName = logStreamName.replace("{ggFleetId}", LOCAL_DEPLOYMENT_GROUP_NAME);
-        } else {
-            StringJoiner fleetIds = new StringJoiner("/");
-            groups.forEach(groupName -> {
-                // After appending the groupname and a delimiter, the length should be <= maxFleetIdLength
-                if (fleetIds.length() + groupName.length() < maxFleetIdLength) {
-                    fleetIds.add(groupName);
-                }
-            });
-            logStreamName = logStreamName.replace("{ggFleetId}", fleetIds.toString());
-        }
-        // Thing name and thinggroup name can be [a-zA-Z0-9:_-]+
+        // Thing name name can be [a-zA-Z0-9:_-]+
         // while log stream name has to be [^:*]*
         return logStreamName.replace(":", "+");
     }
@@ -127,9 +96,7 @@ public class CloudWatchAttemptLogsProcessor {
                 .replace("{region}", awsRegion)
                 .replace("{componentName}", componentLogFileInformation.getName());
         attempt.setLogGroupName(logGroupName);
-        Set<String> groups = getGroupsForComponent(componentLogFileInformation.getName(),
-                componentLogFileInformation.getComponentType());
-        String logStreamName = getLogStreamName(thingName, groups);
+        String logStreamName = getLogStreamName(thingName);
 
         // Run the loop until all the log files from the component have been read or the max message
         // size has been reached.
@@ -191,35 +158,6 @@ public class CloudWatchAttemptLogsProcessor {
         }
         attempt.setLogStreamsToLogEventsMap(logStreamsMap);
         return attempt;
-    }
-
-    /**
-     * Gets the groups associated with the component. If it is for System logs, we get all the groups
-     * the device is a part of.
-     *
-     * @param componentName The name of the component.
-     * @param componentType The type of the component.
-     * @return The list of groups associated to the component.
-     */
-    private Set<String> getGroupsForComponent(String componentName, ComponentType componentType) {
-        Set<String> groups = new HashSet<>();
-        try {
-            GreengrassService deploymentServiceLocateResult = this.kernel
-                    .locate(DeploymentService.DEPLOYMENT_SERVICE_TOPICS);
-            if (deploymentServiceLocateResult instanceof DeploymentService) {
-                DeploymentService deploymentService = (DeploymentService) deploymentServiceLocateResult;
-                if (ComponentType.GreengrassSystemComponent
-                        .equals(componentType)) {
-                    groups = deploymentService.getAllGroupNames();
-                } else {
-                    groups = deploymentService.getGroupNamesForUserComponent(componentName);
-                }
-            }
-        } catch (ServiceLoadException e) {
-            logger.atError().cause(e).log("Unable to locate {} service while uploading FSS data",
-                    DeploymentService.DEPLOYMENT_SERVICE_TOPICS);
-        }
-        return groups;
     }
 
     /**

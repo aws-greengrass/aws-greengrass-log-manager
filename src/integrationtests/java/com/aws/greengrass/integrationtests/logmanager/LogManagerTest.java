@@ -14,7 +14,7 @@ import com.aws.greengrass.lifecyclemanager.Kernel;
 import com.aws.greengrass.logging.impl.LogManager;
 import com.aws.greengrass.logging.impl.config.LogConfig;
 import com.aws.greengrass.logging.impl.config.LogStore;
-import com.aws.greengrass.logging.impl.config.model.LoggerConfiguration;
+import com.aws.greengrass.logging.impl.config.model.LogConfigUpdate;
 import com.aws.greengrass.logmanager.LogManagerService;
 import com.aws.greengrass.testcommons.testutilities.GGExtension;
 import com.aws.greengrass.util.exceptions.TLSAuthException;
@@ -58,6 +58,7 @@ import java.util.regex.Pattern;
 import static com.aws.greengrass.deployment.converter.DeploymentDocumentConverter.LOCAL_DEPLOYMENT_GROUP_NAME;
 import static com.aws.greengrass.integrationtests.logmanager.util.LogFileHelper.createFileAndWriteData;
 import static com.aws.greengrass.integrationtests.logmanager.util.LogFileHelper.createTempFileAndWriteData;
+import static com.aws.greengrass.logging.impl.config.LogConfig.newLogConfigFromRootConfig;
 import static com.aws.greengrass.logmanager.CloudWatchAttemptLogsProcessor.DEFAULT_LOG_STREAM_NAME;
 import static com.aws.greengrass.logmanager.LogManagerService.DEFAULT_FILE_REGEX;
 import static com.aws.greengrass.testcommons.testutilities.ExceptionLogProtector.ignoreExceptionOfType;
@@ -191,10 +192,10 @@ class LogManagerTest extends BaseITCase {
     void GIVEN_user_component_config_with_small_periodic_interval_and_only_required_config_WHEN_interval_elapses_THEN_logs_are_uploaded_to_cloud()
             throws Exception {
         tempDirectoryPath = Files.createDirectory(tempRootDir.resolve("logs"));
-        LogConfig.getInstance().setLevel(Level.TRACE);
-        LogConfig.getInstance().setStore(LogStore.FILE);
+        LogConfig.getRootLogConfig().setLevel(Level.TRACE);
+        LogConfig.getRootLogConfig().setStore(LogStore.FILE);
         LogManager.getLogConfigurations().putIfAbsent("UserComponentB",
-                new LogConfig(LoggerConfiguration.builder().fileName("UserComponentB.log").build()));
+                newLogConfigFromRootConfig(LogConfigUpdate.builder().fileName("UserComponentB.log").build()));
 
         for (int i = 0; i < 5; i++) {
             createFileAndWriteData(tempDirectoryPath, "UserComponentB_" + i);

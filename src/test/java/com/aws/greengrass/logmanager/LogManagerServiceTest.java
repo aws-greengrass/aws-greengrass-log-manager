@@ -12,7 +12,7 @@ import com.aws.greengrass.config.UpdateBehaviorTree;
 import com.aws.greengrass.logging.impl.LogManager;
 import com.aws.greengrass.logging.impl.config.LogConfig;
 import com.aws.greengrass.logging.impl.config.LogStore;
-import com.aws.greengrass.logging.impl.config.model.LoggerConfiguration;
+import com.aws.greengrass.logging.impl.config.model.LogConfigUpdate;
 import com.aws.greengrass.logmanager.model.CloudWatchAttempt;
 import com.aws.greengrass.logmanager.model.CloudWatchAttemptLogFileInformation;
 import com.aws.greengrass.logmanager.model.CloudWatchAttemptLogInformation;
@@ -64,6 +64,7 @@ import java.util.function.Consumer;
 
 import static com.aws.greengrass.componentmanager.KernelConfigResolver.CONFIGURATION_CONFIG_KEY;
 import static com.aws.greengrass.lifecyclemanager.GreengrassService.RUNTIME_STORE_NAMESPACE_TOPIC;
+import static com.aws.greengrass.logging.impl.config.LogConfig.newLogConfigFromRootConfig;
 import static com.aws.greengrass.logmanager.LogManagerService.COMPONENT_LOGS_CONFIG_TOPIC_NAME;
 import static com.aws.greengrass.logmanager.LogManagerService.COMPONENT_NAME_CONFIG_TOPIC_NAME;
 import static com.aws.greengrass.logmanager.LogManagerService.DELETE_LOG_FILES_AFTER_UPLOAD_CONFIG_TOPIC_NAME;
@@ -118,11 +119,11 @@ class LogManagerServiceTest extends GGServiceTestUtil {
 
     @BeforeAll
     static void setupBefore() throws IOException, InterruptedException {
-        LogConfig.getInstance().setLevel(Level.TRACE);
-        LogConfig.getInstance().setStore(LogStore.FILE);
-        LogConfig.getInstance().setStoreDirectory(directoryPath);
+        LogConfig.getRootLogConfig().setLevel(Level.TRACE);
+        LogConfig.getRootLogConfig().setStore(LogStore.FILE);
+        LogConfig.getRootLogConfig().setStoreDirectory(directoryPath);
         LogManager.getLogConfigurations().putIfAbsent("UserComponentA",
-                new LogConfig(LoggerConfiguration.builder().fileName("UserComponentA.log").build()));
+                newLogConfigFromRootConfig(LogConfigUpdate.builder().fileName("UserComponentA.log").build()));
         for (int i = 0; i < 5; i++) {
             File file = new File(directoryPath.resolve("UserComponentA_" + i + ".log").toUri());
             assertTrue(file.createNewFile());
@@ -157,8 +158,8 @@ class LogManagerServiceTest extends GGServiceTestUtil {
 
     @AfterAll
     static void cleanUpAfter() {
-        LogConfig.getInstance().setLevel(Level.INFO);
-        LogConfig.getInstance().setStore(LogStore.CONSOLE);
+        LogConfig.getRootLogConfig().setLevel(Level.INFO);
+        LogConfig.getRootLogConfig().setStore(LogStore.CONSOLE);
         final File folder = new File(directoryPath.toUri());
         final File[] files = folder.listFiles();
         if (files != null) {

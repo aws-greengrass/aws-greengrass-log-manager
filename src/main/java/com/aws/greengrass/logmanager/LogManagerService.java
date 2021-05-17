@@ -701,19 +701,18 @@ public class LogManagerService extends PluginService {
             // Sort the files by the last modified time.
             allFiles.sort(Comparator.comparingLong(File::lastModified));
             int fileIndex = 0;
-            while (bytesDeleted < minimumBytesToBeDeleted) {
+            // stop before the end to skip the active file which should have the newest modified time
+            while (bytesDeleted < minimumBytesToBeDeleted && fileIndex < allFiles.size() - 1) {
                 File fileToBeDeleted = allFiles.get(fileIndex++);
                 long fileSize = fileToBeDeleted.length();
-                boolean successfullyDeleted = fileToBeDeleted.delete();
-                if (successfullyDeleted) {
-                    logger.atDebug().log("Successfully deleted file with name {}",
-                            fileToBeDeleted.getAbsolutePath());
-                    bytesDeleted += fileSize;
-                } else {
-                    logger.atWarn().log("Unable to delete file with name {}",
-                            fileToBeDeleted.getAbsolutePath());
+                try {
+                    Files.deleteIfExists(fileToBeDeleted.toPath());
+                } catch (IOException e) {
+                    logger.atWarn().log("Unable to delete file with name {}", fileToBeDeleted.getAbsolutePath(), e);
                     break;
                 }
+                logger.atDebug().log("Successfully deleted file with name {}", fileToBeDeleted.getAbsolutePath());
+                bytesDeleted += fileSize;
             }
         }
     }

@@ -137,7 +137,7 @@ class SpaceManagementTest extends BaseITCase {
             for (int i = 0; i < 14; i++) {
                 createTempFileAndWriteData(tempDirectoryPath, "integTestRandomLogFiles.log_", "");
             }
-            cdl.await(60, TimeUnit.SECONDS);
+            assertTrue(cdl.await(60, TimeUnit.SECONDS), "5 files deleted");
         }
 
         File folder = tempDirectoryPath.toFile();

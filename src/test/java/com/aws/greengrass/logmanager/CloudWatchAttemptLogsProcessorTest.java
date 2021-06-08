@@ -44,6 +44,7 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
+import java.util.TimeZone;
 import java.util.regex.Pattern;
 
 import static com.aws.greengrass.deployment.DeviceConfiguration.DEVICE_PARAM_AWS_REGION;
@@ -51,15 +52,21 @@ import static com.aws.greengrass.deployment.DeviceConfiguration.DEVICE_PARAM_THI
 import static com.aws.greengrass.logmanager.CloudWatchAttemptLogsProcessor.DEFAULT_LOG_GROUP_NAME;
 import static com.aws.greengrass.testcommons.testutilities.ExceptionLogProtector.ignoreExceptionOfType;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.hasSize;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.lenient;
 
 
+@SuppressWarnings("PMD.UnsynchronizedStaticFormatter")
 @ExtendWith({MockitoExtension.class, GGExtension.class})
 class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
     private static final SimpleDateFormat DATE_FORMATTER = new SimpleDateFormat("yyyy/MM/dd", Locale.ENGLISH);
+    static {
+        DATE_FORMATTER.setTimeZone(TimeZone.getTimeZone("UTC"));
+    }
+
     @Mock
     private DeviceConfiguration mockDeviceConfiguration;
     @TempDir
@@ -97,7 +104,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
         assertThat(attempt.getLogStreamsToLogEventsMap().entrySet(), IsNot.not(IsEmptyCollection.empty()));
         String logGroup = calculateLogGroupName(ComponentType.GreengrassSystemComponent, "testRegion", "TestComponent");
         assertEquals(attempt.getLogGroupName(), logGroup);
-        String logStream = calculateLogStreamName("testThing");
+        String logStream = "/2020/12/17/thing/testThing";
         assertTrue(attempt.getLogStreamsToLogEventsMap().containsKey(logStream));
         CloudWatchAttemptLogInformation logEventsForStream1 = attempt.getLogStreamsToLogEventsMap().get(logStream);
         assertNotNull(logEventsForStream1.getLogEvents());
@@ -139,7 +146,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
         assertThat(attempt.getLogStreamsToLogEventsMap().entrySet(), IsNot.not(IsEmptyCollection.empty()));
         String logGroup = calculateLogGroupName(ComponentType.UserComponent, "testRegion", "TestComponent");
         assertEquals(attempt.getLogGroupName(), logGroup);
-        String logStream = calculateLogStreamName("testThing");
+        String logStream = "/2020/12/17/thing/testThing";
         assertTrue(attempt.getLogStreamsToLogEventsMap().containsKey(logStream));
         CloudWatchAttemptLogInformation logEventsForStream1 = attempt.getLogStreamsToLogEventsMap().get(logStream);
         assertNotNull(logEventsForStream1.getLogEvents());
@@ -181,7 +188,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
         assertThat(attempt.getLogStreamsToLogEventsMap().entrySet(), IsNot.not(IsEmptyCollection.empty()));
         String logGroup = calculateLogGroupName(ComponentType.GreengrassSystemComponent, "testRegion", "TestComponent");
         assertEquals(attempt.getLogGroupName(), logGroup);
-        String logStream = calculateLogStreamName("testThing");
+        String logStream = "/2020/12/17/thing/testThing";
         assertTrue(attempt.getLogStreamsToLogEventsMap().containsKey(logStream));
         CloudWatchAttemptLogInformation logEventsForStream1 = attempt.getLogStreamsToLogEventsMap().get(logStream);
         assertNotNull(logEventsForStream1.getLogEvents());
@@ -263,6 +270,43 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
     }
 
     @Test
+    void GIVEN_one_component_one_file_24h_gap_WHEN_merge_THEN_reads_partial_file(ExtensionContext context1)
+            throws IOException {
+        File file = new File(directoryPath.resolve("greengrass_test.log").toUri());
+        assertTrue(file.createNewFile());
+        assertTrue(file.setReadable(true));
+        assertTrue(file.setWritable(true));
+        try (OutputStream fileOutputStream = Files.newOutputStream(file.toPath())) {
+            fileOutputStream.write("2021-06-08T01:00:00Z ABC1\n".getBytes(StandardCharsets.UTF_8));
+            fileOutputStream.write("2021-06-08T02:00:00Z ABC2\n".getBytes(StandardCharsets.UTF_8));
+            fileOutputStream.write("2021-06-09T01:00:00Z ABC3\n".getBytes(StandardCharsets.UTF_8));
+            fileOutputStream.write("2021-06-09T02:00:00Z ABC4\n".getBytes(StandardCharsets.UTF_8));
+        }
+
+        try {
+            List<LogFileInformation> logFileInformationSet = new ArrayList<>();
+            logFileInformationSet.add(LogFileInformation.builder().startPosition(0).file(file).build());
+            ComponentLogFileInformation componentLogFileInformation = ComponentLogFileInformation.builder()
+                    .name("TestComponent")
+                    .multiLineStartPattern(Pattern.compile("^[^\\s]+(\\s+[^\\s]+)*$"))
+                    .desiredLogLevel(Level.INFO)
+                    .componentType(ComponentType.GreengrassSystemComponent)
+                    .logFileInformationList(logFileInformationSet)
+                    .build();
+
+            logsProcessor = new CloudWatchAttemptLogsProcessor(mockDeviceConfiguration);
+            CloudWatchAttempt attempt = logsProcessor.processLogFiles(componentLogFileInformation);
+            assertNotNull(attempt);
+            String logStream1 = "/2021/06/08/thing/testThing";
+            String logStream2 = "/2021/06/09/thing/testThing";
+            assertThat(attempt.getLogStreamsToLogEventsMap().get(logStream1).getLogEvents(), hasSize(2));
+            assertThat(attempt.getLogStreamsToLogEventsMap().get(logStream2).getLogEvents(), hasSize(2));
+        } finally {
+            assertTrue(file.delete());
+        }
+    }
+
+    @Test
     void GIVEN_one_components_two_file_less_than_max_WHEN_merge_THEN_reads_and_merges_both_files(ExtensionContext ec)
             throws URISyntaxException {
         ignoreExceptionOfType(ec, DateTimeParseException.class);
@@ -288,7 +332,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
         assertThat(attempt.getLogStreamsToLogEventsMap().entrySet(), IsNot.not(IsEmptyCollection.empty()));
         String logGroup = calculateLogGroupName(ComponentType.GreengrassSystemComponent, "testRegion", "TestComponent");
         assertEquals(attempt.getLogGroupName(), logGroup);
-        String logStream = calculateLogStreamName("testThing");
+        String logStream = "/2020/12/17/thing/testThing";
         String logStream2 = "/2020/02/10/thing/testThing";
         assertTrue(attempt.getLogStreamsToLogEventsMap().containsKey(logStream));
         assertTrue(attempt.getLogStreamsToLogEventsMap().containsKey(logStream2));

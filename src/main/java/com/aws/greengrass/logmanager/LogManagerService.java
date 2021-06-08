@@ -539,7 +539,7 @@ public class LogManagerService extends PluginService {
                                     .build()));
                     allFiles.forEach(file -> {
                         long startPosition = 0;
-                        // If the file was paritially read in the previous run, then get the starting position for
+                        // If the file was partially read in the previous run, then get the starting position for
                         // new log lines.
                         if (componentCurrentProcessingLogFile.containsKey(componentName)) {
                             CurrentProcessingFileInformation processingFileInformation =

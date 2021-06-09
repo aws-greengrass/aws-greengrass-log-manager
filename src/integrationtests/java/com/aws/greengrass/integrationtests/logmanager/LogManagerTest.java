@@ -50,6 +50,7 @@ import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.TimeZone;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -70,6 +71,7 @@ import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+@SuppressWarnings("PMD.UnsynchronizedStaticFormatter")
 @ExtendWith({GGExtension.class, MockitoExtension.class})
 class LogManagerTest extends BaseITCase {
     private static final String THING_NAME = "ThingName";
@@ -80,6 +82,10 @@ class LogManagerTest extends BaseITCase {
     private LogManagerService logManagerService;
     private Path tempDirectoryPath;
     private final static ObjectMapper YAML_OBJECT_MAPPER = new ObjectMapper(new YAMLFactory());
+
+    static {
+        DATE_FORMATTER.setTimeZone(TimeZone.getTimeZone("UTC"));
+    }
 
     @Mock
     private CloudWatchLogsClient cloudWatchLogsClient;
@@ -103,7 +109,7 @@ class LogManagerTest extends BaseITCase {
         System.setProperty("root", tempRootDir.toAbsolutePath().toString());
         CountDownLatch logManagerRunning = new CountDownLatch(1);
 
-        CompletableFuture cf = new CompletableFuture();
+        CompletableFuture<Void> cf = new CompletableFuture<>();
         cf.complete(null);
         kernel = new Kernel();
 

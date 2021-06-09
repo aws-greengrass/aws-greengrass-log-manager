@@ -212,6 +212,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         logsUploaderService.componentCurrentProcessingLogFile.clear();
         logsUploaderService.lastComponentUploadedLogFileInstantMap.clear();
         logsUploaderService.shutdown();
+        executor.shutdownNow();
     }
 
     @Test

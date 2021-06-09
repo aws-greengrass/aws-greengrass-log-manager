@@ -28,11 +28,14 @@ import java.text.SimpleDateFormat;
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
+import java.time.temporal.ChronoUnit;
 import java.time.temporal.TemporalAccessor;
+import java.util.Comparator;
 import java.util.Date;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.TimeZone;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -55,10 +58,17 @@ public class CloudWatchAttemptLogsProcessor {
     private static final int MAX_BATCH_SIZE = 1024 * 1024;
     private static final ObjectMapper DESERIALIZER = new ObjectMapper()
             .configure(MapperFeature.ACCEPT_CASE_INSENSITIVE_PROPERTIES, true);
-    private final SimpleDateFormat dateFormatter = new SimpleDateFormat("yyyy/MM/dd", Locale.ENGLISH);
+    private static final ThreadLocal<SimpleDateFormat> DATE_FORMATTER =
+            ThreadLocal.withInitial(() -> {
+                SimpleDateFormat sdf = new SimpleDateFormat("yyyy/MM/dd", Locale.ENGLISH);
+                // Set timezone of the formatter to UTC since we always pass in UTC dates. We don't want it to think
+                // that it should use the local timezone.
+                sdf.setTimeZone(TimeZone.getTimeZone("UTC"));
+                return sdf;
+            });
     private final DeviceConfiguration deviceConfiguration;
     private static final Logger logger = LogManager.getLogger(CloudWatchAttemptLogsProcessor.class);
-    private static Pattern textTimestampPattern = Pattern.compile("([\\w-:.+]+)");
+    private static final Pattern textTimestampPattern = Pattern.compile("([\\w-:.+]+)");
 
     /**
      * Constructor.
@@ -193,7 +203,7 @@ public class CloudWatchAttemptLogsProcessor {
         Optional<GreengrassLogMessage> logMessage = tryGetstructuredLogMessage(data);
         if (logMessage.isPresent()) {
             logStreamName = logStreamName.replace("{date}",
-                    dateFormatter.format(new Date(logMessage.get().getTimestamp())));
+                    DATE_FORMATTER.get().format(new Date(logMessage.get().getTimestamp())));
             attemptLogInformation = logStreamsMap.computeIfAbsent(logStreamName,
                     key -> CloudWatchAttemptLogInformation.builder()
                             .componentName(componentName)
@@ -202,11 +212,6 @@ public class CloudWatchAttemptLogsProcessor {
                     desiredLogLevel, logMessage.get());
 
         } else {
-            logStreamName = logStreamName.replace("{date}", dateFormatter.format(new Date()));
-            attemptLogInformation = logStreamsMap.computeIfAbsent(logStreamName,
-                    key -> CloudWatchAttemptLogInformation.builder()
-                            .componentName(componentName)
-                            .build());
             Matcher matcher = textTimestampPattern.matcher(data);
             Instant logTimestamp = Instant.now();
             if (matcher.find()) {
@@ -221,8 +226,12 @@ public class CloudWatchAttemptLogsProcessor {
                     }
                 }
             }
-            reachedMaxSize = addNewLogEvent(totalBytesRead, attemptLogInformation, data.toString(),
-                    logTimestamp.toEpochMilli());
+            logStreamName = logStreamName.replace("{date}", DATE_FORMATTER.get().format(Date.from(logTimestamp)));
+            attemptLogInformation = logStreamsMap.computeIfAbsent(logStreamName,
+                    key -> CloudWatchAttemptLogInformation.builder()
+                            .componentName(componentName)
+                            .build());
+            reachedMaxSize = addNewLogEvent(totalBytesRead, attemptLogInformation, data.toString(), logTimestamp);
         }
         if (!reachedMaxSize) {
             updateCloudWatchAttemptLogInformation(fileName, startPosition, currentPosition, attemptLogInformation,
@@ -290,7 +299,8 @@ public class CloudWatchAttemptLogsProcessor {
         if (currentLogLevel.toInt() < desiredLogLevel.toInt()) {
             return false;
         }
-        return addNewLogEvent(totalBytesRead, attemptLogInformation, data.toString(), logMessage.getTimestamp());
+        return addNewLogEvent(totalBytesRead, attemptLogInformation, data.toString(),
+                Instant.ofEpochMilli(logMessage.getTimestamp()));
     }
 
     /**
@@ -305,18 +315,28 @@ public class CloudWatchAttemptLogsProcessor {
      *     the log line data size to get the exact size of the input log events.
      */
     private boolean addNewLogEvent(AtomicInteger totalBytesRead, CloudWatchAttemptLogInformation attemptLogInformation,
-                                   String data, long timestamp) {
+                                   String data, Instant timestamp) {
         int dataSize = data.getBytes(StandardCharsets.UTF_8).length;
         // Total bytes equal the number of bytes of the data plus 8 bytes for the timestamp since its a long
         // and there is an overhead for each log event on the cloud watch side which needs to be added.
         if (totalBytesRead.get() + dataSize + TIMESTAMP_BYTES + EVENT_STORAGE_OVERHEAD > MAX_BATCH_SIZE) {
             return true;
         }
+
+        // If the earliest time + 24 hours is before the new time then we cannot insert it because the gap
+        // from earliest to latest is greater than 24 hours. Otherwise we can add it.
+        // Using 23 instead of 24 hours to have a bit of leeway.
+        Optional<InputLogEvent> earliestTime =
+                attemptLogInformation.getLogEvents().stream().min(Comparator.comparingLong(InputLogEvent::timestamp));
+        if (earliestTime.isPresent() && Instant.ofEpochMilli(earliestTime.get().timestamp()).plus(23, ChronoUnit.HOURS)
+                .isBefore(timestamp)) {
+            return true;
+        }
         totalBytesRead.addAndGet(dataSize + TIMESTAMP_BYTES + EVENT_STORAGE_OVERHEAD);
 
         InputLogEvent inputLogEvent = InputLogEvent.builder()
                 .message(data)
-                .timestamp(timestamp).build();
+                .timestamp(timestamp.toEpochMilli()).build();
         attemptLogInformation.getLogEvents().add(inputLogEvent);
         return false;
     }

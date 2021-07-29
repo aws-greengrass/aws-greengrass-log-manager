@@ -708,10 +708,10 @@ public class LogManagerService extends PluginService {
                 try {
                     Files.deleteIfExists(fileToBeDeleted.toPath());
                 } catch (IOException e) {
-                    logger.atWarn().log("Unable to delete file with name {}", fileToBeDeleted.getAbsolutePath(), e);
+                    logger.atWarn().log("Unable to delete file: {}", fileToBeDeleted.getAbsolutePath(), e);
                     break;
                 }
-                logger.atDebug().log("Successfully deleted file with name {}", fileToBeDeleted.getAbsolutePath());
+                logger.atInfo().log("Successfully deleted file: {}", fileToBeDeleted.getAbsolutePath());
                 bytesDeleted += fileSize;
             }
         }

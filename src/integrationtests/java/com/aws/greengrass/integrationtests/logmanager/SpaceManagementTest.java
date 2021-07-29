@@ -129,7 +129,7 @@ class SpaceManagementTest extends BaseITCase {
 
         CountDownLatch cdl = new CountDownLatch(5);
         Consumer<GreengrassLogMessage> listener = (m) -> {
-            if (m.getMessage().contains("Successfully deleted file with name")) {
+            if (m.getMessage().contains("Successfully deleted file")) {
                 cdl.countDown();
             }
         };

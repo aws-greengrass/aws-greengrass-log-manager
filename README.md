@@ -1,4 +1,4 @@
-## Log Manager
+## Log Manager (with Map config)
 
 The log manager component collects and optionally uploads logs from Greengrass core devices to Amazon CloudWatch Logs. 
 You can configure system logs and logs for each component. Log Manager is an optional internal Greengrass service that runs in the same JVM as the 
@@ -36,7 +36,7 @@ Manifests:
       Configuration:
         logsUploaderConfiguration: 
           componentLogsConfiguration:
-            - componentName: '<ComponentName>'
+            <ComponentName>: 
               logFileRegex: '<ComponentName>\\w*.log'
               logFileDirectoryPath: '/path/to/logs/directory/'
               minimumLogLevel: 'INFO'
@@ -63,9 +63,8 @@ Manifests:
          "diskSpaceLimitUnit":"MB",
          "deleteLogFileAfterCloudUpload":true
       },
-      "componentLogsConfiguration":[
-         {
-            "componentName":"<ComponentName>",
+      "componentLogsConfiguration" {
+         "<ComponentName>": {
             "minimumLogLevel":"INFO",
             "logFileDirectoryPath":"/path/to/logs/directory/",
             "logFileRegex":"<ComponentName>\\w*.log",
@@ -73,7 +72,7 @@ Manifests:
             "diskSpaceLimitUnit":"MB",
             "deleteLogFileAfterCloudUpload":true
          }
-      ]
+      }
    },
    "periodicUploadIntervalSec":600
 }

@@ -24,6 +24,7 @@ import software.amazon.awssdk.services.cloudwatchlogs.model.PutLogEventsResponse
 import software.amazon.awssdk.services.cloudwatchlogs.model.ResourceAlreadyExistsException;
 import software.amazon.awssdk.services.cloudwatchlogs.model.ResourceNotFoundException;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -119,11 +120,18 @@ public class CloudWatchLogsUploader {
             return streamToSequenceTokenMap;
         });
         PutLogEventsRequest request = PutLogEventsRequest.builder()
-                .logEvents(logEvents)
-                .logGroupName(logGroupName)
-                .logStreamName(logStreamName)
-                .sequenceToken(sequenceToken.get())
-                .build();
+            .overrideConfiguration(builder ->
+                // provide the log-format header of json/emf
+                builder.headers(
+                    Collections.singletonMap("x-amzn-logs-format",  Collections.singletonList("json/emf"))
+                )
+            )
+            .logEvents(logEvents)
+            .logGroupName(logGroupName)
+            .logStreamName(logStreamName)
+            .sequenceToken(sequenceToken.get())
+            .build();
+
         try {
             PutLogEventsResponse putLogEventsResponse = this.cloudWatchLogsClient.putLogEvents(request);
             addNextSequenceToken(logGroupName, logStreamName, putLogEventsResponse.nextSequenceToken());

@@ -21,6 +21,7 @@ import org.mockito.Captor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import software.amazon.awssdk.awscore.exception.AwsServiceException;
+import software.amazon.awssdk.core.RequestOverrideConfiguration;
 import software.amazon.awssdk.services.cloudwatchlogs.CloudWatchLogsClient;
 import software.amazon.awssdk.services.cloudwatchlogs.model.CreateLogGroupRequest;
 import software.amazon.awssdk.services.cloudwatchlogs.model.CreateLogStreamRequest;
@@ -138,6 +139,11 @@ public class CloudWatchLogsUploaderTest extends GGServiceTestUtil {
 
         PutLogEventsRequest request = putLogEventsRequests.get(1);
         assertTrue(request.hasLogEvents());
+        assertTrue(request.overrideConfiguration().isPresent());
+        RequestOverrideConfiguration requestOverrideConfiguration = request.overrideConfiguration().get();
+        List<String> amznLogFormatHeader = requestOverrideConfiguration.headers().get("x-amzn-logs-format");
+        assertNotNull(amznLogFormatHeader);
+        assertTrue(amznLogFormatHeader.contains("json/emf"));
         assertEquals(mockGroupName, request.logGroupName());
         assertEquals(mockStreamNameForGroup, request.logStreamName());
         assertEquals(mockSequenceToken, request.sequenceToken());

@@ -65,21 +65,7 @@ import java.util.function.Consumer;
 import static com.aws.greengrass.componentmanager.KernelConfigResolver.CONFIGURATION_CONFIG_KEY;
 import static com.aws.greengrass.lifecyclemanager.GreengrassService.RUNTIME_STORE_NAMESPACE_TOPIC;
 import static com.aws.greengrass.logging.impl.config.LogConfig.newLogConfigFromRootConfig;
-import static com.aws.greengrass.logmanager.LogManagerService.COMPONENT_LOGS_CONFIG_TOPIC_NAME;
-import static com.aws.greengrass.logmanager.LogManagerService.DELETE_LOG_FILES_AFTER_UPLOAD_CONFIG_TOPIC_NAME;
-import static com.aws.greengrass.logmanager.LogManagerService.DISK_SPACE_LIMIT_CONFIG_TOPIC_NAME;
-import static com.aws.greengrass.logmanager.LogManagerService.DISK_SPACE_LIMIT_UNIT_CONFIG_TOPIC_NAME;
-import static com.aws.greengrass.logmanager.LogManagerService.FILE_DIRECTORY_PATH_CONFIG_TOPIC_NAME;
-import static com.aws.greengrass.logmanager.LogManagerService.FILE_REGEX_CONFIG_TOPIC_NAME;
-import static com.aws.greengrass.logmanager.LogManagerService.LOGS_UPLOADER_CONFIGURATION_TOPIC;
-import static com.aws.greengrass.logmanager.LogManagerService.LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC;
-import static com.aws.greengrass.logmanager.LogManagerService.MIN_LOG_LEVEL_CONFIG_TOPIC_NAME;
-import static com.aws.greengrass.logmanager.LogManagerService.PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION;
-import static com.aws.greengrass.logmanager.LogManagerService.PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP;
-import static com.aws.greengrass.logmanager.LogManagerService.PERSISTED_LAST_FILE_PROCESSED_TIMESTAMP;
-import static com.aws.greengrass.logmanager.LogManagerService.SYSTEM_LOGS_COMPONENT_NAME;
-import static com.aws.greengrass.logmanager.LogManagerService.SYSTEM_LOGS_CONFIG_TOPIC_NAME;
-import static com.aws.greengrass.logmanager.LogManagerService.UPLOAD_TO_CW_CONFIG_TOPIC_NAME;
+import static com.aws.greengrass.logmanager.LogManagerService.*;
 import static com.aws.greengrass.testcommons.testutilities.ExceptionLogProtector.ignoreExceptionOfType;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -289,6 +275,57 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         assertEquals("System", componentLogFileInformation.getName());
         assertEquals(ComponentType.GreengrassSystemComponent, componentLogFileInformation.getComponentType());
         assertEquals(Level.INFO, componentLogFileInformation.getDesiredLogLevel());
+        assertNotNull(componentLogFileInformation.getLogFileInformationList());
+        assertThat(componentLogFileInformation.getLogFileInformationList(), IsNot.not(IsEmptyCollection.empty()));
+        assertTrue(componentLogFileInformation.getLogFileInformationList().size() >= 5);
+        verify(mockUploader, times(1)).upload(any(CloudWatchAttempt.class), anyInt());
+    }
+
+    @Test
+    void GIVEN_user_component_log_files_to_be_uploaded_with_required_config_as_array_WHEN_merger_merges_THEN_we_get_all_log_files()
+            throws InterruptedException, UnsupportedInputTypeException {
+        mockDefaultPersistedState();
+        Topic periodicUpdateIntervalMsTopic = Topic.of(context, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC, "1");
+        when(config.lookup(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC))
+                .thenReturn(periodicUpdateIntervalMsTopic);
+        when(mockMerger.processLogFiles(componentLogsInformationCaptor.capture())).thenReturn(new CloudWatchAttempt());
+
+        Topics configTopics = Topics.of(context, LOGS_UPLOADER_CONFIGURATION_TOPIC, null);
+
+        List<Map<String, Object>> componentLogsInformationList = new ArrayList<>();
+        Map<String, Object> componentAConfig = new HashMap<>();
+        componentAConfig.put(COMPONENT_NAME_CONFIG_TOPIC_NAME, "UserComponentA");
+        componentAConfig.put(MIN_LOG_LEVEL_CONFIG_TOPIC_NAME, "DEBUG");
+        componentAConfig.put(DISK_SPACE_LIMIT_CONFIG_TOPIC_NAME, "10");
+        componentAConfig.put(DISK_SPACE_LIMIT_UNIT_CONFIG_TOPIC_NAME, "GB");
+        componentAConfig.put(DELETE_LOG_FILES_AFTER_UPLOAD_CONFIG_TOPIC_NAME, "false");
+        componentLogsInformationList.add(componentAConfig);
+        configTopics.createLeafChild(COMPONENT_LOGS_CONFIG_TOPIC_NAME).withValueChecked(componentLogsInformationList);
+
+        Topics systemConfigTopics = configTopics.createInteriorChild(SYSTEM_LOGS_CONFIG_TOPIC_NAME);
+        systemConfigTopics.createLeafChild(UPLOAD_TO_CW_CONFIG_TOPIC_NAME).withValue("false");
+        systemConfigTopics.createLeafChild(MIN_LOG_LEVEL_CONFIG_TOPIC_NAME).withValue("INFO");
+        systemConfigTopics.createLeafChild(DISK_SPACE_LIMIT_CONFIG_TOPIC_NAME).withValue("25");
+        systemConfigTopics.createLeafChild(DISK_SPACE_LIMIT_UNIT_CONFIG_TOPIC_NAME).withValue("MB");
+        when(config.lookupTopics(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC))
+                .thenReturn(configTopics);
+
+        doNothing().when(mockUploader).registerAttemptStatus(anyString(), callbackCaptor.capture());
+
+        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor);
+        startServiceOnAnotherThread();
+
+        TimeUnit.SECONDS.sleep(5);
+
+        assertThat(logsUploaderService.componentLogConfigurations.entrySet(), IsNot.not(IsEmptyCollection.empty()));
+        assertEquals(1, logsUploaderService.componentLogConfigurations.size());
+        assertTrue(logsUploaderService.componentLogConfigurations.containsKey("UserComponentA"));
+
+        assertNotNull(componentLogsInformationCaptor.getValue());
+        ComponentLogFileInformation componentLogFileInformation = componentLogsInformationCaptor.getValue();
+        assertNotNull(componentLogFileInformation);
+        assertEquals(ComponentType.UserComponent, componentLogFileInformation.getComponentType());
+        assertEquals(Level.DEBUG, componentLogFileInformation.getDesiredLogLevel());
         assertNotNull(componentLogFileInformation.getLogFileInformationList());
         assertThat(componentLogFileInformation.getLogFileInformationList(), IsNot.not(IsEmptyCollection.empty()));
         assertTrue(componentLogFileInformation.getLogFileInformationList().size() >= 5);
@@ -898,7 +935,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         assertNotNull(logsUploaderService.lastComponentUploadedLogFileInstantMap);
         assertTrue(logsUploaderService.lastComponentUploadedLogFileInstantMap.containsKey(SYSTEM_LOGS_COMPONENT_NAME));
         assertFalse(logsUploaderService.lastComponentUploadedLogFileInstantMap.containsKey("UserComponentA"));
-        assertEquals(tenSecondsAgo,
+        assertEquals(tenSecondsAgo.toEpochMilli(),
                 logsUploaderService.lastComponentUploadedLogFileInstantMap.get(SYSTEM_LOGS_COMPONENT_NAME));
 
         assertTrue(logsUploaderService.componentCurrentProcessingLogFile.containsKey(SYSTEM_LOGS_COMPONENT_NAME));

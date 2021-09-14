@@ -83,6 +83,7 @@ public class LogManagerService extends PluginService {
     public static final String DEFAULT_FILE_REGEX = "^%s\\w*.log";
     public static final String COMPONENT_LOGS_CONFIG_TOPIC_NAME = "componentLogsConfiguration";
     public static final String SYSTEM_LOGS_CONFIG_TOPIC_NAME = "systemLogsConfiguration";
+    public static final String COMPONENT_NAME_CONFIG_TOPIC_NAME = "componentName";
     public static final String FILE_REGEX_CONFIG_TOPIC_NAME = "logFileRegex";
     public static final String FILE_DIRECTORY_PATH_CONFIG_TOPIC_NAME = "logFileDirectoryPath";
     public static final String MIN_LOG_LEVEL_CONFIG_TOPIC_NAME = "minimumLogLevel";
@@ -146,8 +147,19 @@ public class LogManagerService extends PluginService {
             if (o instanceof Map) {
                 Map<String, Object> map = (Map) o;
                 map.forEach((componentName, componentConfigObject) -> {
-                    handleUserComponentConfiguration(componentName, componentConfigObject,
+                    if (componentConfigObject instanceof Map) {
+                        Map<String, Object> componentConfigObjectMap = (Map) componentConfigObject;
+                        componentConfigObjectMap.put(COMPONENT_NAME_CONFIG_TOPIC_NAME, componentName);
+                        handleUserComponentConfiguration(componentConfigObjectMap,
                                 newComponentLogConfigurations);
+                    }
+                });
+            } else if (o instanceof ArrayList) {
+                List<Object> list = (ArrayList) o;
+                list.forEach(componentConfigObject -> {
+                    if (componentConfigObject instanceof Map) {
+                        handleUserComponentConfiguration(componentConfigObject, newComponentLogConfigurations);
+                    }
                 });
             }
             return o;
@@ -184,15 +196,15 @@ public class LogManagerService extends PluginService {
         scheduleSpaceManagementThread();
     }
 
-    private void handleUserComponentConfiguration(String componentName, Object componentConfigObject,
+    private void handleUserComponentConfiguration(Object componentConfigObject,
                                                   Map<String, ComponentLogConfiguration>
                                                           newComponentLogConfigurations) {
         Map<String, Object> componentConfigMap = (Map) componentConfigObject;
         ComponentLogConfiguration componentLogConfiguration = ComponentLogConfiguration.builder()
-                .componentType(ComponentType.UserComponent).name(componentName)
+                .componentType(ComponentType.UserComponent)
                 .build();
         setUserComponentConfiguration(componentConfigMap, componentLogConfiguration);
-        logger.atInfo().kv("componentName",componentLogConfiguration.getName())
+        logger.atInfo().kv("componentName", componentLogConfiguration.getName())
                 .log("Process LogManager configuration for Greengrass user component");
         setCommonComponentConfiguration(componentConfigMap, componentLogConfiguration);
         newComponentLogConfigurations.put(componentLogConfiguration.getName(), componentLogConfiguration);
@@ -206,6 +218,9 @@ public class LogManagerService extends PluginService {
         AtomicReference<Path> directoryPath = new AtomicReference<>();
         componentConfigMap.forEach((key, val) -> {
             switch (key) {
+                case COMPONENT_NAME_CONFIG_TOPIC_NAME:
+                    componentLogConfiguration.setName(Coerce.toString(val));
+                    break;
                 case FILE_REGEX_CONFIG_TOPIC_NAME:
                     String logFileRegexString = Coerce.toString(val);
                     if (Utils.isNotEmpty(logFileRegexString)) {

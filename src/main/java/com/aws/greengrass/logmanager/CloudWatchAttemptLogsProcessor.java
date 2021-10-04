@@ -25,6 +25,7 @@ import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
+import java.time.Clock;
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
@@ -69,6 +70,7 @@ public class CloudWatchAttemptLogsProcessor {
     private final DeviceConfiguration deviceConfiguration;
     private static final Logger logger = LogManager.getLogger(CloudWatchAttemptLogsProcessor.class);
     private static final Pattern textTimestampPattern = Pattern.compile("([\\w-:.+]+)");
+    private final Clock clock;
 
     /**
      * Constructor.
@@ -77,7 +79,12 @@ public class CloudWatchAttemptLogsProcessor {
      */
     @Inject
     public CloudWatchAttemptLogsProcessor(DeviceConfiguration deviceConfiguration) {
+        this(deviceConfiguration, Clock.systemUTC());
+    }
+
+    CloudWatchAttemptLogsProcessor(DeviceConfiguration deviceConfiguration, Clock clock) {
         this.deviceConfiguration = deviceConfiguration;
+        this.clock = clock;
     }
 
     String getLogStreamName(String thingName) {
@@ -331,6 +338,10 @@ public class CloudWatchAttemptLogsProcessor {
         if (earliestTime.isPresent() && Instant.ofEpochMilli(earliestTime.get().timestamp()).plus(23, ChronoUnit.HOURS)
                 .isBefore(timestamp)) {
             return true;
+        }
+        // Cloudwatch does not allow uploading data older than 14 days.
+        if (timestamp.isBefore(Instant.now(clock).minus(14, ChronoUnit.DAYS))) {
+            return false;
         }
         totalBytesRead.addAndGet(dataSize + TIMESTAMP_BYTES + EVENT_STORAGE_OVERHEAD);
 

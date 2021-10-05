@@ -315,17 +315,20 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
     }
 
     @Test
-    void GIVEN_one_component_one_file_older_than_14_days_WHEN_skip_file()
+    void GIVEN_one_component_WHEN_file_older_than_14_days_THEN_skip_file()
             throws IOException {
         File file = new File(directoryPath.resolve("greengrass_test.log").toUri());
         assertTrue(file.createNewFile());
         assertTrue(file.setReadable(true));
         assertTrue(file.setWritable(true));
+        Instant now = Instant.now();
+        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd", Locale.ENGLISH);
         try (OutputStream fileOutputStream = Files.newOutputStream(file.toPath())) {
             fileOutputStream.write("2021-06-08T01:00:00Z ABC1\n".getBytes(StandardCharsets.UTF_8));
             fileOutputStream.write("2021-06-08T02:00:00Z ABC2\n".getBytes(StandardCharsets.UTF_8));
             fileOutputStream.write("2021-06-09T01:00:00Z ABC3\n".getBytes(StandardCharsets.UTF_8));
             fileOutputStream.write("2021-06-09T02:00:00Z ABC4\n".getBytes(StandardCharsets.UTF_8));
+            fileOutputStream.write((sdf.format(new Date(now.toEpochMilli())) + "T02:00:00Z ABC5\n").getBytes(StandardCharsets.UTF_8));
         }
 
         try {
@@ -344,8 +347,11 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
             assertNotNull(attempt);
             String logStream1 = "/2021/06/08/thing/testThing";
             String logStream2 = "/2021/06/09/thing/testThing";
+            sdf = new SimpleDateFormat("/yyyy/MM/dd/'thing/testThing'", Locale.ENGLISH);
+            String logStream3 = sdf.format(new Date(now.toEpochMilli()));
             assertThat(attempt.getLogStreamsToLogEventsMap().get(logStream1).getLogEvents(), hasSize(0));
             assertThat(attempt.getLogStreamsToLogEventsMap().get(logStream2).getLogEvents(), hasSize(0));
+            assertThat(attempt.getLogStreamsToLogEventsMap().get(logStream3).getLogEvents(), hasSize(1));
         } finally {
             assertTrue(file.delete());
         }

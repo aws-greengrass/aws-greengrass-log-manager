@@ -330,6 +330,10 @@ public class CloudWatchAttemptLogsProcessor {
             return true;
         }
 
+        // Cloudwatch does not allow uploading data older than 14 days.
+        if (timestamp.isBefore(Instant.now(clock).minus(14, ChronoUnit.DAYS))) {
+            return false;
+        }
         // If the earliest time + 24 hours is before the new time then we cannot insert it because the gap
         // from earliest to latest is greater than 24 hours. Otherwise we can add it.
         // Using 23 instead of 24 hours to have a bit of leeway.
@@ -338,10 +342,6 @@ public class CloudWatchAttemptLogsProcessor {
         if (earliestTime.isPresent() && Instant.ofEpochMilli(earliestTime.get().timestamp()).plus(23, ChronoUnit.HOURS)
                 .isBefore(timestamp)) {
             return true;
-        }
-        // Cloudwatch does not allow uploading data older than 14 days.
-        if (timestamp.isBefore(Instant.now(clock).minus(14, ChronoUnit.DAYS))) {
-            return false;
         }
         totalBytesRead.addAndGet(dataSize + TIMESTAMP_BYTES + EVENT_STORAGE_OVERHEAD);
 

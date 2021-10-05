@@ -134,7 +134,13 @@ public class CloudWatchLogsUploader {
 
         try {
             PutLogEventsResponse putLogEventsResponse = this.cloudWatchLogsClient.putLogEvents(request);
-            addNextSequenceToken(logGroupName, logStreamName, putLogEventsResponse.nextSequenceToken());
+            if (putLogEventsResponse.nextSequenceToken() != null) {
+                addNextSequenceToken(logGroupName, logStreamName, putLogEventsResponse.nextSequenceToken());
+            }
+            if (putLogEventsResponse.rejectedLogEventsInfo() != null) {
+                logger.atError().log("Log events rejected by CloudWatch {}",
+                        putLogEventsResponse.rejectedLogEventsInfo());
+            }
             return true;
         } catch (InvalidSequenceTokenException e) {
             // Get correct token using describe

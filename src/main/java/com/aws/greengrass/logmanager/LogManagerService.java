@@ -82,6 +82,7 @@ public class LogManagerService extends PluginService {
             "currentProcessingFileLastModified";
     public static final String DEFAULT_FILE_REGEX = "^%s\\w*.log";
     public static final String COMPONENT_LOGS_CONFIG_TOPIC_NAME = "componentLogsConfiguration";
+    public static final String COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME = "componentLogsConfigurationMap";
     public static final String SYSTEM_LOGS_CONFIG_TOPIC_NAME = "systemLogsConfiguration";
     public static final String COMPONENT_NAME_CONFIG_TOPIC_NAME = "componentName";
     public static final String FILE_REGEX_CONFIG_TOPIC_NAME = "logFileRegex";
@@ -143,18 +144,21 @@ public class LogManagerService extends PluginService {
 
     private synchronized void processConfiguration(Map<String, Object> configTopicsPojo) {
         Map<String, ComponentLogConfiguration> newComponentLogConfigurations = new ConcurrentHashMap<>();
-        configTopicsPojo.computeIfPresent(COMPONENT_LOGS_CONFIG_TOPIC_NAME, (s, o) -> {
+        configTopicsPojo.computeIfPresent(COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME, (s, o) -> {
             if (o instanceof Map) {
                 Map<String, Object> map = (Map) o;
                 map.forEach((componentName, componentConfigObject) -> {
                     if (componentConfigObject instanceof Map) {
                         Map<String, Object> componentConfigObjectMap = (Map) componentConfigObject;
                         componentConfigObjectMap.put(COMPONENT_NAME_CONFIG_TOPIC_NAME, componentName);
-                        handleUserComponentConfiguration(componentConfigObjectMap,
-                                newComponentLogConfigurations);
+                        handleUserComponentConfiguration(componentConfigObjectMap, newComponentLogConfigurations);
                     }
                 });
-            } else if (o instanceof ArrayList) {
+            }
+            return o;
+        });
+        configTopicsPojo.computeIfPresent(COMPONENT_LOGS_CONFIG_TOPIC_NAME, (s, o) -> {
+            if (o instanceof ArrayList) {
                 List<Object> list = (ArrayList) o;
                 list.forEach(componentConfigObject -> {
                     if (componentConfigObject instanceof Map) {

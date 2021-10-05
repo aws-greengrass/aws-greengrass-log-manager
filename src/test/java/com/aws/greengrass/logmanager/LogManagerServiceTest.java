@@ -65,6 +65,7 @@ import java.util.function.Consumer;
 import static com.aws.greengrass.componentmanager.KernelConfigResolver.CONFIGURATION_CONFIG_KEY;
 import static com.aws.greengrass.lifecyclemanager.GreengrassService.RUNTIME_STORE_NAMESPACE_TOPIC;
 import static com.aws.greengrass.logging.impl.config.LogConfig.newLogConfigFromRootConfig;
+import static com.aws.greengrass.logmanager.LogManagerService.COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME;
 import static com.aws.greengrass.logmanager.LogManagerService.COMPONENT_LOGS_CONFIG_TOPIC_NAME;
 import static com.aws.greengrass.logmanager.LogManagerService.DELETE_LOG_FILES_AFTER_UPLOAD_CONFIG_TOPIC_NAME;
 import static com.aws.greengrass.logmanager.LogManagerService.DISK_SPACE_LIMIT_CONFIG_TOPIC_NAME;
@@ -256,7 +257,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
 
         Topics configTopics = Topics.of(context, LOGS_UPLOADER_CONFIGURATION_TOPIC, null);
 
-        Topics componentConfigTopics = configTopics.createInteriorChild(COMPONENT_LOGS_CONFIG_TOPIC_NAME);
+        Topics componentConfigTopics = configTopics.createInteriorChild(COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME);
         Topics componentATopic = componentConfigTopics.createInteriorChild("UserComponentA");
         componentATopic.createLeafChild(FILE_REGEX_CONFIG_TOPIC_NAME).withValue("^log.txt\\\\w*");
         componentATopic.createLeafChild(FILE_DIRECTORY_PATH_CONFIG_TOPIC_NAME).withValue(directoryPath.toAbsolutePath().toString());
@@ -264,7 +265,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         componentATopic.createLeafChild(DISK_SPACE_LIMIT_CONFIG_TOPIC_NAME).withValue("10");
         componentATopic.createLeafChild(DISK_SPACE_LIMIT_UNIT_CONFIG_TOPIC_NAME).withValue("GB");
         componentATopic.createLeafChild(DELETE_LOG_FILES_AFTER_UPLOAD_CONFIG_TOPIC_NAME).withValue("false");
-        
+
         Topics systemConfigTopics = configTopics.createInteriorChild(SYSTEM_LOGS_CONFIG_TOPIC_NAME);
         systemConfigTopics.createLeafChild(UPLOAD_TO_CW_CONFIG_TOPIC_NAME).withValue("true");
         systemConfigTopics.createLeafChild(MIN_LOG_LEVEL_CONFIG_TOPIC_NAME).withValue("INFO");
@@ -358,7 +359,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
 
         Topics configTopics = Topics.of(context, LOGS_UPLOADER_CONFIGURATION_TOPIC, null);
 
-        Topics componentConfigTopics = configTopics.createInteriorChild(COMPONENT_LOGS_CONFIG_TOPIC_NAME);
+        Topics componentConfigTopics = configTopics.createInteriorChild(COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME);
         Topics componentATopic = componentConfigTopics.createInteriorChild("UserComponentA");
         componentATopic.createLeafChild(FILE_DIRECTORY_PATH_CONFIG_TOPIC_NAME).withValue(directoryPath.toAbsolutePath().toString());
         componentATopic.createLeafChild(MIN_LOG_LEVEL_CONFIG_TOPIC_NAME).withValue("DEBUG");
@@ -406,7 +407,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         when(mockMerger.processLogFiles(componentLogsInformationCaptor.capture())).thenReturn(new CloudWatchAttempt());
 
         Topics configTopics = Topics.of(context, LOGS_UPLOADER_CONFIGURATION_TOPIC, null);
-        Topics componentConfigTopics = configTopics.createInteriorChild(COMPONENT_LOGS_CONFIG_TOPIC_NAME);
+        Topics componentConfigTopics = configTopics.createInteriorChild(COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME);
         Topics componentATopic = componentConfigTopics.createInteriorChild("UserComponentA");
         componentATopic.createLeafChild(FILE_REGEX_CONFIG_TOPIC_NAME).withValue("^UserComponentA\\w*\\.log");
         componentATopic.createLeafChild(FILE_DIRECTORY_PATH_CONFIG_TOPIC_NAME).withValue(directoryPath.toAbsolutePath().toString());
@@ -455,7 +456,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         when(mockMerger.processLogFiles(componentLogsInformationCaptor.capture())).thenReturn(new CloudWatchAttempt());
 
         Topics configTopics = Topics.of(context, LOGS_UPLOADER_CONFIGURATION_TOPIC, null);
-        Topics componentConfigTopics = configTopics.createInteriorChild(COMPONENT_LOGS_CONFIG_TOPIC_NAME);
+        Topics componentConfigTopics = configTopics.createInteriorChild(COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME);
 
         Topics componentATopic = componentConfigTopics.createInteriorChild("UserComponentA");
         componentATopic.createLeafChild(FILE_REGEX_CONFIG_TOPIC_NAME).withValue("^log.txt\\\\w*");
@@ -685,7 +686,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
 
         Topics configTopics = Topics.of(context, LOGS_UPLOADER_CONFIGURATION_TOPIC, null);
 
-        Topics componentConfigTopics = configTopics.createInteriorChild(COMPONENT_LOGS_CONFIG_TOPIC_NAME);
+        Topics componentConfigTopics = configTopics.createInteriorChild(COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME);
         Topics componentATopic = componentConfigTopics.createInteriorChild("UserComponentA");
         componentATopic.createLeafChild(FILE_REGEX_CONFIG_TOPIC_NAME).withValue("^log.txt\\w*");
         componentATopic.createLeafChild(FILE_DIRECTORY_PATH_CONFIG_TOPIC_NAME).withValue(directoryPath.toAbsolutePath().toString());
@@ -743,7 +744,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
 
         Topics configTopics = Topics.of(context, LOGS_UPLOADER_CONFIGURATION_TOPIC, null);
 
-        Topics componentConfigTopics = configTopics.createInteriorChild(COMPONENT_LOGS_CONFIG_TOPIC_NAME);
+        Topics componentConfigTopics = configTopics.createInteriorChild(COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME);
         Topics componentATopic = componentConfigTopics.createInteriorChild("UserComponentA");
         componentATopic.createLeafChild(FILE_REGEX_CONFIG_TOPIC_NAME).withValue("^log2.txt\\w*");
         componentATopic.createLeafChild(FILE_DIRECTORY_PATH_CONFIG_TOPIC_NAME).withValue(directoryPath.toAbsolutePath().toString());
@@ -880,7 +881,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
                 .thenReturn(periodicUpdateIntervalMsTopic);
         Topics configTopics = Topics.of(context, LOGS_UPLOADER_CONFIGURATION_TOPIC, null);
 
-        Topics componentConfigTopics = configTopics.createInteriorChild(COMPONENT_LOGS_CONFIG_TOPIC_NAME);
+        Topics componentConfigTopics = configTopics.createInteriorChild(COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME);
         Topics componentATopic = componentConfigTopics.createInteriorChild("UserComponentA");
         componentATopic.createLeafChild(FILE_REGEX_CONFIG_TOPIC_NAME).withValue("^log.txt\\w*");
         componentATopic.createLeafChild(FILE_DIRECTORY_PATH_CONFIG_TOPIC_NAME).withValue(directoryPath.toAbsolutePath().toString());

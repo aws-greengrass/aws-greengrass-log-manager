@@ -13,7 +13,7 @@ logs uploader needs to be smart in order to handle these different formats of lo
 The logs uploader should be able to handle any network disruptions or device reboots. The logs uploader should smartly
 manage the log rotation for different logging frameworks and upload the logs on a “best effort” basis.
  
-The customers can add each components configuration for where the log files are location and how they are rotated. The
+The customers can add each component's configuration for where the log files are location and how they are rotated. The
 logs uploader will then perform a k-way merge and update the logs to CloudWatch in batches. After merging the different 
 log files the logs uploader will create the log groups and log streams as needed before pushing all the log events to
 CloudWatch.
@@ -35,7 +35,7 @@ Manifests:
   - aws.greengrass.LogManager:
       Configuration:
         logsUploaderConfiguration: 
-          componentLogsConfiguration:
+          componentLogsConfigurationMap:
             <ComponentName>: 
               logFileRegex: '<ComponentName>\\w*.log'
               logFileDirectoryPath: '/path/to/logs/directory/'
@@ -63,7 +63,7 @@ Manifests:
          "diskSpaceLimitUnit":"MB",
          "deleteLogFileAfterCloudUpload":true
       },
-      "componentLogsConfiguration" {
+      "componentLogsConfigurationMap" {
          "<ComponentName>": {
             "minimumLogLevel":"INFO",
             "logFileDirectoryPath":"/path/to/logs/directory/",

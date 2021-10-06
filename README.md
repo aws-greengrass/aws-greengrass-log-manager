@@ -1,4 +1,4 @@
-## Log Manager
+## Log Manager (with Map config)
 
 The log manager component collects and optionally uploads logs from Greengrass core devices to Amazon CloudWatch Logs. 
 You can configure system logs and logs for each component. Log Manager is an optional internal Greengrass service that runs in the same JVM as the 
@@ -13,7 +13,7 @@ logs uploader needs to be smart in order to handle these different formats of lo
 The logs uploader should be able to handle any network disruptions or device reboots. The logs uploader should smartly
 manage the log rotation for different logging frameworks and upload the logs on a “best effort” basis.
  
-The customers can add each components configuration for where the log files are location and how they are rotated. The
+The customers can add each component's configuration for where the log files are location and how they are rotated. The
 logs uploader will then perform a k-way merge and update the logs to CloudWatch in batches. After merging the different 
 log files the logs uploader will create the log groups and log streams as needed before pushing all the log events to
 CloudWatch.
@@ -35,8 +35,8 @@ Manifests:
   - aws.greengrass.LogManager:
       Configuration:
         logsUploaderConfiguration: 
-          componentLogsConfiguration:
-            - componentName: '<ComponentName>'
+          componentLogsConfigurationMap:
+            <ComponentName>: 
               logFileRegex: '<ComponentName>\\w*.log'
               logFileDirectoryPath: '/path/to/logs/directory/'
               minimumLogLevel: 'INFO'
@@ -63,9 +63,8 @@ Manifests:
          "diskSpaceLimitUnit":"MB",
          "deleteLogFileAfterCloudUpload":true
       },
-      "componentLogsConfiguration":[
-         {
-            "componentName":"<ComponentName>",
+      "componentLogsConfigurationMap" {
+         "<ComponentName>": {
             "minimumLogLevel":"INFO",
             "logFileDirectoryPath":"/path/to/logs/directory/",
             "logFileRegex":"<ComponentName>\\w*.log",
@@ -73,7 +72,7 @@ Manifests:
             "diskSpaceLimitUnit":"MB",
             "deleteLogFileAfterCloudUpload":true
          }
-      ]
+      }
    },
    "periodicUploadIntervalSec":600
 }

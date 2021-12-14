@@ -22,8 +22,12 @@ import software.amazon.awssdk.services.cloudwatchlogs.model.InputLogEvent;
 
 import java.io.File;
 import java.io.IOException;
-import java.io.RandomAccessFile;
+import java.io.InputStreamReader;
+import java.nio.channels.Channels;
+import java.nio.channels.SeekableByteChannel;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.StandardOpenOption;
 import java.text.SimpleDateFormat;
 import java.time.Clock;
 import java.time.Instant;
@@ -125,17 +129,20 @@ public class CloudWatchAttemptLogsProcessor {
 
             // If we have read the file already, we are at the correct offset in the file to start reading from
             // Let's get that file handle to read the new log line.
-            //TODO: This does not support the full Unicode character set. May need to rethink?
-            try (RandomAccessFile raf = new RandomAccessFile(file, "r")) {
-                raf.seek(startPosition);
-                StringBuilder data = new StringBuilder(raf.readLine());
+            try (SeekableByteChannel chan = Files.newByteChannel(file.toPath(), StandardOpenOption.READ);
+                 PositionTrackingBufferedReader r =
+                         new PositionTrackingBufferedReader(new InputStreamReader(Channels.newInputStream(chan),
+                         StandardCharsets.UTF_8))) {
+                r.setInitialPosition(startPosition);
+                chan.position(startPosition);
+                StringBuilder data = new StringBuilder(r.readLine());
 
                 // Run the loop until we detect that the log file is completely read, or that we have reached the max
                 // message size or if we detect any IOException while reading from the file.
                 while (!reachedMaxSize.get()) {
                     try {
-                        long tempStartPosition = raf.getFilePointer();
-                        String partialLogLine = raf.readLine();
+                        long tempStartPosition = r.position();
+                        String partialLogLine = r.readLine();
                         // If we do not get any data from the file, we have reached the end of the file.
                         // and we add the log line into our input logs event list since we are currently only
                         // working on rotated files, this will be guaranteed to be a complete log line.

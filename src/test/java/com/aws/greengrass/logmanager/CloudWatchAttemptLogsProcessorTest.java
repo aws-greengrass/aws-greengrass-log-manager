@@ -413,6 +413,122 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
     }
 
     @Test
+    void GIVEN_unstructured_log_WHEN_breaches_event_size_limit_THEN_split_line(ExtensionContext ec) throws IOException {
+
+        ignoreExceptionOfType(ec, DateTimeParseException.class);
+        File file = new File(directoryPath.resolve("greengrass_test.log").toUri());
+        assertTrue(file.createNewFile());
+        assertTrue(file.setReadable(true));
+        assertTrue(file.setWritable(true));
+        try (OutputStream fileOutputStream = Files.newOutputStream(file.toPath())) {
+            SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd", Locale.ENGLISH);
+            sdf.setTimeZone(TimeZone.getTimeZone("UTC"));
+            String timestampPrefix = sdf.format(new Date(Instant.now().toEpochMilli())) + "T02:00:00Z [INFO] ";
+            StringBuilder fileContent = new StringBuilder();
+            // 1 log line of size ~1KB i.e. within event size limit of 256KB, should amount to 1 log event
+            fileContent = fileContent.append(timestampPrefix).append(RandomStringUtils.random(1024*1, true, true))
+                    .append("end\n");
+            // 1 log line of size ~256KB i.e. larger than event size limit of 256KB (after additional bytes for
+            // timestamp and overhead), should amount to 2 log events.
+            fileContent = fileContent.append(timestampPrefix).append(RandomStringUtils.random(1024*256, true, true))
+                    .append("end\n");
+            // 1 more log line of size ~1KB i.e. within event size limit of 256KB, should amount to 1 log event
+            fileContent = fileContent.append(timestampPrefix)
+                    .append(StringUtils.repeat(RandomStringUtils.random(1, true, true), 1024 * 1)).append("end\n");
+            byte[] fileContentBytes = fileContent.toString().getBytes(StandardCharsets.UTF_8);
+            fileOutputStream.write(fileContentBytes);
+
+            List<LogFileInformation> logFileInformationSet = new ArrayList<>();
+            logFileInformationSet.add(LogFileInformation.builder().startPosition(0).file(file).build());
+            ComponentLogFileInformation componentLogFileInformation =
+                    ComponentLogFileInformation.builder().name("TestComponent")
+                            .multiLineStartPattern(Pattern.compile("^[^\\s]+(\\s+[^\\s]+)*$"))
+                            .desiredLogLevel(Level.INFO).componentType(ComponentType.GreengrassSystemComponent)
+                            .logFileInformationList(logFileInformationSet).build();
+
+            logsProcessor = new CloudWatchAttemptLogsProcessor(mockDeviceConfiguration, defaultClock);
+            CloudWatchAttempt attempt = logsProcessor.processLogFiles(componentLogFileInformation);
+            assertNotNull(attempt);
+
+            assertNotNull(attempt.getLogStreamsToLogEventsMap());
+            assertThat(attempt.getLogStreamsToLogEventsMap().entrySet(), IsNot.not(IsEmptyCollection.empty()));
+            String logGroup =
+                    calculateLogGroupName(ComponentType.GreengrassSystemComponent, "testRegion", "TestComponent");
+            assertEquals(attempt.getLogGroupName(), logGroup);
+            String logStream = calculateLogStreamName("testThing");
+            assertTrue(attempt.getLogStreamsToLogEventsMap().containsKey(logStream));
+            CloudWatchAttemptLogInformation logEventsForStream1 = attempt.getLogStreamsToLogEventsMap().get(logStream);
+            assertNotNull(logEventsForStream1.getLogEvents());
+            assertEquals(4, logEventsForStream1.getLogEvents().size());
+            assertTrue(logEventsForStream1.getAttemptLogFileInformationMap().containsKey(file.getAbsolutePath()));
+            assertEquals(0, logEventsForStream1.getAttemptLogFileInformationMap().get(file.getAbsolutePath())
+                    .getStartPosition());
+            assertEquals(fileContentBytes.length,
+                    logEventsForStream1.getAttemptLogFileInformationMap().get(file.getAbsolutePath()).getBytesRead());
+            assertEquals("TestComponent", logEventsForStream1.getComponentName());
+
+        } finally {
+            assertTrue(file.delete());
+        }
+    }
+
+    @Test
+    void GIVEN_unstructured_log_WHEN_breaches_event_size_and_batch_size_limits_THEN_split_line_and_skip_extra(
+            ExtensionContext ec) throws IOException {
+
+        ignoreExceptionOfType(ec, DateTimeParseException.class);
+        File file = new File(directoryPath.resolve("greengrass_test.log").toUri());
+        assertTrue(file.createNewFile());
+        assertTrue(file.setReadable(true));
+        assertTrue(file.setWritable(true));
+        try (OutputStream fileOutputStream = Files.newOutputStream(file.toPath())) {
+            StringBuilder fileContent = new StringBuilder();
+            // 1 log line of size ~1KB i.e. within event size limit of 256KB, should amount to 1 log event
+            fileContent = fileContent.append(RandomStringUtils.random(1024*1, true, true)).append("end\n");
+            // 4 log lines of size ~256KB i.e. larger than event size limit of 256KB (after additional bytes for
+            // timestamp and overhead), should amount to 2 log events each.
+            // This should max out batch size limit in the 4th line and 4th line will not get processed
+            for (int i = 0; i < 4; i++) {
+                fileContent = fileContent.append(RandomStringUtils.random(1024*256, true, true)).append("end\n");
+            }
+            int expectedBytesRead = 4*4 + 1024*1 + 3*1024*256; // 4 additional byte in each line for 'end\n'
+            fileOutputStream.write(fileContent.toString().getBytes(StandardCharsets.UTF_8));
+
+            List<LogFileInformation> logFileInformationSet = new ArrayList<>();
+            logFileInformationSet.add(LogFileInformation.builder().startPosition(0).file(file).build());
+            ComponentLogFileInformation componentLogFileInformation =
+                    ComponentLogFileInformation.builder().name("TestComponent")
+                            .multiLineStartPattern(Pattern.compile("^[^\\s]+(\\s+[^\\s]+)*$"))
+                            .desiredLogLevel(Level.INFO).componentType(ComponentType.GreengrassSystemComponent)
+                            .logFileInformationList(logFileInformationSet).build();
+
+            logsProcessor = new CloudWatchAttemptLogsProcessor(mockDeviceConfiguration, defaultClock);
+            CloudWatchAttempt attempt = logsProcessor.processLogFiles(componentLogFileInformation);
+            assertNotNull(attempt);
+
+            assertNotNull(attempt.getLogStreamsToLogEventsMap());
+            assertThat(attempt.getLogStreamsToLogEventsMap().entrySet(), IsNot.not(IsEmptyCollection.empty()));
+            String logGroup =
+                    calculateLogGroupName(ComponentType.GreengrassSystemComponent, "testRegion", "TestComponent");
+            assertEquals(attempt.getLogGroupName(), logGroup);
+            String logStream = calculateLogStreamName("testThing");
+            assertTrue(attempt.getLogStreamsToLogEventsMap().containsKey(logStream));
+            CloudWatchAttemptLogInformation logEventsForStream1 = attempt.getLogStreamsToLogEventsMap().get(logStream);
+            assertNotNull(logEventsForStream1.getLogEvents());
+            assertEquals(7, logEventsForStream1.getLogEvents().size());
+            assertTrue(logEventsForStream1.getAttemptLogFileInformationMap().containsKey(file.getAbsolutePath()));
+            assertEquals(0, logEventsForStream1.getAttemptLogFileInformationMap().get(file.getAbsolutePath())
+                    .getStartPosition());
+            assertEquals(expectedBytesRead,
+                    logEventsForStream1.getAttemptLogFileInformationMap().get(file.getAbsolutePath()).getBytesRead());
+            assertEquals("TestComponent", logEventsForStream1.getComponentName());
+
+        } finally {
+            assertTrue(file.delete());
+        }
+    }
+
+    @Test
     void GIVEN_componentsToGroups_WHEN_getLogStreamName_THEN_return_valid_log_stream_name() {
         logsProcessor = new CloudWatchAttemptLogsProcessor(mockDeviceConfiguration, defaultClock);
 

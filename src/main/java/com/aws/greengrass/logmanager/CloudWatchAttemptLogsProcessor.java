@@ -14,6 +14,7 @@ import com.aws.greengrass.logmanager.model.CloudWatchAttemptLogFileInformation;
 import com.aws.greengrass.logmanager.model.CloudWatchAttemptLogInformation;
 import com.aws.greengrass.logmanager.model.ComponentLogFileInformation;
 import com.aws.greengrass.util.Coerce;
+import com.aws.greengrass.util.Pair;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -35,6 +36,7 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.time.temporal.ChronoUnit;
 import java.time.temporal.TemporalAccessor;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.Date;
 import java.util.Locale;
@@ -61,6 +63,7 @@ public class CloudWatchAttemptLogsProcessor {
     private static final int EVENT_STORAGE_OVERHEAD = 26;
     private static final int TIMESTAMP_BYTES = 8;
     private static final int MAX_BATCH_SIZE = 1024 * 1024;
+    private static final int MAX_EVENT_LENGTH = 1024 * 256 - TIMESTAMP_BYTES - EVENT_STORAGE_OVERHEAD;
     private static final ObjectMapper DESERIALIZER = new ObjectMapper()
             .configure(MapperFeature.ACCEPT_CASE_INSENSITIVE_PROPERTIES, true);
     private static final ThreadLocal<SimpleDateFormat> DATE_FORMATTER =
@@ -212,9 +215,11 @@ public class CloudWatchAttemptLogsProcessor {
                                    String componentName,
                                    long currentPosition,
                                    long lastModified) {
-        boolean reachedMaxSize;
+        String dataStr = data.toString();
+        int dataSize = dataStr.getBytes(StandardCharsets.UTF_8).length;
         CloudWatchAttemptLogInformation attemptLogInformation;
         Optional<GreengrassLogMessage> logMessage = tryGetstructuredLogMessage(data);
+        Pair<Boolean, AtomicInteger> addEventResult;
         if (logMessage.isPresent()) {
             logStreamName = logStreamName.replace("{date}",
                     DATE_FORMATTER.get().format(new Date(logMessage.get().getTimestamp())));
@@ -222,8 +227,8 @@ public class CloudWatchAttemptLogsProcessor {
                     key -> CloudWatchAttemptLogInformation.builder()
                             .componentName(componentName)
                             .build());
-            reachedMaxSize = checkAndAddNewLogEvent(totalBytesRead, attemptLogInformation, data,
-                    desiredLogLevel, logMessage.get());
+            addEventResult = checkAndAddNewLogEvent(totalBytesRead, attemptLogInformation,
+                    dataStr, dataSize, desiredLogLevel, logMessage.get());
 
         } else {
             Matcher matcher = textTimestampPattern.matcher(data);
@@ -245,11 +250,14 @@ public class CloudWatchAttemptLogsProcessor {
                     key -> CloudWatchAttemptLogInformation.builder()
                             .componentName(componentName)
                             .build());
-            reachedMaxSize = addNewLogEvent(totalBytesRead, attemptLogInformation, data.toString(), logTimestamp);
+            addEventResult =
+                    addNewLogEvent(totalBytesRead, attemptLogInformation, dataStr, dataSize, logTimestamp);
         }
-        if (!reachedMaxSize) {
-            updateCloudWatchAttemptLogInformation(fileName, startPosition, currentPosition, attemptLogInformation,
-                    lastModified);
+        boolean reachedMaxSize = addEventResult.getLeft();
+        int actualAddedSize = addEventResult.getRight().get();
+        if (actualAddedSize > 0) {
+            updateCloudWatchAttemptLogInformation(fileName, startPosition,
+                    currentPosition - (dataSize - actualAddedSize), attemptLogInformation, lastModified);
         }
         return reachedMaxSize;
     }
@@ -294,26 +302,29 @@ public class CloudWatchAttemptLogsProcessor {
     }
 
     /**
-     * Verify the {@link GreengrassLogMessage}'s log level is greater than the desired log level to be uploaded
-     * to CloudWatch.
+     * Verify the {@link GreengrassLogMessage}'s log level is greater than the desired log level to be uploaded to
+     * CloudWatch.
      *
      * @param totalBytesRead        The total number of bytes read till now.
      * @param attemptLogInformation The attempt information containing the log file information.
      * @param data                  The log line read from the file.
+     * @param dataSize              No of bytes for data string
      * @param desiredLogLevel       The minimum desired log level to be uploaded to CloudWatch.
      * @param logMessage            The structured log message.
-     * @return whether or not the maximum message size has reached or not.
+     * @return a pair of reachedMaxSize(boolean) indicating whether maximum message size has reached, and
+     *         noOfBytesAdded(AtomicInteger) indicating no of bytes that were successfully added.
      */
-    private boolean checkAndAddNewLogEvent(AtomicInteger totalBytesRead,
-                                           CloudWatchAttemptLogInformation attemptLogInformation,
-                                           StringBuilder data,
-                                           Level desiredLogLevel,
-                                           GreengrassLogMessage logMessage) {
+    private Pair<Boolean, AtomicInteger> checkAndAddNewLogEvent(AtomicInteger totalBytesRead,
+                                                      CloudWatchAttemptLogInformation attemptLogInformation,
+                                                      String data,
+                                                      int dataSize,
+                                                      Level desiredLogLevel,
+                                                      GreengrassLogMessage logMessage) {
         Level currentLogLevel = Level.valueOf(logMessage.getLevel());
         if (currentLogLevel.toInt() < desiredLogLevel.toInt()) {
-            return false;
+            return new Pair(false, new AtomicInteger());
         }
-        return addNewLogEvent(totalBytesRead, attemptLogInformation, data.toString(),
+        return addNewLogEvent(totalBytesRead, attemptLogInformation, data, dataSize,
                 Instant.ofEpochMilli(logMessage.getTimestamp()));
     }
 
@@ -324,22 +335,21 @@ public class CloudWatchAttemptLogsProcessor {
      * @param totalBytesRead        The total bytes read till now.
      * @param attemptLogInformation The attempt information containing the log file information.
      * @param data                  The log line read from the file.
-     * @return whether or not the maximum message size has reached or not.
-     * @implNote We need to add extra bytes size for every input message as well as the timestamp byte size alongwith
-     *     the log line data size to get the exact size of the input log events.
+     * @param dataSize              No of bytes for data string
+     * @param timestamp             Timestamp for the log line
+     * @return a pair of reachedMaxSize(boolean) indicating whether maximum message size has reached, and
+     *         noOfBytesAdded(AtomicInteger) indicating no of bytes that were successfully added.
+     * @implNote We need to add extra bytes size for every input message as well as the timestamp byte size
+     *         along with the log line data size to get the exact size of the input log events.
      */
-    private boolean addNewLogEvent(AtomicInteger totalBytesRead, CloudWatchAttemptLogInformation attemptLogInformation,
-                                   String data, Instant timestamp) {
-        int dataSize = data.getBytes(StandardCharsets.UTF_8).length;
-        // Total bytes equal the number of bytes of the data plus 8 bytes for the timestamp since its a long
-        // and there is an overhead for each log event on the cloud watch side which needs to be added.
-        if (totalBytesRead.get() + dataSize + TIMESTAMP_BYTES + EVENT_STORAGE_OVERHEAD > MAX_BATCH_SIZE) {
-            return true;
-        }
-
-        // Cloudwatch does not allow uploading data older than 14 days.
+    private Pair<Boolean, AtomicInteger> addNewLogEvent(AtomicInteger totalBytesRead,
+                                                        CloudWatchAttemptLogInformation attemptLogInformation,
+                                                        String data,
+                                                        int dataSize,
+                                                        Instant timestamp) {
+        // Cloudwatch does not allow uploading data older than 14 days, so we want to skip
         if (timestamp.isBefore(Instant.now(clock).minus(14, ChronoUnit.DAYS))) {
-            return false;
+            return new Pair<>(false, new AtomicInteger(dataSize));
         }
         // If the earliest time + 24 hours is before the new time then we cannot insert it because the gap
         // from earliest to latest is greater than 24 hours. Otherwise we can add it.
@@ -348,15 +358,49 @@ public class CloudWatchAttemptLogsProcessor {
                 attemptLogInformation.getLogEvents().stream().min(Comparator.comparingLong(InputLogEvent::timestamp));
         if (earliestTime.isPresent() && Instant.ofEpochMilli(earliestTime.get().timestamp()).plus(23, ChronoUnit.HOURS)
                 .isBefore(timestamp)) {
-            return true;
+            return new Pair<>(true, new AtomicInteger());
         }
-        totalBytesRead.addAndGet(dataSize + TIMESTAMP_BYTES + EVENT_STORAGE_OVERHEAD);
 
-        InputLogEvent inputLogEvent = InputLogEvent.builder()
-                .message(data)
-                .timestamp(timestamp.toEpochMilli()).build();
-        attemptLogInformation.getLogEvents().add(inputLogEvent);
-        return false;
+        // If log line is over maximum allowed log event size, break it into chunks of allowed size before constructing
+        // log events.
+        if (dataSize > MAX_EVENT_LENGTH) {
+            logger.atTrace().kv("log-line-size-bytes", dataSize)
+                    .log("Log line larger than maximum event size 256KB, " + "will be split into multiple log events");
+        }
+        int totalChunks = dataSize / MAX_EVENT_LENGTH + 1;
+        int currChunk = 1;
+        int currChunkSize;
+        boolean reachedMaxBatchSize = false;
+        AtomicInteger currBytesRead = new AtomicInteger();
+
+        // Keep adding events until there are more chunks left or max batch size limit is reached.
+        while (currChunk <= totalChunks) {
+            currChunkSize = currChunk == totalChunks ? dataSize % MAX_EVENT_LENGTH : MAX_EVENT_LENGTH;
+
+            reachedMaxBatchSize = reachedMaxBatchSize(totalBytesRead, currChunkSize);
+            if (reachedMaxBatchSize) {
+                break;
+            }
+
+            String partialData =
+                    new String(Arrays.copyOfRange(data.getBytes(StandardCharsets.UTF_8), 0, currChunkSize),
+                            StandardCharsets.UTF_8);
+            totalBytesRead.addAndGet(currChunkSize + TIMESTAMP_BYTES + EVENT_STORAGE_OVERHEAD);
+            currBytesRead.addAndGet(currChunkSize);
+
+            InputLogEvent inputLogEvent =
+                    InputLogEvent.builder().message(partialData).timestamp(timestamp.toEpochMilli()).build();
+            attemptLogInformation.getLogEvents().add(inputLogEvent);
+
+            currChunk++;
+        }
+        return new Pair(reachedMaxBatchSize, currBytesRead);
+    }
+
+    private boolean reachedMaxBatchSize(AtomicInteger totalBytesRead, int dataSize) {
+        // Total bytes equal the number of bytes of the data plus 8 bytes for the timestamp since its a long
+        // and there is an overhead for each log event on the cloud watch side which needs to be added.
+        return totalBytesRead.get() + dataSize + TIMESTAMP_BYTES + EVENT_STORAGE_OVERHEAD > MAX_BATCH_SIZE;
     }
 
     private Optional<Instant> tryParseInstant(String instantString, DateTimeFormatter formatter) {

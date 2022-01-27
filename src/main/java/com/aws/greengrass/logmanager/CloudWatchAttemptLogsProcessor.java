@@ -367,23 +367,25 @@ public class CloudWatchAttemptLogsProcessor {
             logger.atTrace().kv("log-line-size-bytes", dataSize)
                     .log("Log line larger than maximum event size 256KB, " + "will be split into multiple log events");
         }
-        int totalChunks = dataSize / MAX_EVENT_LENGTH + 1;
+        int totalChunks = (dataSize - 1) / MAX_EVENT_LENGTH + 1;
         int currChunk = 1;
         int currChunkSize;
         boolean reachedMaxBatchSize = false;
         AtomicInteger currBytesRead = new AtomicInteger();
 
-        // Keep adding events until there are more chunks left or max batch size limit is reached.
+        // Keep adding events until there are no more chunks left or max batch size limit is reached.
         while (currChunk <= totalChunks) {
-            currChunkSize = currChunk == totalChunks ? dataSize % MAX_EVENT_LENGTH : MAX_EVENT_LENGTH;
+            currChunkSize = currChunk == totalChunks ? (dataSize - 1) % MAX_EVENT_LENGTH + 1 : MAX_EVENT_LENGTH;
 
             reachedMaxBatchSize = reachedMaxBatchSize(totalBytesRead, currChunkSize);
             if (reachedMaxBatchSize) {
                 break;
             }
 
+            int startFromByte = MAX_EVENT_LENGTH * (currChunk - 1);
             String partialData =
-                    new String(Arrays.copyOfRange(data.getBytes(StandardCharsets.UTF_8), 0, currChunkSize),
+                    new String(Arrays.copyOfRange(data.getBytes(StandardCharsets.UTF_8), startFromByte,
+                            startFromByte + currChunkSize),
                             StandardCharsets.UTF_8);
             totalBytesRead.addAndGet(currChunkSize + TIMESTAMP_BYTES + EVENT_STORAGE_OVERHEAD);
             currBytesRead.addAndGet(currChunkSize);

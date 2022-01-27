@@ -66,6 +66,9 @@ import static org.mockito.Mockito.lenient;
 @ExtendWith({MockitoExtension.class, GGExtension.class})
 class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
     private static final SimpleDateFormat DATE_FORMATTER = new SimpleDateFormat("yyyy/MM/dd", Locale.ENGLISH);
+    private static final int EVENT_STORAGE_OVERHEAD = 26;
+    private static final int TIMESTAMP_BYTES = 8;
+    private static final int MAX_EVENT_LENGTH = 1024 * 256 - TIMESTAMP_BYTES - EVENT_STORAGE_OVERHEAD;
     static {
         DATE_FORMATTER.setTimeZone(TimeZone.getTimeZone("UTC"));
     }
@@ -430,8 +433,8 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
                     .append("end\n");
             // 1 log line of size ~256KB i.e. larger than event size limit of 256KB (after additional bytes for
             // timestamp and overhead), should amount to 2 log events.
-            fileContent = fileContent.append(timestampPrefix).append(RandomStringUtils.random(1024*256, true, true))
-                    .append("end\n");
+            String overSizeLogLine = timestampPrefix + RandomStringUtils.random(1024*256, true, true) + "end";
+            fileContent = fileContent.append(overSizeLogLine).append("\n");
             // 1 more log line of size ~1KB i.e. within event size limit of 256KB, should amount to 1 log event
             fileContent = fileContent.append(timestampPrefix)
                     .append(StringUtils.repeat(RandomStringUtils.random(1, true, true), 1024 * 1)).append("end\n");
@@ -459,7 +462,13 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
             assertTrue(attempt.getLogStreamsToLogEventsMap().containsKey(logStream));
             CloudWatchAttemptLogInformation logEventsForStream1 = attempt.getLogStreamsToLogEventsMap().get(logStream);
             assertNotNull(logEventsForStream1.getLogEvents());
-            assertEquals(4, logEventsForStream1.getLogEvents().size());
+
+            List<InputLogEvent> logEvents = logEventsForStream1.getLogEvents();
+            assertEquals(4, logEvents.size());
+            // Over size log line got divided and successfully added as log events
+            assertEquals(overSizeLogLine.substring(0, MAX_EVENT_LENGTH), logEvents.get(1).message());
+            assertEquals(overSizeLogLine.substring(MAX_EVENT_LENGTH), logEvents.get(2).message());
+
             assertTrue(logEventsForStream1.getAttemptLogFileInformationMap().containsKey(file.getAbsolutePath()));
             assertEquals(0, logEventsForStream1.getAttemptLogFileInformationMap().get(file.getAbsolutePath())
                     .getStartPosition());
@@ -485,13 +494,17 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
             StringBuilder fileContent = new StringBuilder();
             // 1 log line of size ~1KB i.e. within event size limit of 256KB, should amount to 1 log event
             fileContent = fileContent.append(RandomStringUtils.random(1024*1, true, true)).append("end\n");
-            // 4 log lines of size ~256KB i.e. larger than event size limit of 256KB (after additional bytes for
+            // 1 log line of size 2 * MAX_EVENT_LENGTH KB, should amount to 2 log events
+            fileContent = fileContent.append(RandomStringUtils.random(MAX_EVENT_LENGTH * 2 - 3, true, true)).append(
+                    "end\n");
+            // 2 log lines of size ~256KB i.e. larger than event size limit of 256KB (after additional bytes for
             // timestamp and overhead), should amount to 2 log events each.
-            // This should max out batch size limit in the 4th line and 4th line will not get processed
-            for (int i = 0; i < 4; i++) {
+            // This should max out batch size limit in the 2nd line of these 2 and it will not get processed
+            for (int i = 0; i < 2; i++) {
                 fileContent = fileContent.append(RandomStringUtils.random(1024*256, true, true)).append("end\n");
             }
-            int expectedBytesRead = 4*4 + 1024*1 + 3*1024*256; // 4 additional byte in each line for 'end\n'
+            // 3 additional byte in each line for 'end\n', 1 additional for '\n'
+            int expectedBytesRead = 2*4 + 1024*1 + MAX_EVENT_LENGTH*2 + 1 + 1*1024*256;
             fileOutputStream.write(fileContent.toString().getBytes(StandardCharsets.UTF_8));
 
             List<LogFileInformation> logFileInformationSet = new ArrayList<>();
@@ -515,7 +528,8 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
             assertTrue(attempt.getLogStreamsToLogEventsMap().containsKey(logStream));
             CloudWatchAttemptLogInformation logEventsForStream1 = attempt.getLogStreamsToLogEventsMap().get(logStream);
             assertNotNull(logEventsForStream1.getLogEvents());
-            assertEquals(7, logEventsForStream1.getLogEvents().size());
+            // Total log events: 1 (first line) + 2 (second line) + 2 (third line) = 5
+            assertEquals(5, logEventsForStream1.getLogEvents().size());
             assertTrue(logEventsForStream1.getAttemptLogFileInformationMap().containsKey(file.getAbsolutePath()));
             assertEquals(0, logEventsForStream1.getAttemptLogFileInformationMap().get(file.getAbsolutePath())
                     .getStartPosition());

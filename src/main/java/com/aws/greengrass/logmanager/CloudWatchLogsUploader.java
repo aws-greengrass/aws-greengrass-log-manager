@@ -144,7 +144,7 @@ public class CloudWatchLogsUploader {
             return true;
         } catch (InvalidSequenceTokenException e) {
             // Get correct token using describe
-            logger.atError().cause(e)
+            logger.atError()
                     .log("Invalid token while uploading logs to {}-{}. Getting the correct sequence token.",
                             logGroupName,
                     logStreamName);

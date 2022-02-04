@@ -182,7 +182,7 @@ public class LogManagerService extends PluginService {
             Path logsDirectoryPath = LogManager.getRootLogConfiguration().getStoreDirectory();
             ComponentLogConfiguration systemConfiguration = ComponentLogConfiguration.builder()
                     .fileNameRegex(Pattern.compile(String.format(DEFAULT_FILE_REGEX,
-                            LogManager.getRootLogConfiguration().getFileName())))
+                            Pattern.quote(LogManager.getRootLogConfiguration().getFileName()))))
                     .directoryPath(logsDirectoryPath)
                     .name(SYSTEM_LOGS_COMPONENT_NAME)
                     .componentType(ComponentType.GreengrassSystemComponent)
@@ -231,7 +231,7 @@ public class LogManagerService extends PluginService {
                         fileNameRegex.set(Pattern.compile(logFileRegexString));
                     } else {
                         fileNameRegex.set(Pattern.compile(String.format(DEFAULT_FILE_REGEX,
-                                LogManager.getRootLogConfiguration().getFileName())));
+                                Pattern.quote(LogManager.getRootLogConfiguration().getFileName()))));
                     }
                     break;
                 case FILE_DIRECTORY_PATH_CONFIG_TOPIC_NAME:
@@ -262,11 +262,11 @@ public class LogManagerService extends PluginService {
         } else if (logConfig != null) {
             // If details missing in log manager configuration, get component log file name from its logger config
             componentLogConfiguration.setFileNameRegex(Pattern.compile(String.format(DEFAULT_FILE_REGEX,
-                    logConfig.getFileName())));
+                    Pattern.quote(logConfig.getFileName()))));
         } else {
             // If logger config is missing, default to <componentName>_*.log
             componentLogConfiguration.setFileNameRegex(Pattern.compile(String.format(DEFAULT_FILE_REGEX,
-                    componentLogConfiguration.getName())));
+                    Pattern.quote(componentLogConfiguration.getName()))));
         }
 
         if (directoryPath.get() != null) {
@@ -318,6 +318,8 @@ public class LogManagerService extends PluginService {
                 } catch (IOException e) {
                     //TODO: fail the deployment?
                     logger.atError().cause(e).log("Unable to start space management thread.");
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
                 }
             });
         }
@@ -601,8 +603,9 @@ public class LogManagerService extends PluginService {
      * the limit is met.
      *
      * @throws IOException if unable to initialise a new Watch Service.
+     * @throws InterruptedException if thread is shutdown
      */
-    private void startWatchServiceOnLogFilePaths() throws IOException {
+    private void startWatchServiceOnLogFilePaths() throws IOException, InterruptedException {
         //TODO: Optimize this.
         // The optimization would be to have best of both worlds. The file watcher will mark the changed components
         // log directories. Another scheduled thread will look at that and clean up files if necessary.
@@ -643,9 +646,12 @@ public class LogManagerService extends PluginService {
                         // correct component based on the file name pattern.
                         for (WatchEvent<?> event : watchKey.pollEvents()) {
                             String fileName = Coerce.toString(event.context());
+                            if (fileName == null) {
+                                continue;
+                            }
                             List<ComponentLogConfiguration> list = allComponentsConfiguration.stream()
                                     .filter(componentLogConfiguration -> componentLogConfiguration
-                                            .getMultiLineStartPattern().matcher(fileName).find())
+                                            .getFileNameRegex().matcher(fileName).find())
                                     .collect(Collectors.toList());
                             list.forEach(componentLogConfiguration ->
                                     updatedComponentsConfiguration.putIfAbsent(componentLogConfiguration.getName(),
@@ -687,9 +693,6 @@ public class LogManagerService extends PluginService {
                 // If there is any other IOException, then we should restart the thread.
                 scheduleSpaceManagementThread();
             }
-        } catch (InterruptedException e) {
-            logger.atError().log("Log Space management interrupted. Returning.");
-            Thread.currentThread().interrupt();
         }
     }
 

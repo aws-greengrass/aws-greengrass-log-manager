@@ -218,7 +218,7 @@ public class CloudWatchAttemptLogsProcessor {
         String dataStr = data.toString();
         int dataSize = dataStr.getBytes(StandardCharsets.UTF_8).length;
         CloudWatchAttemptLogInformation attemptLogInformation;
-        Optional<GreengrassLogMessage> logMessage = tryGetstructuredLogMessage(data);
+        Optional<GreengrassLogMessage> logMessage = tryGetStructuredLogMessage(dataStr);
         Pair<Boolean, AtomicInteger> addEventResult;
         if (logMessage.isPresent()) {
             logStreamName = logStreamName.replace("{date}",
@@ -292,9 +292,9 @@ public class CloudWatchAttemptLogsProcessor {
      * @param data The log line read from the file.
      * @return a structuredLogMessage if the deserialization is successful, else an empty optional object.
      */
-    private Optional<GreengrassLogMessage> tryGetstructuredLogMessage(StringBuilder data) {
+    private Optional<GreengrassLogMessage> tryGetStructuredLogMessage(String data) {
         try {
-            return Optional.of(DESERIALIZER.readValue(data.toString(), GreengrassLogMessage.class));
+            return Optional.of(DESERIALIZER.readValue(data, GreengrassLogMessage.class));
         } catch (JsonProcessingException ignored) {
             // If unable to deserialize, then we treat it as a normal log line and do not need to smartly upload.
             return Optional.empty();

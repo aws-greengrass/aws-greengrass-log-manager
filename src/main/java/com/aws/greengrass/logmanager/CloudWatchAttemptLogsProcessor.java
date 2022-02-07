@@ -96,7 +96,7 @@ public class CloudWatchAttemptLogsProcessor {
 
     String getLogStreamName(String thingName) {
         String logStreamName = DEFAULT_LOG_STREAM_NAME.replace("{thingName}", thingName);
-        // Thing name name can be [a-zA-Z0-9:_-]+
+        // Thing name can be [a-zA-Z0-9:_-]+
         // while log stream name has to be [^:*]*
         return logStreamName.replace(":", "+");
     }
@@ -158,10 +158,11 @@ public class CloudWatchAttemptLogsProcessor {
                             break;
                         }
 
-                        // If the new log line read from the file has the multiline separator, that means that
+                        // If the new log line read from the file matches the start pattern, that means
                         // the string builder we have appended data to until now, has a complete log line.
                         // Let's add that in the input logs event list.
-                        if (componentLogFileInformation.getMultiLineStartPattern().matcher(partialLogLine).find()) {
+                        // The default pattern is checking if the line starts with white space
+                        if (checkLogStartPattern(componentLogFileInformation, partialLogLine)) {
                             reachedMaxSize.set(processLogLine(totalBytesRead,
                                     componentLogFileInformation.getDesiredLogLevel(), logStreamName,
                                     logStreamsMap, data, fileName, startPosition, componentLogFileInformation.getName(),
@@ -397,6 +398,29 @@ public class CloudWatchAttemptLogsProcessor {
             currChunk++;
         }
         return new Pair(reachedMaxBatchSize, currBytesRead);
+    }
+
+    /**
+     * Check if the log line is the start of a new log event.
+     *
+     * @param componentLogFileInformation   Component info of log line processed
+     * @param logLine                       The processed log line
+     * @return Whether the log line is the start of a new log event.
+     */
+    private boolean checkLogStartPattern(ComponentLogFileInformation componentLogFileInformation, String logLine) {
+        Pattern multiLineStartPattern = componentLogFileInformation.getMultiLineStartPattern();
+        if (multiLineStartPattern != null) {
+            try {
+                return multiLineStartPattern.matcher(logLine).find();
+            } catch (StackOverflowError e) {
+                // Not logging error cause because it's a huge recursive stack trace
+                logger.atWarn().kv("componentName", componentLogFileInformation.getName())
+                        .log("StackOverflowError thrown when matching log against pattern {}. "
+                                + "Check leading whitespaces instead", multiLineStartPattern.pattern());
+            }
+        }
+        // The default pattern is to check if the line starts with whitespace.
+        return !logLine.isEmpty() && !Character.isWhitespace(logLine.charAt(0));
     }
 
     private boolean reachedMaxBatchSize(AtomicInteger totalBytesRead, int dataSize) {

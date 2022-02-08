@@ -20,8 +20,7 @@ public class ComponentLogConfiguration {
     private Pattern fileNameRegex;
     private Path directoryPath;
     private String name;
-    @Builder.Default
-    private Pattern multiLineStartPattern = Pattern.compile("^[^\\s]+(\\s+[^\\s]+)*$");
+    private Pattern multiLineStartPattern;
     @Builder.Default
     private Level minimumLogLevel = Level.INFO;
     private Long diskSpaceLimit;

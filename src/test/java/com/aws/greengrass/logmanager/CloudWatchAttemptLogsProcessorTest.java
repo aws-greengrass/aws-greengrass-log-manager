@@ -18,6 +18,7 @@ import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.hamcrest.collection.IsEmptyCollection;
 import org.hamcrest.core.IsNot;
+import org.hamcrest.core.StringContains;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -28,9 +29,11 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.slf4j.event.Level;
 import software.amazon.awssdk.services.cloudwatchlogs.model.InputLogEvent;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.io.PrintStream;
 import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -98,7 +101,6 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
         logFileInformationSet.add(LogFileInformation.builder().startPosition(0).file(file1).build());
         ComponentLogFileInformation componentLogFileInformation = ComponentLogFileInformation.builder()
                 .name("TestComponent")
-                .multiLineStartPattern(Pattern.compile("^[^\\s]+(\\s+[^\\s]+)*$"))
                 .desiredLogLevel(Level.INFO)
                 .componentType(ComponentType.GreengrassSystemComponent)
                 .logFileInformationList(logFileInformationSet)
@@ -140,7 +142,6 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
         logFileInformationSet.add(LogFileInformation.builder().startPosition(0).file(file1).build());
         ComponentLogFileInformation componentLogFileInformation = ComponentLogFileInformation.builder()
                 .name("TestComponent")
-                .multiLineStartPattern(Pattern.compile("^[^\\s]+(\\s+[^\\s]+)*$"))
                 .desiredLogLevel(Level.INFO)
                 .componentType(ComponentType.UserComponent)
                 .logFileInformationList(logFileInformationSet)
@@ -182,7 +183,6 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
         logFileInformationSet.add(LogFileInformation.builder().startPosition(0).file(file1).build());
         ComponentLogFileInformation componentLogFileInformation = ComponentLogFileInformation.builder()
                 .name("TestComponent")
-                .multiLineStartPattern(Pattern.compile("^[^\\s]+(\\s+[^\\s]+)*$"))
                 .desiredLogLevel(Level.INFO)
                 .componentType(ComponentType.GreengrassSystemComponent)
                 .logFileInformationList(logFileInformationSet)
@@ -239,7 +239,6 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
             logFileInformationSet.add(LogFileInformation.builder().startPosition(0).file(file).build());
             ComponentLogFileInformation componentLogFileInformation = ComponentLogFileInformation.builder()
                     .name("TestComponent")
-                    .multiLineStartPattern(Pattern.compile("^[^\\s]+(\\s+[^\\s]+)*$"))
                     .desiredLogLevel(Level.INFO)
                     .componentType(ComponentType.GreengrassSystemComponent)
                     .logFileInformationList(logFileInformationSet)
@@ -298,7 +297,6 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
             logFileInformationSet.add(LogFileInformation.builder().startPosition(0).file(file).build());
             ComponentLogFileInformation componentLogFileInformation = ComponentLogFileInformation.builder()
                     .name("TestComponent")
-                    .multiLineStartPattern(Pattern.compile("^[^\\s]+(\\s+[^\\s]+)*$"))
                     .desiredLogLevel(Level.INFO)
                     .componentType(ComponentType.GreengrassSystemComponent)
                     .logFileInformationList(logFileInformationSet)
@@ -339,7 +337,6 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
             logFileInformationSet.add(LogFileInformation.builder().startPosition(0).file(file).build());
             ComponentLogFileInformation componentLogFileInformation = ComponentLogFileInformation.builder()
                     .name("TestComponent")
-                    .multiLineStartPattern(Pattern.compile("^[^\\s]+(\\s+[^\\s]+)*$"))
                     .desiredLogLevel(Level.INFO)
                     .componentType(ComponentType.GreengrassSystemComponent)
                     .logFileInformationList(logFileInformationSet)
@@ -372,7 +369,6 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
         logFileInformationSet.add(LogFileInformation.builder().startPosition(0).file(file2).build());
         ComponentLogFileInformation componentLogFileInformation = ComponentLogFileInformation.builder()
                 .name("TestComponent")
-                .multiLineStartPattern(Pattern.compile("^[^\\s]+(\\s+[^\\s]+)*$"))
                 .desiredLogLevel(Level.INFO)
                 .componentType(ComponentType.GreengrassSystemComponent)
                 .logFileInformationList(logFileInformationSet)
@@ -445,7 +441,6 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
             logFileInformationSet.add(LogFileInformation.builder().startPosition(0).file(file).build());
             ComponentLogFileInformation componentLogFileInformation =
                     ComponentLogFileInformation.builder().name("TestComponent")
-                            .multiLineStartPattern(Pattern.compile("^[^\\s]+(\\s+[^\\s]+)*$"))
                             .desiredLogLevel(Level.INFO).componentType(ComponentType.GreengrassSystemComponent)
                             .logFileInformationList(logFileInformationSet).build();
 
@@ -511,7 +506,6 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
             logFileInformationSet.add(LogFileInformation.builder().startPosition(0).file(file).build());
             ComponentLogFileInformation componentLogFileInformation =
                     ComponentLogFileInformation.builder().name("TestComponent")
-                            .multiLineStartPattern(Pattern.compile("^[^\\s]+(\\s+[^\\s]+)*$"))
                             .desiredLogLevel(Level.INFO).componentType(ComponentType.GreengrassSystemComponent)
                             .logFileInformationList(logFileInformationSet).build();
 
@@ -540,6 +534,135 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
         } finally {
             assertTrue(file.delete());
         }
+    }
+
+    @Test
+    void GIVEN_component_multiline_pattern_default_WHEN_logs_start_with_whitespace_THEN_append_to_previous_log() throws IOException{
+        File file = new File(directoryPath.resolve("greengrass_test.log").toUri());
+        assertTrue(file.createNewFile());
+        assertTrue(file.setReadable(true));
+        assertTrue(file.setWritable(true));
+        try (OutputStream fileOutputStream = Files.newOutputStream(file.toPath())) {
+            fileOutputStream.write("[INFO] (pool-2-thread-5) ComponentManager:\n".getBytes(StandardCharsets.UTF_8));
+            fileOutputStream.write("[ERROR] (pool-2-thread-5) DeploymentService:\n".getBytes(StandardCharsets.UTF_8));
+            fileOutputStream.write("java.util.concurrent.ExecutionException: NoAvailableComponentVersion\n".getBytes(StandardCharsets.UTF_8));
+            fileOutputStream.write("    at java.util.concurrent\n".getBytes(StandardCharsets.UTF_8));
+            fileOutputStream.write("    at java.util.concurrent\n".getBytes(StandardCharsets.UTF_8));
+            fileOutputStream.write("Caused by: NoAvailableComponentVersionException\n".getBytes(StandardCharsets.UTF_8));
+        }
+        try {
+            List<LogFileInformation> logFileInformationSet = new ArrayList<>();
+            logFileInformationSet.add(LogFileInformation.builder().startPosition(0).file(file).build());
+            ComponentLogFileInformation componentLogFileInformation = ComponentLogFileInformation.builder()
+                    .name("TestComponent")
+                    .desiredLogLevel(Level.INFO)
+                    .componentType(ComponentType.GreengrassSystemComponent)
+                    .logFileInformationList(logFileInformationSet)
+                    .build();
+
+            logsProcessor = new CloudWatchAttemptLogsProcessor(mockDeviceConfiguration);
+            CloudWatchAttempt attempt = logsProcessor.processLogFiles(componentLogFileInformation);
+            assertNotNull(attempt);
+            assertNotNull(attempt.getLogStreamsToLogEventsMap());
+            assertThat(attempt.getLogStreamsToLogEventsMap().entrySet(), IsNot.not(IsEmptyCollection.empty()));
+            String logGroup = calculateLogGroupName(ComponentType.GreengrassSystemComponent, "testRegion", "TestComponent");
+            assertEquals(attempt.getLogGroupName(), logGroup);
+            assertEquals(1, attempt.getLogStreamsToLogEventsMap().keySet().size());
+            CloudWatchAttemptLogInformation logEventsForStream1 = attempt.getLogStreamsToLogEventsMap().values().iterator()
+                    .next();
+            assertNotNull(logEventsForStream1.getLogEvents());
+            assertEquals(4, logEventsForStream1.getLogEvents().size());
+        } finally {
+            assertTrue(file.delete());
+        }
+    }
+
+    @Test
+    void GIVEN_component_multiline_pattern_set_WHEN_log_lines_do_not_match_pattern_THEN_append_to_previous_log() throws IOException{
+        File file = new File(directoryPath.resolve("greengrass_test.log").toUri());
+        assertTrue(file.createNewFile());
+        assertTrue(file.setReadable(true));
+        assertTrue(file.setWritable(true));
+        try (OutputStream fileOutputStream = Files.newOutputStream(file.toPath())) {
+            fileOutputStream.write("1[INFO] (pool-2-thread-5) ComponentManager:\n".getBytes(StandardCharsets.UTF_8));
+            fileOutputStream.write("2[ERROR] (pool-2-thread-5) DeploymentService:\n".getBytes(StandardCharsets.UTF_8));
+            fileOutputStream.write("3java.util.concurrent.ExecutionException: NoAvailableComponentVersion\n".getBytes(
+                    StandardCharsets.UTF_8));
+            fileOutputStream.write("   at java.util.concurrent\n".getBytes(StandardCharsets.UTF_8));
+            fileOutputStream.write("   at java.util.concurrent\n".getBytes(StandardCharsets.UTF_8));
+            fileOutputStream.write("4Caused by: NoAvailableComponentVersionException\n".getBytes(StandardCharsets.UTF_8));
+        }
+        try {
+            List<LogFileInformation> logFileInformationSet = new ArrayList<>();
+            logFileInformationSet.add(LogFileInformation.builder().startPosition(0).file(file).build());
+            ComponentLogFileInformation componentLogFileInformation = ComponentLogFileInformation.builder()
+                    .name("TestComponent")
+                    .desiredLogLevel(Level.INFO)
+                    .componentType(ComponentType.GreengrassSystemComponent)
+                    //it's newline if line starts with number
+                    .multiLineStartPattern(Pattern.compile("^\\d.*$"))
+                    .logFileInformationList(logFileInformationSet)
+                    .build();
+
+            logsProcessor = new CloudWatchAttemptLogsProcessor(mockDeviceConfiguration);
+            CloudWatchAttempt attempt = logsProcessor.processLogFiles(componentLogFileInformation);
+            assertNotNull(attempt);
+            assertNotNull(attempt.getLogStreamsToLogEventsMap());
+            assertThat(attempt.getLogStreamsToLogEventsMap().entrySet(), IsNot.not(IsEmptyCollection.empty()));
+            String logGroup = calculateLogGroupName(ComponentType.GreengrassSystemComponent, "testRegion", "TestComponent");
+            assertEquals(attempt.getLogGroupName(), logGroup);
+            assertEquals(1, attempt.getLogStreamsToLogEventsMap().keySet().size());
+            CloudWatchAttemptLogInformation logEventsForStream1 = attempt.getLogStreamsToLogEventsMap().values().iterator()
+                    .next();
+            assertNotNull(logEventsForStream1.getLogEvents());
+            assertEquals(4, logEventsForStream1.getLogEvents().size());
+        } finally {
+            assertTrue(file.delete());
+        }
+    }
+
+    @SuppressWarnings("PMD.CloseResource")
+    @Test
+    void GIVEN_component_multiline_pattern_set_WHEN_log_lines_trigger_stack_overflow_THEN_use_default_pattern_and_log_warning()
+            throws URISyntaxException {
+        ByteArrayOutputStream outputCaptor = new ByteArrayOutputStream();
+        PrintStream old = System.out;
+        System.setOut(new PrintStream(outputCaptor));
+
+        File file = new File(getClass().getResource("stackoverflow.log").toURI());
+
+        List<LogFileInformation> logFileInformationSet = new ArrayList<>();
+        logFileInformationSet.add(LogFileInformation.builder().startPosition(0).file(file).build());
+        ComponentLogFileInformation componentLogFileInformation = ComponentLogFileInformation.builder()
+                .name("TestComponent")
+                .desiredLogLevel(Level.INFO)
+                .multiLineStartPattern(Pattern.compile("^[^\\s]+(\\s+[^\\s]+)*$"))
+                .componentType(ComponentType.GreengrassSystemComponent)
+                .logFileInformationList(logFileInformationSet)
+                .build();
+        logsProcessor = new CloudWatchAttemptLogsProcessor(mockDeviceConfiguration, defaultClock);
+        CloudWatchAttempt attempt = logsProcessor.processLogFiles(componentLogFileInformation);
+
+        assertNotNull(attempt);
+        assertNotNull(attempt.getLogStreamsToLogEventsMap());
+        assertThat(attempt.getLogStreamsToLogEventsMap().entrySet(), IsNot.not(IsEmptyCollection.empty()));
+        String logGroup = calculateLogGroupName(ComponentType.GreengrassSystemComponent, "testRegion", "TestComponent");
+        assertEquals(attempt.getLogGroupName(), logGroup);
+        String logStream = "/2020/12/18/thing/testThing";
+        assertTrue(attempt.getLogStreamsToLogEventsMap().containsKey(logStream));
+        CloudWatchAttemptLogInformation logEventsForStream = attempt.getLogStreamsToLogEventsMap().get(logStream);
+
+        assertNotNull(logEventsForStream.getLogEvents());
+        // 6 expected due to logs splitted after meeting size limit
+        assertEquals(6, logEventsForStream.getLogEvents().size());
+
+        // verify that StackOverflowError is triggered and a WARN log printed
+        System.out.flush();
+        System.setOut(old);
+        String output = outputCaptor.toString();
+        assertThat(output, StringContains.containsString("WARN"));
+        assertThat(output, StringContains.containsString("StackOverflowError thrown when matching log against pattern"));
+        assertThat(output, StringContains.containsString("TestComponent"));
     }
 
     @Test

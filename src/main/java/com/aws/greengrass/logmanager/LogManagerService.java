@@ -615,7 +615,6 @@ public class LogManagerService extends PluginService {
 
     @Override
     public void startup() throws InterruptedException {
-        // Need to override the function for tests.
         super.startup();
         processLogsAndUpload();
     }
@@ -762,8 +761,8 @@ public class LogManagerService extends PluginService {
     @Override
     @SuppressWarnings("PMD.UselessOverridingMethod")
     public void shutdown() throws InterruptedException {
-        // Need to override the function for tests.
         super.shutdown();
+        isCurrentlyUploading.set(false);
     }
 
     @Builder

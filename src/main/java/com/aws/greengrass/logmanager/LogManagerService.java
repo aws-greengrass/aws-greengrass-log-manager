@@ -101,7 +101,8 @@ public class LogManagerService extends PluginService {
             Collections.synchronizedMap(new LinkedHashMap<>());
     final Map<String, CurrentProcessingFileInformation> componentCurrentProcessingLogFile =
             new ConcurrentHashMap<>();
-    Map<String, ComponentLogConfiguration> componentLogConfigurations = new ConcurrentHashMap<>();
+    // public only for integ tests
+    public Map<String, ComponentLogConfiguration> componentLogConfigurations = new ConcurrentHashMap<>();
     @Getter
     private final CloudWatchLogsUploader uploader;
     private final CloudWatchAttemptLogsProcessor logsProcessor;
@@ -230,8 +231,8 @@ public class LogManagerService extends PluginService {
                     if (Utils.isNotEmpty(logFileRegexString)) {
                         fileNameRegex.set(Pattern.compile(logFileRegexString));
                     } else {
-                        fileNameRegex.set(Pattern.compile(String.format(DEFAULT_FILE_REGEX,
-                                Pattern.quote(LogManager.getRootLogConfiguration().getFileName()))));
+                        fileNameRegex.set(Pattern.compile(String.format(DEFAULT_FILE_REGEX, Pattern.quote(
+                                Coerce.toString(componentConfigMap.get(COMPONENT_NAME_CONFIG_TOPIC_NAME))))));
                     }
                     break;
                 case FILE_DIRECTORY_PATH_CONFIG_TOPIC_NAME:

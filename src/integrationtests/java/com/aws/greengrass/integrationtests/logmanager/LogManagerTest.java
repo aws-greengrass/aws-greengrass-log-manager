@@ -44,6 +44,7 @@ import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.text.SimpleDateFormat;
+import java.time.Duration;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Date;
@@ -63,13 +64,16 @@ import static com.aws.greengrass.logging.impl.config.LogConfig.newLogConfigFromR
 import static com.aws.greengrass.logmanager.CloudWatchAttemptLogsProcessor.DEFAULT_LOG_STREAM_NAME;
 import static com.aws.greengrass.logmanager.LogManagerService.DEFAULT_FILE_REGEX;
 import static com.aws.greengrass.testcommons.testutilities.ExceptionLogProtector.ignoreExceptionOfType;
+import static com.github.grantwest.eventually.EventuallyLambdaMatcher.eventuallyEval;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.is;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
 @SuppressWarnings("PMD.UnsynchronizedStaticFormatter")
 @ExtendWith({GGExtension.class, MockitoExtension.class})
@@ -83,6 +87,9 @@ class LogManagerTest extends BaseITCase {
     private Path tempDirectoryPath;
     private final static ObjectMapper YAML_OBJECT_MAPPER = new ObjectMapper(new YAMLFactory());
 
+    private static final Level MINIMUM_LOG_LEVEL_DEFAULT =  Level.INFO;
+    private static final boolean DELETE_LOG_FILE_AFTER_CLOUD_UPLOAD_DEFAULT = false;
+    private static final String FILE_NAME_REGEX_DEFAULT = "^\\QUserComponentA\\E\\w*.log";
     static {
         DATE_FORMATTER.setTimeZone(TimeZone.getTimeZone("UTC"));
     }
@@ -103,7 +110,7 @@ class LogManagerTest extends BaseITCase {
 
     void setupKernel(Path storeDirectory, String configFileName) throws InterruptedException,
             URISyntaxException, IOException, DeviceConfigurationException {
-        when(cloudWatchLogsClient.putLogEvents(any(PutLogEventsRequest.class)))
+        lenient().when(cloudWatchLogsClient.putLogEvents(any(PutLogEventsRequest.class)))
                 .thenReturn(PutLogEventsResponse.builder().nextSequenceToken("nextToken").build());
 
         System.setProperty("root", tempRootDir.toAbsolutePath().toString());
@@ -282,5 +289,47 @@ class LogManagerTest extends BaseITCase {
             }
         }
         assertEquals(1, allFiles.size());
+    }
+
+    @Test
+    void GIVEN_component_configs_WHEN_individual_configs_are_reset_THEN_correct_default_values_are_used()
+            throws Exception {
+        Path LOG_FILE_DIRECTORY_PATH_DEFAULT = tempRootDir.resolve("logs");
+
+        tempDirectoryPath = Files.createTempDirectory(tempRootDir, "IntegrationTestsTemporaryLogFiles");
+        setupKernel(tempDirectoryPath, "configsDifferentFromDefaults.yaml");
+        TimeUnit.SECONDS.sleep(30);
+
+        // Verify correct reset for fileNameRegex
+        assertThat(()-> logManagerService.componentLogConfigurations.get("UserComponentA").getFileNameRegex().pattern(),
+                eventuallyEval(is("^integTestRandomLogFiles.log\\w*"), Duration.ofSeconds(30)));
+        logManagerService.getConfig().find("configuration", "logsUploaderConfiguration",
+                "componentLogsConfigurationMap", "UserComponentA", "logFileRegex").remove();
+        assertThat(()-> logManagerService.componentLogConfigurations.get("UserComponentA").getFileNameRegex().pattern(),
+                eventuallyEval(is(FILE_NAME_REGEX_DEFAULT), Duration.ofSeconds(30)));
+
+        // Verify correct reset for directoryPath
+        assertThat(()-> logManagerService.componentLogConfigurations.get("UserComponentA").getDirectoryPath(),
+                eventuallyEval(is(tempDirectoryPath), Duration.ofSeconds(30)));
+        logManagerService.getConfig().find("configuration", "logsUploaderConfiguration",
+                "componentLogsConfigurationMap", "UserComponentA", "logFileDirectoryPath").remove();
+        assertThat(()-> logManagerService.componentLogConfigurations.get("UserComponentA").getDirectoryPath(),
+                eventuallyEval(is(LOG_FILE_DIRECTORY_PATH_DEFAULT), Duration.ofSeconds(30)));
+
+        // Verify correct reset for minimumLogLevel
+        assertThat(()-> logManagerService.componentLogConfigurations.get("UserComponentA").getMinimumLogLevel(),
+                eventuallyEval(is(Level.TRACE), Duration.ofSeconds(30)));
+        logManagerService.getConfig().find("configuration", "logsUploaderConfiguration",
+                "componentLogsConfigurationMap", "UserComponentA", "minimumLogLevel").remove();
+        assertThat(()-> logManagerService.componentLogConfigurations.get("UserComponentA").getMinimumLogLevel(),
+                eventuallyEval(is(MINIMUM_LOG_LEVEL_DEFAULT), Duration.ofSeconds(30)));
+
+        // Verify correct reset for deleteLogFileAfterCloudUpload
+        assertThat(()-> logManagerService.componentLogConfigurations.get("UserComponentA").isDeleteLogFileAfterCloudUpload(),
+                eventuallyEval(is(true), Duration.ofSeconds(30)));
+        logManagerService.getConfig().find("configuration", "logsUploaderConfiguration",
+                "componentLogsConfigurationMap", "UserComponentA", "deleteLogFileAfterCloudUpload").remove();
+        assertThat(()-> logManagerService.componentLogConfigurations.get("UserComponentA").isDeleteLogFileAfterCloudUpload(),
+                eventuallyEval(is(DELETE_LOG_FILE_AFTER_CLOUD_UPLOAD_DEFAULT), Duration.ofSeconds(30)));
     }
 }

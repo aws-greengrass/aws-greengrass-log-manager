@@ -66,6 +66,7 @@ import static com.aws.greengrass.logmanager.LogManagerService.DEFAULT_FILE_REGEX
 import static com.aws.greengrass.testcommons.testutilities.ExceptionLogProtector.ignoreExceptionOfType;
 import static com.github.grantwest.eventually.EventuallyLambdaMatcher.eventuallyEval;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.is;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -331,5 +332,14 @@ class LogManagerTest extends BaseITCase {
                 "componentLogsConfigurationMap", "UserComponentA", "deleteLogFileAfterCloudUpload").remove();
         assertThat(()-> logManagerService.componentLogConfigurations.get("UserComponentA").isDeleteLogFileAfterCloudUpload(),
                 eventuallyEval(is(DELETE_LOG_FILE_AFTER_CLOUD_UPLOAD_DEFAULT), Duration.ofSeconds(30)));
+
+        // Verify correct reset for diskSpaceLimit (expected to be null)
+        assertThat(()-> logManagerService.componentLogConfigurations.get("UserComponentA").getDiskSpaceLimit(),
+                eventuallyEval(is(20480L), Duration.ofSeconds(30)));
+        logManagerService.getConfig().find("configuration", "logsUploaderConfiguration",
+                "componentLogsConfigurationMap", "UserComponentA", "diskSpaceLimit").remove();
+        assertThat(()-> logManagerService.componentLogConfigurations.get("UserComponentA").getDiskSpaceLimit() == null,
+                eventuallyEval(equalTo(true), Duration.ofSeconds(30)));
+
     }
 }

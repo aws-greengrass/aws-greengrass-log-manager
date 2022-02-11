@@ -101,8 +101,8 @@ public class LogManagerService extends PluginService {
             Collections.synchronizedMap(new LinkedHashMap<>());
     final Map<String, CurrentProcessingFileInformation> componentCurrentProcessingLogFile =
             new ConcurrentHashMap<>();
-    // public only for integ tests
-    public Map<String, ComponentLogConfiguration> componentLogConfigurations = new ConcurrentHashMap<>();
+    @Getter
+    Map<String, ComponentLogConfiguration> componentLogConfigurations = new ConcurrentHashMap<>();
     @Getter
     private final CloudWatchLogsUploader uploader;
     private final CloudWatchAttemptLogsProcessor logsProcessor;

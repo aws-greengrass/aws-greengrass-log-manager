@@ -302,44 +302,43 @@ class LogManagerTest extends BaseITCase {
         TimeUnit.SECONDS.sleep(30);
 
         // Verify correct reset for fileNameRegex
-        assertThat(()-> logManagerService.componentLogConfigurations.get("UserComponentA").getFileNameRegex().pattern(),
+        assertThat(()-> logManagerService.getComponentLogConfigurations().get("UserComponentA").getFileNameRegex().pattern(),
                 eventuallyEval(is("^integTestRandomLogFiles.log\\w*"), Duration.ofSeconds(30)));
         logManagerService.getConfig().find("configuration", "logsUploaderConfiguration",
                 "componentLogsConfigurationMap", "UserComponentA", "logFileRegex").remove();
-        assertThat(()-> logManagerService.componentLogConfigurations.get("UserComponentA").getFileNameRegex().pattern(),
+        assertThat(()-> logManagerService.getComponentLogConfigurations().get("UserComponentA").getFileNameRegex().pattern(),
                 eventuallyEval(is(FILE_NAME_REGEX_DEFAULT), Duration.ofSeconds(30)));
 
         // Verify correct reset for directoryPath
-        assertThat(()-> logManagerService.componentLogConfigurations.get("UserComponentA").getDirectoryPath(),
+        assertThat(()-> logManagerService.getComponentLogConfigurations().get("UserComponentA").getDirectoryPath(),
                 eventuallyEval(is(tempDirectoryPath), Duration.ofSeconds(30)));
         logManagerService.getConfig().find("configuration", "logsUploaderConfiguration",
                 "componentLogsConfigurationMap", "UserComponentA", "logFileDirectoryPath").remove();
-        assertThat(()-> logManagerService.componentLogConfigurations.get("UserComponentA").getDirectoryPath(),
+        assertThat(()-> logManagerService.getComponentLogConfigurations().get("UserComponentA").getDirectoryPath(),
                 eventuallyEval(is(LOG_FILE_DIRECTORY_PATH_DEFAULT), Duration.ofSeconds(30)));
 
         // Verify correct reset for minimumLogLevel
-        assertThat(()-> logManagerService.componentLogConfigurations.get("UserComponentA").getMinimumLogLevel(),
+        assertThat(()-> logManagerService.getComponentLogConfigurations().get("UserComponentA").getMinimumLogLevel(),
                 eventuallyEval(is(Level.TRACE), Duration.ofSeconds(30)));
         logManagerService.getConfig().find("configuration", "logsUploaderConfiguration",
                 "componentLogsConfigurationMap", "UserComponentA", "minimumLogLevel").remove();
-        assertThat(()-> logManagerService.componentLogConfigurations.get("UserComponentA").getMinimumLogLevel(),
+        assertThat(()-> logManagerService.getComponentLogConfigurations().get("UserComponentA").getMinimumLogLevel(),
                 eventuallyEval(is(MINIMUM_LOG_LEVEL_DEFAULT), Duration.ofSeconds(30)));
 
         // Verify correct reset for deleteLogFileAfterCloudUpload
-        assertThat(()-> logManagerService.componentLogConfigurations.get("UserComponentA").isDeleteLogFileAfterCloudUpload(),
+        assertThat(()-> logManagerService.getComponentLogConfigurations().get("UserComponentA").isDeleteLogFileAfterCloudUpload(),
                 eventuallyEval(is(true), Duration.ofSeconds(30)));
         logManagerService.getConfig().find("configuration", "logsUploaderConfiguration",
                 "componentLogsConfigurationMap", "UserComponentA", "deleteLogFileAfterCloudUpload").remove();
-        assertThat(()-> logManagerService.componentLogConfigurations.get("UserComponentA").isDeleteLogFileAfterCloudUpload(),
+        assertThat(()-> logManagerService.getComponentLogConfigurations().get("UserComponentA").isDeleteLogFileAfterCloudUpload(),
                 eventuallyEval(is(DELETE_LOG_FILE_AFTER_CLOUD_UPLOAD_DEFAULT), Duration.ofSeconds(30)));
 
         // Verify correct reset for diskSpaceLimit (expected to be null)
-        assertThat(()-> logManagerService.componentLogConfigurations.get("UserComponentA").getDiskSpaceLimit(),
+        assertThat(()-> logManagerService.getComponentLogConfigurations().get("UserComponentA").getDiskSpaceLimit(),
                 eventuallyEval(is(20480L), Duration.ofSeconds(30)));
         logManagerService.getConfig().find("configuration", "logsUploaderConfiguration",
                 "componentLogsConfigurationMap", "UserComponentA", "diskSpaceLimit").remove();
-        assertThat(()-> logManagerService.componentLogConfigurations.get("UserComponentA").getDiskSpaceLimit() == null,
+        assertThat(()-> logManagerService.getComponentLogConfigurations().get("UserComponentA").getDiskSpaceLimit() == null,
                 eventuallyEval(equalTo(true), Duration.ofSeconds(30)));
-
     }
 }

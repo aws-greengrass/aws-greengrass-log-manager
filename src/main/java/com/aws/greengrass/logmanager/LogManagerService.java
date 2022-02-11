@@ -135,7 +135,14 @@ public class LogManagerService extends PluginService {
                     if (why == WhatHappened.removed) {
                         periodicUpdateIntervalSec = DEFAULT_PERIODIC_UPDATE_INTERVAL_SEC;
                     } else {
-                        periodicUpdateIntervalSec = Coerce.toInt(newv);
+                        if (Coerce.toInt(newv) > 0) {
+                            periodicUpdateIntervalSec = Coerce.toInt(newv);
+                        } else {
+                            logger.atWarn().log("Invalid config value, {}, for periodicUploadIntervalSec. Must be an "
+                                    + "integer greater than 0. Using default value of 300 (5 minutes)",
+                                    Coerce.toInt(newv));
+                            periodicUpdateIntervalSec = DEFAULT_PERIODIC_UPDATE_INTERVAL_SEC;
+                        }
                     }
                 });
         this.uploader.registerAttemptStatus(LOGS_UPLOADER_SERVICE_TOPICS, this::handleCloudWatchAttemptStatus);
@@ -238,9 +245,6 @@ public class LogManagerService extends PluginService {
                     String logFileRegexString = Coerce.toString(val);
                     if (Utils.isNotEmpty(logFileRegexString)) {
                         fileNameRegex.set(Pattern.compile(logFileRegexString));
-                    } else {
-                        fileNameRegex.set(Pattern.compile(String.format(DEFAULT_FILE_REGEX, Pattern.quote(
-                                Coerce.toString(componentConfigMap.get(COMPONENT_NAME_CONFIG_TOPIC_NAME))))));
                     }
                     break;
                 case FILE_DIRECTORY_PATH_CONFIG_TOPIC_NAME:

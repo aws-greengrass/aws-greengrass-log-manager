@@ -304,8 +304,7 @@ class LogManagerTest extends BaseITCase {
     @Test
     void GIVEN_component_configs_WHEN_individual_configs_are_reset_THEN_correct_default_values_are_used()
             throws Exception {
-        Path LOG_FILE_DIRECTORY_PATH_DEFAULT = tempRootDir.resolve("logs");
-        String COMPONENT_NAME = "UserComponentA";
+        String componentName = "UserComponentA";
 
         tempDirectoryPath = Files.createTempDirectory(tempRootDir, "IntegrationTestsTemporaryLogFiles");
         setupKernel(tempDirectoryPath, "configsDifferentFromDefaults.yaml");
@@ -317,43 +316,45 @@ class LogManagerTest extends BaseITCase {
                 eventuallyEval(is(logManagerService.DEFAULT_PERIODIC_UPDATE_INTERVAL_SEC), Duration.ofSeconds(30)));
 
         // Verify correct reset for fileNameRegex
-        assertThat(()-> logManagerService.getComponentLogConfigurations().get(COMPONENT_NAME).getFileNameRegex().pattern(),
+        assertThat(()-> logManagerService.getComponentLogConfigurations().get(componentName).getFileNameRegex().pattern(),
                 eventuallyEval(is("^integTestRandomLogFiles.log\\w*"), Duration.ofSeconds(30)));
         logManagerService.getConfig().find(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC,
-                COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME, COMPONENT_NAME, FILE_REGEX_CONFIG_TOPIC_NAME).remove();
-        assertThat(()-> logManagerService.getComponentLogConfigurations().get(COMPONENT_NAME).getFileNameRegex().pattern(),
+                COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME, componentName, FILE_REGEX_CONFIG_TOPIC_NAME).remove();
+        assertThat(()-> logManagerService.getComponentLogConfigurations().get(componentName).getFileNameRegex().pattern(),
                 eventuallyEval(is(FILE_NAME_REGEX_DEFAULT), Duration.ofSeconds(30)));
 
         // Verify correct reset for directoryPath
-        assertThat(()-> logManagerService.getComponentLogConfigurations().get(COMPONENT_NAME).getDirectoryPath(),
+        Path defaultLogFileDirectoryPath = tempRootDir.resolve("logs");
+
+        assertThat(()-> logManagerService.getComponentLogConfigurations().get(componentName).getDirectoryPath(),
                 eventuallyEval(is(tempDirectoryPath), Duration.ofSeconds(30)));
         logManagerService.getConfig().find(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC,
-                COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME, COMPONENT_NAME, FILE_DIRECTORY_PATH_CONFIG_TOPIC_NAME).remove();
-        assertThat(()-> logManagerService.getComponentLogConfigurations().get(COMPONENT_NAME).getDirectoryPath(),
-                eventuallyEval(is(LOG_FILE_DIRECTORY_PATH_DEFAULT), Duration.ofSeconds(30)));
+                COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME, componentName, FILE_DIRECTORY_PATH_CONFIG_TOPIC_NAME).remove();
+        assertThat(()-> logManagerService.getComponentLogConfigurations().get(componentName).getDirectoryPath(),
+                eventuallyEval(is(defaultLogFileDirectoryPath), Duration.ofSeconds(30)));
 
         // Verify correct reset for minimumLogLevel
-        assertThat(()-> logManagerService.getComponentLogConfigurations().get(COMPONENT_NAME).getMinimumLogLevel(),
+        assertThat(()-> logManagerService.getComponentLogConfigurations().get(componentName).getMinimumLogLevel(),
                 eventuallyEval(is(Level.TRACE), Duration.ofSeconds(30)));
         logManagerService.getConfig().find(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC,
-                COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME, COMPONENT_NAME, MIN_LOG_LEVEL_CONFIG_TOPIC_NAME).remove();
-        assertThat(()-> logManagerService.getComponentLogConfigurations().get(COMPONENT_NAME).getMinimumLogLevel(),
+                COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME, componentName, MIN_LOG_LEVEL_CONFIG_TOPIC_NAME).remove();
+        assertThat(()-> logManagerService.getComponentLogConfigurations().get(componentName).getMinimumLogLevel(),
                 eventuallyEval(is(MINIMUM_LOG_LEVEL_DEFAULT), Duration.ofSeconds(30)));
 
         // Verify correct reset for deleteLogFileAfterCloudUpload
-        assertThat(()-> logManagerService.getComponentLogConfigurations().get(COMPONENT_NAME).isDeleteLogFileAfterCloudUpload(),
+        assertThat(()-> logManagerService.getComponentLogConfigurations().get(componentName).isDeleteLogFileAfterCloudUpload(),
                 eventuallyEval(is(true), Duration.ofSeconds(30)));
         logManagerService.getConfig().find(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC,
-                COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME, COMPONENT_NAME, DELETE_LOG_FILES_AFTER_UPLOAD_CONFIG_TOPIC_NAME).remove();
-        assertThat(()-> logManagerService.getComponentLogConfigurations().get(COMPONENT_NAME).isDeleteLogFileAfterCloudUpload(),
+                COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME, componentName, DELETE_LOG_FILES_AFTER_UPLOAD_CONFIG_TOPIC_NAME).remove();
+        assertThat(()-> logManagerService.getComponentLogConfigurations().get(componentName).isDeleteLogFileAfterCloudUpload(),
                 eventuallyEval(is(DELETE_LOG_FILE_AFTER_CLOUD_UPLOAD_DEFAULT), Duration.ofSeconds(30)));
 
         // Verify correct reset for diskSpaceLimit (expected to be null)
-        assertThat(()-> logManagerService.getComponentLogConfigurations().get(COMPONENT_NAME).getDiskSpaceLimit(),
+        assertThat(()-> logManagerService.getComponentLogConfigurations().get(componentName).getDiskSpaceLimit(),
                 eventuallyEval(is(20480L), Duration.ofSeconds(30)));
         logManagerService.getConfig().find(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC,
-                COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME, COMPONENT_NAME, DISK_SPACE_LIMIT_CONFIG_TOPIC_NAME).remove();
-        assertThat(()-> logManagerService.getComponentLogConfigurations().get(COMPONENT_NAME).getDiskSpaceLimit() == null,
+                COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME, componentName, DISK_SPACE_LIMIT_CONFIG_TOPIC_NAME).remove();
+        assertThat(()-> logManagerService.getComponentLogConfigurations().get(componentName).getDiskSpaceLimit() == null,
                 eventuallyEval(equalTo(true), Duration.ofSeconds(30)));
     }
 }

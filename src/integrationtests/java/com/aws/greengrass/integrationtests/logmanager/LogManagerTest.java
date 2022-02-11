@@ -301,6 +301,12 @@ class LogManagerTest extends BaseITCase {
         setupKernel(tempDirectoryPath, "configsDifferentFromDefaults.yaml");
         TimeUnit.SECONDS.sleep(30);
 
+        // Verify correct reset for periodicUploadIntervalSec
+        assertThat(()-> logManagerService.getPeriodicUpdateIntervalSec(), eventuallyEval(is(10), Duration.ofSeconds(30)));
+        logManagerService.getConfig().find("configuration", "periodicUploadIntervalSec").remove();
+        assertThat(()-> logManagerService.getPeriodicUpdateIntervalSec(),
+                eventuallyEval(is(logManagerService.DEFAULT_PERIODIC_UPDATE_INTERVAL_SEC), Duration.ofSeconds(30)));
+
         // Verify correct reset for fileNameRegex
         assertThat(()-> logManagerService.getComponentLogConfigurations().get("UserComponentA").getFileNameRegex().pattern(),
                 eventuallyEval(is("^integTestRandomLogFiles.log\\w*"), Duration.ofSeconds(30)));

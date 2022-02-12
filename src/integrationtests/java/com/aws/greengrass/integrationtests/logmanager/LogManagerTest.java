@@ -97,9 +97,6 @@ class LogManagerTest extends BaseITCase {
     private Path tempDirectoryPath;
     private final static ObjectMapper YAML_OBJECT_MAPPER = new ObjectMapper(new YAMLFactory());
 
-    private static final Level MINIMUM_LOG_LEVEL_DEFAULT =  Level.INFO;
-    private static final boolean DELETE_LOG_FILE_AFTER_CLOUD_UPLOAD_DEFAULT = false;
-    private static final String FILE_NAME_REGEX_DEFAULT = "^\\QUserComponentA\\E\\w*.log";
     static {
         DATE_FORMATTER.setTimeZone(TimeZone.getTimeZone("UTC"));
     }
@@ -316,38 +313,40 @@ class LogManagerTest extends BaseITCase {
                 eventuallyEval(is(logManagerService.DEFAULT_PERIODIC_UPDATE_INTERVAL_SEC), Duration.ofSeconds(30)));
 
         // Verify correct reset for fileNameRegex
+        String fileNameRegexDefault = "^\\QUserComponentA\\E\\w*.log";
         assertThat(()-> logManagerService.getComponentLogConfigurations().get(componentName).getFileNameRegex().pattern(),
                 eventuallyEval(is("^integTestRandomLogFiles.log\\w*"), Duration.ofSeconds(30)));
         logManagerService.getConfig().find(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC,
                 COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME, componentName, FILE_REGEX_CONFIG_TOPIC_NAME).remove();
         assertThat(()-> logManagerService.getComponentLogConfigurations().get(componentName).getFileNameRegex().pattern(),
-                eventuallyEval(is(FILE_NAME_REGEX_DEFAULT), Duration.ofSeconds(30)));
+                eventuallyEval(is(fileNameRegexDefault), Duration.ofSeconds(30)));
 
         // Verify correct reset for directoryPath
-        Path defaultLogFileDirectoryPath = tempRootDir.resolve("logs");
-
+        Path logFileDirectoryPathDefault = tempRootDir.resolve("logs");
         assertThat(()-> logManagerService.getComponentLogConfigurations().get(componentName).getDirectoryPath(),
                 eventuallyEval(is(tempDirectoryPath), Duration.ofSeconds(30)));
         logManagerService.getConfig().find(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC,
                 COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME, componentName, FILE_DIRECTORY_PATH_CONFIG_TOPIC_NAME).remove();
         assertThat(()-> logManagerService.getComponentLogConfigurations().get(componentName).getDirectoryPath(),
-                eventuallyEval(is(defaultLogFileDirectoryPath), Duration.ofSeconds(30)));
+                eventuallyEval(is(logFileDirectoryPathDefault), Duration.ofSeconds(30)));
 
         // Verify correct reset for minimumLogLevel
+        Level minimumLogLevelDefault =  Level.INFO;
         assertThat(()-> logManagerService.getComponentLogConfigurations().get(componentName).getMinimumLogLevel(),
                 eventuallyEval(is(Level.TRACE), Duration.ofSeconds(30)));
         logManagerService.getConfig().find(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC,
                 COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME, componentName, MIN_LOG_LEVEL_CONFIG_TOPIC_NAME).remove();
         assertThat(()-> logManagerService.getComponentLogConfigurations().get(componentName).getMinimumLogLevel(),
-                eventuallyEval(is(MINIMUM_LOG_LEVEL_DEFAULT), Duration.ofSeconds(30)));
+                eventuallyEval(is(minimumLogLevelDefault), Duration.ofSeconds(30)));
 
         // Verify correct reset for deleteLogFileAfterCloudUpload
+        boolean deleteLogFileAfterCloudUploadDefault = false;
         assertThat(()-> logManagerService.getComponentLogConfigurations().get(componentName).isDeleteLogFileAfterCloudUpload(),
                 eventuallyEval(is(true), Duration.ofSeconds(30)));
         logManagerService.getConfig().find(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC,
                 COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME, componentName, DELETE_LOG_FILES_AFTER_UPLOAD_CONFIG_TOPIC_NAME).remove();
         assertThat(()-> logManagerService.getComponentLogConfigurations().get(componentName).isDeleteLogFileAfterCloudUpload(),
-                eventuallyEval(is(DELETE_LOG_FILE_AFTER_CLOUD_UPLOAD_DEFAULT), Duration.ofSeconds(30)));
+                eventuallyEval(is(deleteLogFileAfterCloudUploadDefault), Duration.ofSeconds(30)));
 
         // Verify correct reset for diskSpaceLimit (expected to be null)
         assertThat(()-> logManagerService.getComponentLogConfigurations().get(componentName).getDiskSpaceLimit(),

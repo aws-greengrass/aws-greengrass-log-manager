@@ -310,7 +310,7 @@ class LogManagerTest extends BaseITCase {
         assertThat(()-> logManagerService.getPeriodicUpdateIntervalSec(), eventuallyEval(is(10), Duration.ofSeconds(30)));
         logManagerService.getConfig().find(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC).remove();
         assertThat(()-> logManagerService.getPeriodicUpdateIntervalSec(),
-                eventuallyEval(is(logManagerService.DEFAULT_PERIODIC_UPDATE_INTERVAL_SEC), Duration.ofSeconds(30)));
+                eventuallyEval(is(LogManagerService.DEFAULT_PERIODIC_UPDATE_INTERVAL_SEC), Duration.ofSeconds(30)));
 
         // Verify correct reset for fileNameRegex
         String fileNameRegexDefault = "^\\QUserComponentA\\E\\w*.log";

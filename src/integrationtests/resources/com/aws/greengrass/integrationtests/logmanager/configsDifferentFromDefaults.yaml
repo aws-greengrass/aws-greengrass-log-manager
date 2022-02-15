@@ -1,0 +1,26 @@
+---
+services:
+  aws.greengrass.LogManager:
+    configuration:
+      periodicUploadIntervalSec: 10
+      logsUploaderConfiguration:
+        componentLogsConfigurationMap:
+          UserComponentA:
+            logFileRegex: '^integTestRandomLogFiles.log\w*'
+            logFileDirectoryPath: '{{logFileDirectoryPath}}'
+            minimumLogLevel: 'TRACE'
+            diskSpaceLimit: '20'
+            diskSpaceLimitUnit: 'KB'
+            deleteLogFileAfterCloudUpload: 'true'
+        systemLogsConfiguration:
+          uploadToCloudWatch: true
+          minimumLogLevel: 'TRACE'
+          diskSpaceLimit: '25'
+          diskSpaceLimitUnit: 'MB'
+          deleteLogFileAfterCloudUpload: 'true'
+  main:
+    lifecycle:
+      install:
+        all: echo All installed
+    dependencies:
+      - aws.greengrass.LogManager

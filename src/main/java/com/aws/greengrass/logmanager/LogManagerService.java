@@ -8,6 +8,7 @@ package com.aws.greengrass.logmanager;
 import ch.qos.logback.core.util.FileSize;
 import com.aws.greengrass.config.Topic;
 import com.aws.greengrass.config.Topics;
+import com.aws.greengrass.config.WhatHappened;
 import com.aws.greengrass.dependency.ImplementsService;
 import com.aws.greengrass.lifecyclemanager.PluginService;
 import com.aws.greengrass.logging.impl.LogManager;
@@ -93,7 +94,7 @@ public class LogManagerService extends PluginService {
     public static final String DELETE_LOG_FILES_AFTER_UPLOAD_CONFIG_TOPIC_NAME = "deleteLogFileAfterCloudUpload";
     public static final String UPLOAD_TO_CW_CONFIG_TOPIC_NAME = "uploadToCloudWatch";
     public static final String MULTILINE_PATTERN_CONFIG_TOPIC_NAME = "multiLineStartPattern";
-    private static final int DEFAULT_PERIODIC_UPDATE_INTERVAL_SEC = 300;
+    public static final int DEFAULT_PERIODIC_UPDATE_INTERVAL_SEC = 300;
     private final Object spaceManagementLock = new Object();
 
     // public only for integ tests
@@ -101,12 +102,14 @@ public class LogManagerService extends PluginService {
             Collections.synchronizedMap(new LinkedHashMap<>());
     final Map<String, CurrentProcessingFileInformation> componentCurrentProcessingLogFile =
             new ConcurrentHashMap<>();
+    @Getter
     Map<String, ComponentLogConfiguration> componentLogConfigurations = new ConcurrentHashMap<>();
     @Getter
     private final CloudWatchLogsUploader uploader;
     private final CloudWatchAttemptLogsProcessor logsProcessor;
     private final ExecutorService executorService;
     private final AtomicBoolean isCurrentlyUploading = new AtomicBoolean(false);
+    @Getter
     private int periodicUpdateIntervalSec;
     private Future<?> spaceManagementThread;
 
@@ -128,7 +131,20 @@ public class LogManagerService extends PluginService {
 
         topics.lookup(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC)
                 .dflt(DEFAULT_PERIODIC_UPDATE_INTERVAL_SEC)
-                .subscribe((why, newv) -> periodicUpdateIntervalSec = Coerce.toInt(newv));
+                .subscribe((why, newv) -> {
+                    if (why == WhatHappened.removed) {
+                        periodicUpdateIntervalSec = DEFAULT_PERIODIC_UPDATE_INTERVAL_SEC;
+                    } else {
+                        if (Coerce.toInt(newv) > 0) {
+                            periodicUpdateIntervalSec = Coerce.toInt(newv);
+                        } else {
+                            logger.atWarn().log("Invalid config value, {}, for periodicUploadIntervalSec. Must be an "
+                                    + "integer greater than 0. Using default value of 300 (5 minutes)",
+                                    Coerce.toInt(newv));
+                            periodicUpdateIntervalSec = DEFAULT_PERIODIC_UPDATE_INTERVAL_SEC;
+                        }
+                    }
+                });
         this.uploader.registerAttemptStatus(LOGS_UPLOADER_SERVICE_TOPICS, this::handleCloudWatchAttemptStatus);
 
         Topics configTopics = topics.lookupTopics(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC);
@@ -229,9 +245,6 @@ public class LogManagerService extends PluginService {
                     String logFileRegexString = Coerce.toString(val);
                     if (Utils.isNotEmpty(logFileRegexString)) {
                         fileNameRegex.set(Pattern.compile(logFileRegexString));
-                    } else {
-                        fileNameRegex.set(Pattern.compile(String.format(DEFAULT_FILE_REGEX,
-                                Pattern.quote(LogManager.getRootLogConfiguration().getFileName()))));
                     }
                     break;
                 case FILE_DIRECTORY_PATH_CONFIG_TOPIC_NAME:

@@ -63,7 +63,7 @@ Manifests:
          "diskSpaceLimitUnit":"MB",
          "deleteLogFileAfterCloudUpload":true
       },
-      "componentLogsConfigurationMap" {
+      "componentLogsConfigurationMap": {
          "<ComponentName>": {
             "minimumLogLevel":"INFO",
             "logFileDirectoryPath":"/path/to/logs/directory/",

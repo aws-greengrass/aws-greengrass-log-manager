@@ -129,7 +129,7 @@ public class LogManagerService extends PluginService {
         this.executorService = executorService;
 
         topics.lookupTopics(CONFIGURATION_CONFIG_KEY).subscribe((why, newv) -> {
-            logger.atWarn().log("Log manager config change. Why: {}, Node: {}", why, newv);
+            logger.atDebug().log("Log manager config change. Why: {}, Node: {}", why, newv);
             handlePeriodicUploadIntervalSecConfig(topics);
             handleLogsUploaderConfig(topics);
         });
@@ -197,9 +197,6 @@ public class LogManagerService extends PluginService {
                 isUploadToCloudWatch.set(Coerce.toBoolean(o1));
                 return o1;
             });
-            if (!isUploadToCloudWatch.get()) {
-                return true;
-            }
             Path logsDirectoryPath = LogManager.getRootLogConfiguration().getStoreDirectory();
             ComponentLogConfiguration systemConfiguration = ComponentLogConfiguration.builder()
                     .fileNameRegex(Pattern.compile(String.format(DEFAULT_FILE_REGEX,
@@ -317,6 +314,9 @@ public class LogManagerService extends PluginService {
                 case DELETE_LOG_FILES_AFTER_UPLOAD_CONFIG_TOPIC_NAME:
                     setDeleteLogFileAfterCloudUpload(Coerce.toString(val), componentLogConfiguration);
                     break;
+                case UPLOAD_TO_CW_CONFIG_TOPIC_NAME:
+                    componentLogConfiguration.setUploadToCloudWatch(Coerce.toBoolean(val));
+                    break;
                 default:
                     break;
             }
@@ -351,7 +351,10 @@ public class LogManagerService extends PluginService {
 
     private void setDiskSpaceLimit(String diskSpaceLimit, String diskSpaceLimitUnit,
                                    ComponentLogConfiguration componentLogConfiguration) {
-        if (!StringUtils.isEmpty(diskSpaceLimit) && !StringUtils.isEmpty(diskSpaceLimitUnit)) {
+        if (!StringUtils.isEmpty(diskSpaceLimit)) {
+             if (StringUtils.isEmpty(diskSpaceLimitUnit)) {
+                    diskSpaceLimitUnit = "KB";
+                }
             long coefficient;
             switch (diskSpaceLimitUnit) {
                 case "MB":

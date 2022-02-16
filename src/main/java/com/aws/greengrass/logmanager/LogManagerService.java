@@ -133,7 +133,7 @@ public class LogManagerService extends PluginService {
             if (why == WhatHappened.timestampUpdated) {
                 return;
             }
-            logger.atDebug().log("Log manager config change. Why: {}, Node: {}", why, newv);
+            logger.atDebug().kv("why", why).kv("node", newv).log();
             handlePeriodicUploadIntervalSecConfig(topics);
             handleLogsUploaderConfig(topics);
         });

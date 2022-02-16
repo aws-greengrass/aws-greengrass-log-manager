@@ -8,6 +8,7 @@ package com.aws.greengrass.logmanager;
 import ch.qos.logback.core.util.FileSize;
 import com.aws.greengrass.config.Topic;
 import com.aws.greengrass.config.Topics;
+import com.aws.greengrass.config.WhatHappened;
 import com.aws.greengrass.dependency.ImplementsService;
 import com.aws.greengrass.lifecyclemanager.PluginService;
 import com.aws.greengrass.logging.impl.LogManager;
@@ -129,7 +130,10 @@ public class LogManagerService extends PluginService {
         this.executorService = executorService;
 
         topics.lookupTopics(CONFIGURATION_CONFIG_KEY).subscribe((why, newv) -> {
-            logger.atWarn().log("Log manager config change. Why: {}, Node: {}", why, newv);
+            if (why == WhatHappened.timestampUpdated) {
+                return;
+            }
+            logger.atDebug().log("Log manager config change. Why: {}, Node: {}", why, newv);
             handlePeriodicUploadIntervalSecConfig(topics);
             handleLogsUploaderConfig(topics);
         });

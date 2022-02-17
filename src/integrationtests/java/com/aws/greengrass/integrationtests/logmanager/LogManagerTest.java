@@ -67,6 +67,7 @@ import static com.aws.greengrass.logmanager.LogManagerService.COMPONENT_LOGS_CON
 import static com.aws.greengrass.logmanager.LogManagerService.DEFAULT_FILE_REGEX;
 import static com.aws.greengrass.logmanager.LogManagerService.DELETE_LOG_FILES_AFTER_UPLOAD_CONFIG_TOPIC_NAME;
 import static com.aws.greengrass.logmanager.LogManagerService.DISK_SPACE_LIMIT_CONFIG_TOPIC_NAME;
+import static com.aws.greengrass.logmanager.LogManagerService.DISK_SPACE_LIMIT_UNIT_CONFIG_TOPIC_NAME;
 import static com.aws.greengrass.logmanager.LogManagerService.FILE_DIRECTORY_PATH_CONFIG_TOPIC_NAME;
 import static com.aws.greengrass.logmanager.LogManagerService.FILE_REGEX_CONFIG_TOPIC_NAME;
 import static com.aws.greengrass.logmanager.LogManagerService.LOGS_UPLOADER_CONFIGURATION_TOPIC;
@@ -299,30 +300,41 @@ class LogManagerTest extends BaseITCase {
     }
 
     @Test
-    void GIVEN_component_configs_WHEN_individual_configs_are_reset_THEN_correct_default_values_are_used()
+    void GIVEN_system_and_component_configs_WHEN_individual_configs_are_reset_and_replaced_THEN_correct_values_are_used()
             throws Exception {
         String componentName = "UserComponentA";
 
         tempDirectoryPath = Files.createTempDirectory(tempRootDir, "IntegrationTestsTemporaryLogFiles");
         setupKernel(tempDirectoryPath, "configsDifferentFromDefaults.yaml");
 
-        // Verify correct reset for periodicUploadIntervalSec
-        assertThat(()-> logManagerService.getPeriodicUpdateIntervalSec(), eventuallyEval(is(10), Duration.ofSeconds(30)));
+        // Verify correct reset and replacement for periodicUploadIntervalSec
+        assertThat(()-> logManagerService.getPeriodicUpdateIntervalSec(), eventuallyEval(is(60),
+                Duration.ofSeconds(30)));
         logManagerService.getConfig().find(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC).remove();
         assertThat(()-> logManagerService.getPeriodicUpdateIntervalSec(),
                 eventuallyEval(is(LogManagerService.DEFAULT_PERIODIC_UPDATE_INTERVAL_SEC), Duration.ofSeconds(30)));
+        logManagerService.getConfig().lookup(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC).withValue(600);
+        assertThat(()-> logManagerService.getPeriodicUpdateIntervalSec(), eventuallyEval(is(600),
+                Duration.ofSeconds(30)));
 
-        // Verify correct reset for fileNameRegex
+        // Verify correct reset and replacement for fileNameRegex
         String fileNameRegexDefault = "^\\QUserComponentA\\E\\w*.log";
+        String fileNameRegexNew = "RandomLogFileName\\w*.log";
         assertThat(()-> logManagerService.getComponentLogConfigurations().get(componentName).getFileNameRegex().pattern(),
                 eventuallyEval(is("^integTestRandomLogFiles.log\\w*"), Duration.ofSeconds(30)));
         logManagerService.getConfig().find(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC,
                 COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME, componentName, FILE_REGEX_CONFIG_TOPIC_NAME).remove();
         assertThat(()-> logManagerService.getComponentLogConfigurations().get(componentName).getFileNameRegex().pattern(),
                 eventuallyEval(is(fileNameRegexDefault), Duration.ofSeconds(30)));
+        logManagerService.getConfig().lookup(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC,
+                COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME, componentName, FILE_REGEX_CONFIG_TOPIC_NAME).withValue(fileNameRegexNew);
+        assertThat(()-> logManagerService.getComponentLogConfigurations().get(componentName).getFileNameRegex().pattern(),
+                eventuallyEval(is(fileNameRegexNew), Duration.ofSeconds(30)));
 
-        // Verify correct reset for directoryPath
+        // Verify correct reset and replacement for directoryPath
         Path logFileDirectoryPathDefault = tempRootDir.resolve("logs");
+        Path logFileDirectoryPathNew = tempRootDir.resolve("newLogDir");
+        Files.createDirectory(logFileDirectoryPathNew);
         assertThat(()-> logManagerService.getComponentLogConfigurations().get(componentName).getDirectoryPath(),
                 eventuallyEval(is(tempDirectoryPath), Duration.ofSeconds(30)));
         logManagerService.getConfig().find(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC,
@@ -330,7 +342,13 @@ class LogManagerTest extends BaseITCase {
         assertThat(()-> logManagerService.getComponentLogConfigurations().get(componentName).getDirectoryPath(),
                 eventuallyEval(is(logFileDirectoryPathDefault), Duration.ofSeconds(30)));
 
-        // Verify correct reset for minimumLogLevel
+        logManagerService.getConfig().lookup(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC,
+                COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME, componentName, FILE_DIRECTORY_PATH_CONFIG_TOPIC_NAME)
+                .withValue(logFileDirectoryPathNew.toString());
+        assertThat(()-> logManagerService.getComponentLogConfigurations().get(componentName).getDirectoryPath(),
+                eventuallyEval(is(logFileDirectoryPathNew), Duration.ofSeconds(30)));
+
+        // Verify correct reset and replacement for minimumLogLevel
         Level minimumLogLevelDefault =  Level.INFO;
         assertThat(()-> logManagerService.getComponentLogConfigurations().get(componentName).getMinimumLogLevel(),
                 eventuallyEval(is(Level.TRACE), Duration.ofSeconds(30)));
@@ -338,8 +356,12 @@ class LogManagerTest extends BaseITCase {
                 COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME, componentName, MIN_LOG_LEVEL_CONFIG_TOPIC_NAME).remove();
         assertThat(()-> logManagerService.getComponentLogConfigurations().get(componentName).getMinimumLogLevel(),
                 eventuallyEval(is(minimumLogLevelDefault), Duration.ofSeconds(30)));
+        logManagerService.getConfig().lookup(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC,
+                COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME, componentName, MIN_LOG_LEVEL_CONFIG_TOPIC_NAME).withValue("WARN");
+        assertThat(()-> logManagerService.getComponentLogConfigurations().get(componentName).getMinimumLogLevel(),
+                eventuallyEval(is(Level.WARN), Duration.ofSeconds(30)));
 
-        // Verify correct reset for deleteLogFileAfterCloudUpload
+        // Verify correct reset and replacement for deleteLogFileAfterCloudUpload
         boolean deleteLogFileAfterCloudUploadDefault = false;
         assertThat(()-> logManagerService.getComponentLogConfigurations().get(componentName).isDeleteLogFileAfterCloudUpload(),
                 eventuallyEval(is(true), Duration.ofSeconds(30)));
@@ -348,12 +370,23 @@ class LogManagerTest extends BaseITCase {
         assertThat(()-> logManagerService.getComponentLogConfigurations().get(componentName).isDeleteLogFileAfterCloudUpload(),
                 eventuallyEval(is(deleteLogFileAfterCloudUploadDefault), Duration.ofSeconds(30)));
 
-        // Verify correct reset for diskSpaceLimit (expected to be null)
+        logManagerService.getConfig().lookup(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC,
+                COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME, componentName, DELETE_LOG_FILES_AFTER_UPLOAD_CONFIG_TOPIC_NAME).withValue(true);
+        assertThat(()-> logManagerService.getComponentLogConfigurations().get(componentName).isDeleteLogFileAfterCloudUpload(),
+                eventuallyEval(is(true), Duration.ofSeconds(30)));
+
+        // Verify correct reset and replacement for diskSpaceLimit (expected to be null)
         assertThat(()-> logManagerService.getComponentLogConfigurations().get(componentName).getDiskSpaceLimit(),
                 eventuallyEval(is(20480L), Duration.ofSeconds(30)));
         logManagerService.getConfig().find(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC,
                 COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME, componentName, DISK_SPACE_LIMIT_CONFIG_TOPIC_NAME).remove();
         assertThat(()-> logManagerService.getComponentLogConfigurations().get(componentName).getDiskSpaceLimit() == null,
                 eventuallyEval(equalTo(true), Duration.ofSeconds(30)));
+        logManagerService.getConfig().lookup(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC,
+                COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME, componentName, DISK_SPACE_LIMIT_CONFIG_TOPIC_NAME).withValue(5);
+        logManagerService.getConfig().lookup(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC,
+                COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME, componentName, DISK_SPACE_LIMIT_UNIT_CONFIG_TOPIC_NAME).withValue("MB");
+        assertThat(()-> logManagerService.getComponentLogConfigurations().get(componentName).getDiskSpaceLimit(),
+                eventuallyEval(is(5242880L), Duration.ofSeconds(30)));
     }
 }

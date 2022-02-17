@@ -129,38 +129,47 @@ public class LogManagerService extends PluginService {
         this.logsProcessor = logProcessor;
         this.executorService = executorService;
 
-        topics.lookup(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC)
-                .dflt(DEFAULT_PERIODIC_UPDATE_INTERVAL_SEC)
-                .subscribe((why, newv) -> {
-                    if (why == WhatHappened.removed) {
-                        periodicUpdateIntervalSec = DEFAULT_PERIODIC_UPDATE_INTERVAL_SEC;
-                    } else {
-                        if (Coerce.toInt(newv) > 0) {
-                            periodicUpdateIntervalSec = Coerce.toInt(newv);
-                        } else {
-                            logger.atWarn().log("Invalid config value, {}, for periodicUploadIntervalSec. Must be an "
-                                    + "integer greater than 0. Using default value of 300 (5 minutes)",
-                                    Coerce.toInt(newv));
-                            periodicUpdateIntervalSec = DEFAULT_PERIODIC_UPDATE_INTERVAL_SEC;
-                        }
-                    }
-                });
-        this.uploader.registerAttemptStatus(LOGS_UPLOADER_SERVICE_TOPICS, this::handleCloudWatchAttemptStatus);
-
-        Topics configTopics = topics.lookupTopics(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC);
-        configTopics.subscribe((why, newv) -> {
-            Map<String, Object> configTopicsPojo = configTopics.toPOJO();
-            if (configTopicsPojo == null) {
-                //TODO: fail the deployment.
+        topics.lookupTopics(CONFIGURATION_CONFIG_KEY).subscribe((why, newv) -> {
+            if (why == WhatHappened.timestampUpdated) {
                 return;
             }
-            processConfiguration(configTopicsPojo);
+            logger.atDebug().kv("why", why).kv("node", newv).log();
+            handlePeriodicUploadIntervalSecConfig(topics);
+            handleLogsUploaderConfig(topics);
         });
+
+        this.uploader.registerAttemptStatus(LOGS_UPLOADER_SERVICE_TOPICS, this::handleCloudWatchAttemptStatus);
     }
 
-    private synchronized void processConfiguration(Map<String, Object> configTopicsPojo) {
+    private void handlePeriodicUploadIntervalSecConfig(Topics topics) {
+        int periodicUploadIntervalSecInput = Coerce.toInt(topics.lookup(CONFIGURATION_CONFIG_KEY,
+                        LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC)
+                .dflt(DEFAULT_PERIODIC_UPDATE_INTERVAL_SEC)
+                .toPOJO());
+
+        if (periodicUploadIntervalSecInput > 0) {
+            periodicUpdateIntervalSec = periodicUploadIntervalSecInput;
+        } else {
+            logger.atWarn().log("Invalid config value, {}, for periodicUploadIntervalSec. Must be an "
+                            + "integer greater than 0. Using default value of 300 (5 minutes)",
+                    periodicUploadIntervalSecInput);
+            periodicUpdateIntervalSec = DEFAULT_PERIODIC_UPDATE_INTERVAL_SEC;
+        }
+    }
+
+    private void handleLogsUploaderConfig(Topics topics) {
+        Topics logsUploaderTopics = topics.lookupTopics(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC);
+        Map<String, Object> logsUploaderConfigTopicsPojo = logsUploaderTopics.toPOJO();
+        if (logsUploaderConfigTopicsPojo == null) {
+            //TODO: fail the deployment.
+            return;
+        }
+        processConfiguration(logsUploaderConfigTopicsPojo);
+    }
+
+    private synchronized void processConfiguration(Map<String, Object> logsUploaderConfigTopicsPojo) {
         Map<String, ComponentLogConfiguration> newComponentLogConfigurations = new ConcurrentHashMap<>();
-        configTopicsPojo.computeIfPresent(COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME, (s, o) -> {
+        logsUploaderConfigTopicsPojo.computeIfPresent(COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME, (s, o) -> {
             if (o instanceof Map) {
                 Map<String, Object> map = (Map) o;
                 map.forEach((componentName, componentConfigObject) -> {
@@ -173,7 +182,7 @@ public class LogManagerService extends PluginService {
             }
             return o;
         });
-        configTopicsPojo.computeIfPresent(COMPONENT_LOGS_CONFIG_TOPIC_NAME, (s, o) -> {
+        logsUploaderConfigTopicsPojo.computeIfPresent(COMPONENT_LOGS_CONFIG_TOPIC_NAME, (s, o) -> {
             if (o instanceof ArrayList) {
                 List<Object> list = (ArrayList) o;
                 list.forEach(componentConfigObject -> {
@@ -184,7 +193,7 @@ public class LogManagerService extends PluginService {
             }
             return o;
         });
-        configTopicsPojo.computeIfPresent(SYSTEM_LOGS_CONFIG_TOPIC_NAME, (s, o) -> {
+        logsUploaderConfigTopicsPojo.computeIfPresent(SYSTEM_LOGS_CONFIG_TOPIC_NAME, (s, o) -> {
             logger.atInfo().log("Process LogManager configuration for Greengrass system logs");
             Map<String, Object> systemConfigMap = (Map) o;
             AtomicBoolean isUploadToCloudWatch = new AtomicBoolean(false);

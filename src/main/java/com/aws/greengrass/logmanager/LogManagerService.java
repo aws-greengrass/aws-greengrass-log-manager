@@ -201,6 +201,9 @@ public class LogManagerService extends PluginService {
                 isUploadToCloudWatch.set(Coerce.toBoolean(o1));
                 return o1;
             });
+            if (!isUploadToCloudWatch.get()) {
+                return true;
+            }
             Path logsDirectoryPath = LogManager.getRootLogConfiguration().getStoreDirectory();
             ComponentLogConfiguration systemConfiguration = ComponentLogConfiguration.builder()
                     .fileNameRegex(Pattern.compile(String.format(DEFAULT_FILE_REGEX,

@@ -321,9 +321,6 @@ public class LogManagerService extends PluginService {
                 case DELETE_LOG_FILES_AFTER_UPLOAD_CONFIG_TOPIC_NAME:
                     setDeleteLogFileAfterCloudUpload(Coerce.toString(val), componentLogConfiguration);
                     break;
-                case UPLOAD_TO_CW_CONFIG_TOPIC_NAME:
-                    componentLogConfiguration.setUploadToCloudWatch(Coerce.toBoolean(val));
-                    break;
                 default:
                     break;
             }

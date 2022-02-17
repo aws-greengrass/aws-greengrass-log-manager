@@ -40,6 +40,7 @@ import static com.aws.greengrass.logmanager.LogManagerService.FILE_REGEX_CONFIG_
 import static com.aws.greengrass.logmanager.LogManagerService.LOGS_UPLOADER_CONFIGURATION_TOPIC;
 import static com.aws.greengrass.logmanager.LogManagerService.LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC;
 import static com.aws.greengrass.logmanager.LogManagerService.MIN_LOG_LEVEL_CONFIG_TOPIC_NAME;
+import static com.aws.greengrass.logmanager.LogManagerService.MULTILINE_PATTERN_CONFIG_TOPIC_NAME;
 import static com.aws.greengrass.logmanager.LogManagerService.SYSTEM_LOGS_COMPONENT_NAME;
 import static com.aws.greengrass.logmanager.LogManagerService.SYSTEM_LOGS_CONFIG_TOPIC_NAME;
 import static com.aws.greengrass.logmanager.LogManagerService.UPLOAD_TO_CW_CONFIG_TOPIC_NAME;
@@ -304,5 +305,23 @@ class LogManagerConfigTest extends BaseITCase {
                 COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME, componentName, DISK_SPACE_LIMIT_UNIT_CONFIG_TOPIC_NAME).withValue("MB");
         assertThat(()-> logManagerService.getComponentLogConfigurations().get(componentName).getDiskSpaceLimit(),
                 eventuallyEval(is(5242880L), Duration.ofSeconds(30)));
+    }
+
+    @Test
+    void GIVEN_component_multiLineStartPattern_config_WHEN_value_is_reset_and_replaced_THEN_correct_values_are_used() {
+        String multiLineStartPatternNew = "[0-9].*";
+
+        assertThat(()-> logManagerService.getComponentLogConfigurations().get(componentName).getMultiLineStartPattern().pattern(),
+                eventuallyEval(is("^\\\\d.*$"), Duration.ofSeconds(30)));
+
+        logManagerService.getConfig().find(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC,
+                COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME, componentName, MULTILINE_PATTERN_CONFIG_TOPIC_NAME).remove();
+        assertThat(()-> logManagerService.getComponentLogConfigurations().get(componentName).getMultiLineStartPattern() == null,
+                eventuallyEval(equalTo(true), Duration.ofSeconds(30)));
+
+        logManagerService.getConfig().lookup(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC,
+                COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME, componentName, MULTILINE_PATTERN_CONFIG_TOPIC_NAME).withValue(multiLineStartPatternNew);
+        assertThat(()-> logManagerService.getComponentLogConfigurations().get(componentName).getMultiLineStartPattern().pattern(),
+                eventuallyEval(is(multiLineStartPatternNew), Duration.ofSeconds(30)));
     }
 }

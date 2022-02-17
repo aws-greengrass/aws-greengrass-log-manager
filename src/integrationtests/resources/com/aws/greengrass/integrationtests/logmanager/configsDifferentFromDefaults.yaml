@@ -6,6 +6,7 @@ services:
       logsUploaderConfiguration:
         componentLogsConfigurationMap:
           UserComponentA:
+            multiLineStartPattern: '^\\d.*$'
             logFileRegex: '^integTestRandomLogFiles.log\w*'
             logFileDirectoryPath: '{{logFileDirectoryPath}}'
             minimumLogLevel: 'TRACE'

@@ -357,7 +357,7 @@ public class LogManagerService extends PluginService {
                                    ComponentLogConfiguration componentLogConfiguration) {
         if (!StringUtils.isEmpty(diskSpaceLimit)) {
              if (StringUtils.isEmpty(diskSpaceLimitUnit)) {
-                    diskSpaceLimitUnit = "KB";
+                 diskSpaceLimitUnit = "KB";
                 }
             long coefficient;
             switch (diskSpaceLimitUnit) {

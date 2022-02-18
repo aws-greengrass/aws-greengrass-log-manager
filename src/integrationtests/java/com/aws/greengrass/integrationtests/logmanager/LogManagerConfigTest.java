@@ -132,9 +132,6 @@ class LogManagerConfigTest extends BaseITCase {
 
     @Test
     void GIVEN_system_minimumLogLevel_config_WHEN_value_is_reset_and_replaced_THEN_correct_values_are_used() {
-        logManagerService.getConfig().lookup(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC,
-                SYSTEM_LOGS_CONFIG_TOPIC_NAME, UPLOAD_TO_CW_CONFIG_TOPIC_NAME).withValue(true);
-
         assertThat(()-> logManagerService.getComponentLogConfigurations().get(SYSTEM_LOGS_COMPONENT_NAME).getMinimumLogLevel(),
                 eventuallyEval(is(Level.TRACE), Duration.ofSeconds(30)));
 
@@ -151,9 +148,6 @@ class LogManagerConfigTest extends BaseITCase {
 
     @Test
     void GIVEN_system_deleteLogFileAfterCloudUpload_config_WHEN_value_is_reset_and_replaced_THEN_correct_values_are_used() {
-        logManagerService.getConfig().lookup(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC,
-                SYSTEM_LOGS_CONFIG_TOPIC_NAME, UPLOAD_TO_CW_CONFIG_TOPIC_NAME).withValue(true);
-
         assertThat(()-> logManagerService.getComponentLogConfigurations().get(SYSTEM_LOGS_COMPONENT_NAME).isDeleteLogFileAfterCloudUpload(),
                 eventuallyEval(is(true), Duration.ofSeconds(30)));
 
@@ -170,9 +164,6 @@ class LogManagerConfigTest extends BaseITCase {
 
     @Test
     void GIVEN_system_diskSpaceLimit_and_diskSpaceLimitUnit_config_WHEN_values_are_reset_and_replaced_THEN_correct_values_are_used(){
-        logManagerService.getConfig().lookup(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC,
-                SYSTEM_LOGS_CONFIG_TOPIC_NAME, UPLOAD_TO_CW_CONFIG_TOPIC_NAME).withValue(true);
-
         // diskSpaceLimit=25 and diskSpaceLimitUnit=MB in config file, so expected value is 26214400 bytes
         assertThat(()-> logManagerService.getComponentLogConfigurations().get(SYSTEM_LOGS_COMPONENT_NAME).getDiskSpaceLimit(),
                 eventuallyEval(is(26214400L), Duration.ofSeconds(30)));

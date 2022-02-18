@@ -358,7 +358,7 @@ public class LogManagerService extends PluginService {
         if (!StringUtils.isEmpty(diskSpaceLimit)) {
              if (StringUtils.isEmpty(diskSpaceLimitUnit)) {
                  diskSpaceLimitUnit = "KB";
-                }
+             }
             long coefficient;
             switch (diskSpaceLimitUnit) {
                 case "MB":

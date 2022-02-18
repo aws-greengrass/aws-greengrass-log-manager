@@ -6,14 +6,15 @@ services:
       logsUploaderConfiguration:
         componentLogsConfigurationMap:
           UserComponentA:
+            multiLineStartPattern: '^\\d.*$'
             logFileRegex: '^integTestRandomLogFiles.log\w*'
             logFileDirectoryPath: '{{logFileDirectoryPath}}'
             minimumLogLevel: 'TRACE'
-            diskSpaceLimit: '20'
-            diskSpaceLimitUnit: 'KB'
+            diskSpaceLimit: '10'
+            diskSpaceLimitUnit: 'GB'
             deleteLogFileAfterCloudUpload: 'true'
         systemLogsConfiguration:
-          uploadToCloudWatch: true
+          uploadToCloudWatch: 'true'
           minimumLogLevel: 'TRACE'
           diskSpaceLimit: '25'
           diskSpaceLimitUnit: 'MB'

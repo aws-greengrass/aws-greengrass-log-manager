@@ -355,7 +355,10 @@ public class LogManagerService extends PluginService {
 
     private void setDiskSpaceLimit(String diskSpaceLimit, String diskSpaceLimitUnit,
                                    ComponentLogConfiguration componentLogConfiguration) {
-        if (!StringUtils.isEmpty(diskSpaceLimit) && !StringUtils.isEmpty(diskSpaceLimitUnit)) {
+        if (!StringUtils.isEmpty(diskSpaceLimit)) {
+             if (StringUtils.isEmpty(diskSpaceLimitUnit)) {
+                 diskSpaceLimitUnit = "KB";
+             }
             long coefficient;
             switch (diskSpaceLimitUnit) {
                 case "MB":

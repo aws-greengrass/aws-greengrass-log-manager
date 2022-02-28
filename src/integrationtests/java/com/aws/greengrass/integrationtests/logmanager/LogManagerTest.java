@@ -63,13 +63,15 @@ import static com.aws.greengrass.logging.impl.config.LogConfig.newLogConfigFromR
 import static com.aws.greengrass.logmanager.CloudWatchAttemptLogsProcessor.DEFAULT_LOG_STREAM_NAME;
 import static com.aws.greengrass.logmanager.LogManagerService.DEFAULT_FILE_REGEX;
 import static com.aws.greengrass.testcommons.testutilities.ExceptionLogProtector.ignoreExceptionOfType;
+import static com.aws.greengrass.testcommons.testutilities.ExceptionLogProtector.ignoreExceptionWithMessage;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.atLeastOnce;
-import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 @SuppressWarnings("PMD.UnsynchronizedStaticFormatter")
 @ExtendWith({GGExtension.class, MockitoExtension.class})
@@ -103,15 +105,12 @@ class LogManagerTest extends BaseITCase {
 
     void setupKernel(Path storeDirectory, String configFileName) throws InterruptedException,
             URISyntaxException, IOException, DeviceConfigurationException {
-        lenient().when(cloudWatchLogsClient.putLogEvents(any(PutLogEventsRequest.class)))
-                .thenReturn(PutLogEventsResponse.builder().nextSequenceToken("nextToken").build());
 
         System.setProperty("root", tempRootDir.toAbsolutePath().toString());
         CountDownLatch logManagerRunning = new CountDownLatch(1);
 
         CompletableFuture<Void> cf = new CompletableFuture<>();
         cf.complete(null);
-        kernel = new Kernel();
 
         Path testRecipePath = Paths.get(LogManagerTest.class.getResource(configFileName).toURI());
         String content = new String(Files.readAllBytes(testRecipePath), StandardCharsets.UTF_8);
@@ -142,6 +141,7 @@ class LogManagerTest extends BaseITCase {
 
     @BeforeEach
     void beforeEach(ExtensionContext context) {
+        kernel = new Kernel();
         ignoreExceptionOfType(context, TLSAuthException.class);
         ignoreExceptionOfType(context, InterruptedException.class);
         ignoreExceptionOfType(context, DateTimeParseException.class);
@@ -156,6 +156,9 @@ class LogManagerTest extends BaseITCase {
     @Test
     void GIVEN_user_component_config_with_small_periodic_interval_WHEN_interval_elapses_THEN_logs_are_uploaded_to_cloud()
             throws Exception {
+        when(cloudWatchLogsClient.putLogEvents(any(PutLogEventsRequest.class)))
+                .thenReturn(PutLogEventsResponse.builder().nextSequenceToken("nextToken").build());
+
         tempDirectoryPath = Files.createTempDirectory(tempRootDir, "IntegrationTestsTemporaryLogFiles");
 
         for (int i = 0; i < 5; i++) {
@@ -197,6 +200,9 @@ class LogManagerTest extends BaseITCase {
     @Test
     void GIVEN_user_component_config_with_small_periodic_interval_and_only_required_config_WHEN_interval_elapses_THEN_logs_are_uploaded_to_cloud()
             throws Exception {
+        when(cloudWatchLogsClient.putLogEvents(any(PutLogEventsRequest.class)))
+                .thenReturn(PutLogEventsResponse.builder().nextSequenceToken("nextToken").build());
+
         tempDirectoryPath = Files.createDirectory(tempRootDir.resolve("logs"));
         LogConfig.getRootLogConfig().setLevel(Level.TRACE);
         LogConfig.getRootLogConfig().setStore(LogStore.FILE);
@@ -242,6 +248,9 @@ class LogManagerTest extends BaseITCase {
     @Test
     void GIVEN_system_config_with_small_periodic_interval_WHEN_interval_elapses_THEN_logs_are_uploaded_to_cloud(
             ExtensionContext ec) throws Exception {
+        when(cloudWatchLogsClient.putLogEvents(any(PutLogEventsRequest.class)))
+                .thenReturn(PutLogEventsResponse.builder().nextSequenceToken("nextToken").build());
+
         ignoreExceptionOfType(ec, NoSuchFileException.class);
         LogManager.getRootLogConfiguration().setStoreDirectory(tempRootDir);
         tempDirectoryPath = LogManager.getRootLogConfiguration().getStoreDirectory().resolve("logs");
@@ -277,6 +286,64 @@ class LogManagerTest extends BaseITCase {
                 if (file.isFile()
                         && logFileNamePattern.matcher(file.getName()).find()
                         && file.length() > 0) {
+                    allFiles.add(file);
+                }
+            }
+        }
+        assertEquals(1, allFiles.size());
+    }
+
+    @Test
+    void GIVEN_log_manager_in_errored_state_WHEN_restarted_THEN_logs_upload_is_reattempted(ExtensionContext context)
+            throws Exception {
+        ignoreExceptionWithMessage(context, "Forcing error to trigger restart");
+
+        when(cloudWatchLogsClient.putLogEvents(any(PutLogEventsRequest.class)))
+                .thenThrow(new RuntimeException("Forcing error to trigger restart"))
+                .thenReturn(PutLogEventsResponse.builder().nextSequenceToken("nextToken").build());
+
+        tempDirectoryPath = Files.createTempDirectory(tempRootDir, "IntegrationTestsTemporaryLogFiles");
+
+        CountDownLatch logManagerErrored = new CountDownLatch(1);
+        CountDownLatch logManagerRunning = new CountDownLatch(2);
+        kernel.getContext().addGlobalStateChangeListener((service, oldState, newState) -> {
+            if (service.getName().equals(LogManagerService.LOGS_UPLOADER_SERVICE_TOPICS)) {
+                if (newState.equals(State.ERRORED)) {
+                    logManagerErrored.countDown();
+                }
+                if (newState.equals(State.RUNNING)) {
+                    logManagerRunning.countDown();
+                }
+            }
+        });
+
+        for (int i = 0; i < 5; i++) {
+            createTempFileAndWriteData(tempDirectoryPath, "integTestRandomLogFiles.log_", "");
+        }
+        createTempFileAndWriteData(tempDirectoryPath, "integTestRandomLogFiles.log", "");
+
+        setupKernel(tempDirectoryPath, "smallPeriodicIntervalUserComponentConfig.yaml");
+        TimeUnit.SECONDS.sleep(30);
+        assertTrue(logManagerErrored.await(15, TimeUnit.SECONDS));
+        assertTrue(logManagerRunning.await(15, TimeUnit.SECONDS));
+        verify(cloudWatchLogsClient, times(2)).putLogEvents(captor.capture());
+
+        List<PutLogEventsRequest> putLogEventsRequests = captor.getAllValues();
+        assertEquals(2, putLogEventsRequests.size());
+        for (PutLogEventsRequest request : putLogEventsRequests) {
+            assertEquals(calculateLogStreamName(THING_NAME, LOCAL_DEPLOYMENT_GROUP_NAME), request.logStreamName());
+            assertEquals("/aws/greengrass/UserComponent/" + AWS_REGION + "/UserComponentA", request.logGroupName());
+            assertNotNull(request.logEvents());
+            assertEquals(50, request.logEvents().size());
+            assertEquals(51200, request.logEvents().stream().mapToLong(value -> value.message().length()).sum());
+        }
+        File folder = tempDirectoryPath.toFile();
+        Pattern logFileNamePattern = Pattern.compile("^integTestRandomLogFiles.log\\w*");
+        List<File> allFiles = new ArrayList<>();
+        File[] files = folder.listFiles();
+        if (files != null) {
+            for (File file : files) {
+                if (file.isFile() && logFileNamePattern.matcher(file.getName()).find() && file.length() > 0) {
                     allFiles.add(file);
                 }
             }

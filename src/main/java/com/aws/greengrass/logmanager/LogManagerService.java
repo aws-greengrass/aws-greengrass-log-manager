@@ -59,7 +59,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
-import java.util.stream.LongStream;
+import java.util.stream.Stream;
 import javax.inject.Inject;
 
 import static com.aws.greengrass.componentmanager.KernelConfigResolver.CONFIGURATION_CONFIG_KEY;
@@ -328,6 +328,7 @@ public class LogManagerService extends PluginService {
         setDiskSpaceLimit(diskSpaceLimitString.get(), diskSpaceLimitUnitString.get(), componentLogConfiguration);
     }
 
+    @SuppressWarnings("PMD.AvoidCatchingThrowable")
     private void scheduleSpaceManagementThread() {
         synchronized (spaceManagementLock) {
             if (spaceManagementThread != null) {
@@ -342,6 +343,8 @@ public class LogManagerService extends PluginService {
                     logger.atError().cause(e).log("Unable to start space management thread.");
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
+                } catch (Throwable e) {
+                    logger.atError().log("Failure in log manager space management", e);
                 }
             });
         }
@@ -688,22 +691,7 @@ public class LogManagerService extends PluginService {
                         // until the minimum bytes have been deleted.
                         for (ComponentLogConfiguration componentLogConfiguration :
                                 updatedComponentsConfiguration.values()) {
-                            try (LongStream fileSizes = Files.walk(componentLogConfiguration.getDirectoryPath())
-                                         .filter(p -> {
-                                             File file = p.toFile();
-                                             return file.isFile() && componentLogConfiguration.getFileNameRegex()
-                                                     .matcher(file.getName()).find();
-                                         })
-                                         .mapToLong(p -> p.toFile().length())) {
-                                long totalDirectorySize = fileSizes.sum();
-
-                                if (totalDirectorySize > componentLogConfiguration.getDiskSpaceLimit()) {
-                                    long minimumBytesToBeDeleted =
-                                            totalDirectorySize - componentLogConfiguration.getDiskSpaceLimit();
-                                    deleteFiles(minimumBytesToBeDeleted, componentLogConfiguration.getDirectoryPath(),
-                                            componentLogConfiguration.getFileNameRegex());
-                                }
-                            }
+                            deleteFilesIfNecessary(componentLogConfiguration);
                         }
                     }
 
@@ -724,35 +712,41 @@ public class LogManagerService extends PluginService {
      * Deletes the oldest log files which matches the file name pattern. The log files will be deleted until the
      * minimum number of bytes have been deleted.
      *
-     * @param minimumBytesToBeDeleted The minimum number of bytes that need to be deleted.
-     * @param directoryPath           The directory path for the log files.
-     * @param fileNameRegex           The file name regex.
+     * @param componentLogConfiguration Log configuration to investigate for deletion
+     * @throws IOException for errors during directory walking
      */
-    private void deleteFiles(long minimumBytesToBeDeleted, Path directoryPath, Pattern fileNameRegex) {
-        long bytesDeleted = 0;
-        File folder = directoryPath.toFile();
-        List<File> allFiles = new ArrayList<>();
-        File[] files = folder.listFiles();
-        if (files != null && files.length > 0) {
-            for (File file : files) {
-                if (file.isFile() && fileNameRegex.matcher(file.getName()).find()) {
-                    allFiles.add(file);
-                }
+    private void deleteFilesIfNecessary(ComponentLogConfiguration componentLogConfiguration) throws IOException {
+        try (Stream<Path> fileStream = Files.walk(componentLogConfiguration.getDirectoryPath())
+                .filter(p -> {
+                    File file = p.toFile();
+                    return file.isFile() && componentLogConfiguration.getFileNameRegex()
+                            .matcher(file.getName()).find();
+                })) {
+            List<Path> paths = fileStream.collect(Collectors.toList());
+            long totalBytes = paths.stream().mapToLong(p -> p.toFile().length()).sum();
+            long minimumBytesToBeDeleted = totalBytes - componentLogConfiguration.getDiskSpaceLimit();
+
+            // If we don't need to remove any bytes, or if the file count is only 1 (or less), then there's nothing
+            // to do.
+            if (minimumBytesToBeDeleted <= 0 || paths.size() < 2) {
+                return;
             }
+
+            long bytesDeleted = 0;
             // Sort the files by the last modified time.
-            allFiles.sort(Comparator.comparingLong(File::lastModified));
+            paths.sort(Comparator.comparingLong((p) -> p.toFile().lastModified()));
             int fileIndex = 0;
             // stop before the end to skip the active file which should have the newest modified time
-            while (bytesDeleted < minimumBytesToBeDeleted && fileIndex < allFiles.size() - 1) {
-                File fileToBeDeleted = allFiles.get(fileIndex++);
-                long fileSize = fileToBeDeleted.length();
+            while (bytesDeleted < minimumBytesToBeDeleted && fileIndex < paths.size() - 1) {
+                Path fileToBeDeleted = paths.get(fileIndex++);
+                long fileSize = fileToBeDeleted.toFile().length();
                 try {
-                    Files.deleteIfExists(fileToBeDeleted.toPath());
+                    Files.deleteIfExists(fileToBeDeleted);
                 } catch (IOException e) {
-                    logger.atWarn().log("Unable to delete file: {}", fileToBeDeleted.getAbsolutePath(), e);
+                    logger.atWarn().log("Unable to delete file: {}", fileToBeDeleted.toAbsolutePath(), e);
                     break;
                 }
-                logger.atInfo().log("Successfully deleted file: {}", fileToBeDeleted.getAbsolutePath());
+                logger.atInfo().log("Successfully deleted file: {}", fileToBeDeleted.toAbsolutePath());
                 bytesDeleted += fileSize;
             }
         }

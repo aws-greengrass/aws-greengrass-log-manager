@@ -31,6 +31,7 @@ import org.slf4j.event.Level;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -345,6 +346,7 @@ public class LogManagerService extends PluginService {
                     Thread.currentThread().interrupt();
                 } catch (Throwable e) {
                     logger.atError().log("Failure in log manager space management", e);
+                    scheduleSpaceManagementThread(); // restart space management
                 }
             });
         }
@@ -640,7 +642,7 @@ public class LogManagerService extends PluginService {
             try {
                 componentLogConfigurations.forEach((componentName, componentLogConfiguration) -> {
                     // Only register the path of a component if the disk space limit is set.
-                    if (componentLogConfiguration.getDiskSpaceLimit() > 0) {
+                    if (componentLogConfiguration != null && componentLogConfiguration.getDiskSpaceLimit() > 0) {
                         Path path = componentLogConfiguration.getDirectoryPath();
                         try {
                             path.register(watchService, StandardWatchEventKinds.ENTRY_CREATE,
@@ -691,7 +693,12 @@ public class LogManagerService extends PluginService {
                         // until the minimum bytes have been deleted.
                         for (ComponentLogConfiguration componentLogConfiguration :
                                 updatedComponentsConfiguration.values()) {
-                            deleteFilesIfNecessary(componentLogConfiguration);
+                            try {
+                                deleteFilesIfNecessary(componentLogConfiguration);
+                            } catch (UncheckedIOException e) {
+                                logger.atWarn().log("Unchecked error thrown when collecting files to be deleted",
+                                        Utils.getUltimateCause(e));
+                            }
                         }
                     }
 

@@ -161,7 +161,7 @@ public class CloudWatchAttemptLogsProcessor {
                         // If the new log line read from the file matches the start pattern, that means
                         // the string builder we have appended data to until now, has a complete log line.
                         // Let's add that in the input logs event list.
-                        // The default pattern is checking if the line starts with white space
+                        // The default pattern is checking if the line starts with non-white space
                         if (checkLogStartPattern(componentLogFileInformation, partialLogLine)) {
                             reachedMaxSize.set(processLogLine(totalBytesRead,
                                     componentLogFileInformation.getDesiredLogLevel(), logStreamName,
@@ -416,10 +416,11 @@ public class CloudWatchAttemptLogsProcessor {
                 // Not logging error cause because it's a huge recursive stack trace
                 logger.atWarn().kv("componentName", componentLogFileInformation.getName())
                         .log("StackOverflowError thrown when matching log against pattern {}. "
-                                + "Check leading whitespaces instead", multiLineStartPattern.pattern());
+                                + "Check for leading non-whitespace instead", multiLineStartPattern.pattern());
             }
         }
-        // The default pattern is to check if the line starts with whitespace.
+        // The default pattern is to check if the line starts with non-whitespace. If so, the line is considered
+        // the start of a new log event.
         return !logLine.isEmpty() && !Character.isWhitespace(logLine.charAt(0));
     }
 

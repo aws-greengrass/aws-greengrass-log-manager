@@ -642,7 +642,8 @@ public class LogManagerService extends PluginService {
             try {
                 componentLogConfigurations.forEach((componentName, componentLogConfiguration) -> {
                     // Only register the path of a component if the disk space limit is set.
-                    if (componentLogConfiguration != null && componentLogConfiguration.getDiskSpaceLimit() > 0) {
+                    if (componentLogConfiguration != null && componentLogConfiguration.getDiskSpaceLimit() != null
+                            && componentLogConfiguration.getDiskSpaceLimit() > 0) {
                         Path path = componentLogConfiguration.getDirectoryPath();
                         try {
                             path.register(watchService, StandardWatchEventKinds.ENTRY_CREATE,
@@ -723,6 +724,9 @@ public class LogManagerService extends PluginService {
      * @throws IOException for errors during directory walking
      */
     private void deleteFilesIfNecessary(ComponentLogConfiguration componentLogConfiguration) throws IOException {
+        if (componentLogConfiguration.getDiskSpaceLimit() == null) {
+            return;
+        }
         try (Stream<Path> fileStream = Files.walk(componentLogConfiguration.getDirectoryPath())
                 .filter(p -> {
                     File file = p.toFile();

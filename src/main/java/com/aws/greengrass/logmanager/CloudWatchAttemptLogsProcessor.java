@@ -15,6 +15,7 @@ import com.aws.greengrass.logmanager.model.CloudWatchAttemptLogInformation;
 import com.aws.greengrass.logmanager.model.ComponentLogFileInformation;
 import com.aws.greengrass.util.Coerce;
 import com.aws.greengrass.util.Pair;
+import com.aws.greengrass.util.Utils;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -391,9 +392,12 @@ public class CloudWatchAttemptLogsProcessor {
             totalBytesRead.addAndGet(currChunkSize + TIMESTAMP_BYTES + EVENT_STORAGE_OVERHEAD);
             currBytesRead.addAndGet(currChunkSize);
 
-            InputLogEvent inputLogEvent =
-                    InputLogEvent.builder().message(partialData).timestamp(timestamp.toEpochMilli()).build();
-            attemptLogInformation.getLogEvents().add(inputLogEvent);
+            // Leave out empty messages since CloudWatch doesn't accept them
+            if (Utils.isNotEmpty(partialData)) {
+                InputLogEvent inputLogEvent =
+                        InputLogEvent.builder().message(partialData).timestamp(timestamp.toEpochMilli()).build();
+                attemptLogInformation.getLogEvents().add(inputLogEvent);
+            }
 
             currChunk++;
         }

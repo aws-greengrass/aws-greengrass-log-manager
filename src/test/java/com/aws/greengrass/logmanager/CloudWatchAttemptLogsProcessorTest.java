@@ -535,6 +535,57 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
             assertTrue(file.delete());
         }
     }
+    @Test
+    void GIVEN_null_log_message_WHEN_upload_attempted_THEN_null_message_considered_as_unstructured_log(ExtensionContext ec) throws IOException {
+
+        ignoreExceptionOfType(ec, DateTimeParseException.class);
+        File file = new File(directoryPath.resolve("greengrass_test.log").toUri());
+        assertTrue(file.createNewFile());
+        assertTrue(file.setReadable(true));
+        assertTrue(file.setWritable(true));
+        try (OutputStream fileOutputStream = Files.newOutputStream(file.toPath())) {
+            fileOutputStream.write("null".getBytes(StandardCharsets.UTF_8));
+        }
+
+        try {
+            List<LogFileInformation> logFileInformationSet = new ArrayList<>();
+            logFileInformationSet.add(LogFileInformation.builder().startPosition(0).file(file).build());
+            ComponentLogFileInformation componentLogFileInformation = ComponentLogFileInformation.builder()
+                    .name("TestComponent")
+                    .desiredLogLevel(Level.INFO)
+                    .componentType(ComponentType.GreengrassSystemComponent)
+                    .logFileInformationList(logFileInformationSet)
+                    .build();
+
+            logsProcessor = new CloudWatchAttemptLogsProcessor(mockDeviceConfiguration, defaultClock);
+            CloudWatchAttempt attempt = logsProcessor.processLogFiles(componentLogFileInformation);
+            assertNotNull(attempt);
+
+            assertNotNull(attempt.getLogStreamsToLogEventsMap());
+            assertThat(attempt.getLogStreamsToLogEventsMap().entrySet(), IsNot.not(IsEmptyCollection.empty()));
+            String logGroup = calculateLogGroupName(ComponentType.GreengrassSystemComponent, "testRegion", "TestComponent");
+            assertEquals(attempt.getLogGroupName(), logGroup);
+            String logStream = calculateLogStreamName("testThing");
+            assertTrue(attempt.getLogStreamsToLogEventsMap().containsKey(logStream));
+            CloudWatchAttemptLogInformation logEventsForStream1 = attempt.getLogStreamsToLogEventsMap().get(logStream);
+            assertNotNull(logEventsForStream1.getLogEvents());
+            assertEquals(1, logEventsForStream1.getLogEvents().size());
+            assertTrue(logEventsForStream1.getAttemptLogFileInformationMap().containsKey(file.getAbsolutePath()));
+            assertEquals(0, logEventsForStream1.getAttemptLogFileInformationMap().get(file.getAbsolutePath()).getStartPosition());
+            assertEquals("TestComponent", logEventsForStream1.getComponentName());
+            LocalDateTime localDateTimeNow = LocalDateTime.now(ZoneOffset.UTC);
+            for (InputLogEvent logEvent: logEventsForStream1.getLogEvents()) {
+                Instant logTimestamp = Instant.ofEpochMilli(logEvent.timestamp());
+                assertTrue(logTimestamp.isBefore(Instant.now()));
+                LocalDateTime localDate = LocalDateTime.ofInstant(logTimestamp, ZoneOffset.UTC);
+                assertEquals(localDateTimeNow.getYear(), localDate.getYear());
+                assertEquals(localDateTimeNow.getMonth().getValue(), localDate.getMonth().getValue());
+                assertEquals(localDateTimeNow.getDayOfMonth(), localDate.getDayOfMonth());
+            }
+        } finally {
+            assertTrue(file.delete());
+        }
+    }
 
     @Test
     void GIVEN_empty_log_message_WHEN_upload_attempted_THEN_empty_message_skipped(ExtensionContext ec) throws IOException {

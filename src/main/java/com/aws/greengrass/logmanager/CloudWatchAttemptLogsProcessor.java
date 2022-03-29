@@ -296,7 +296,7 @@ public class CloudWatchAttemptLogsProcessor {
      */
     private Optional<GreengrassLogMessage> tryGetStructuredLogMessage(String data) {
         try {
-            return Optional.of(DESERIALIZER.readValue(data, GreengrassLogMessage.class));
+            return Optional.ofNullable(DESERIALIZER.readValue(data, GreengrassLogMessage.class));
         } catch (JsonProcessingException ignored) {
             // If unable to deserialize, then we treat it as a normal log line and do not need to smartly upload.
             return Optional.empty();

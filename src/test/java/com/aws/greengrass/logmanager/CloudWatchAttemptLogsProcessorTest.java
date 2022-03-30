@@ -60,6 +60,7 @@ import static com.aws.greengrass.testcommons.testutilities.ExceptionLogProtector
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.hasSize;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.lenient;
@@ -576,7 +577,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
             LocalDateTime localDateTimeNow = LocalDateTime.now(ZoneOffset.UTC);
             for (InputLogEvent logEvent: logEventsForStream1.getLogEvents()) {
                 Instant logTimestamp = Instant.ofEpochMilli(logEvent.timestamp());
-                assertTrue(logTimestamp.isBefore(Instant.now()));
+                assertFalse(logTimestamp.isAfter(Instant.now()));
                 LocalDateTime localDate = LocalDateTime.ofInstant(logTimestamp, ZoneOffset.UTC);
                 assertEquals(localDateTimeNow.getYear(), localDate.getYear());
                 assertEquals(localDateTimeNow.getMonth().getValue(), localDate.getMonth().getValue());

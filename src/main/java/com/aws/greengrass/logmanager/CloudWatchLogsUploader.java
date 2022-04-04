@@ -39,6 +39,7 @@ public class CloudWatchLogsUploader {
     private CloudWatchLogsClient cloudWatchLogsClient;
     private static final int MAX_RETRIES = 3;
 
+    // logGroup -> logStream -> savedSequenceToken
     final Map<String, Map<String, String>> logGroupsToSequenceTokensMap = new ConcurrentHashMap<>();
 
     @Inject
@@ -100,7 +101,7 @@ public class CloudWatchLogsUploader {
     private boolean uploadLogs(String logGroupName, String logStreamName, List<InputLogEvent> logEvents,
                                int tryCount) {
         if (tryCount > MAX_RETRIES) {
-            logger.atWarn().log("Unable to upload {} logs to {}-{} as max retry ({}) times reached",
+            logger.atError().log("Unable to upload {} logs to {}-{} as max retry ({}) times reached",
                     logEvents.size(), logGroupName, logStreamName, MAX_RETRIES);
             return false;
         }
@@ -144,10 +145,14 @@ public class CloudWatchLogsUploader {
             return true;
         } catch (InvalidSequenceTokenException e) {
             // Get correct token using describe
-            logger.atError()
-                    .log("Invalid token while uploading logs to {}-{}. Getting the correct sequence token.",
-                            logGroupName,
-                    logStreamName);
+            if (tryCount < MAX_RETRIES) {
+                logger.atInfo().log("Invalid token while uploading logs to {}-{}. Retrying with the expected sequence "
+                                + "token in CloudWatch response.", logGroupName, logStreamName);
+            } else {
+                logger.atError().log("Invalid token while uploading logs to {}-{} with max retry ({}) times "
+                                + "reached.",
+                        logGroupName, logStreamName, tryCount);
+            }
             addNextSequenceToken(logGroupName, logStreamName, e.expectedSequenceToken());
             // TODO: better do the retry mechanism? Maybe need to have a scheduled task to handle this.
             return uploadLogs(logGroupName, logStreamName, logEvents, tryCount + 1);

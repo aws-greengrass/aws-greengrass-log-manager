@@ -9,6 +9,7 @@ import com.aws.greengrass.config.Topic;
 import com.aws.greengrass.config.Topics;
 import com.aws.greengrass.config.UnsupportedInputTypeException;
 import com.aws.greengrass.config.UpdateBehaviorTree;
+import com.aws.greengrass.dependency.Crashable;
 import com.aws.greengrass.logging.impl.LogManager;
 import com.aws.greengrass.logging.impl.config.LogConfig;
 import com.aws.greengrass.logging.impl.config.LogStore;
@@ -67,6 +68,7 @@ import static com.aws.greengrass.lifecyclemanager.GreengrassService.RUNTIME_STOR
 import static com.aws.greengrass.logging.impl.config.LogConfig.newLogConfigFromRootConfig;
 import static com.aws.greengrass.logmanager.LogManagerService.COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME;
 import static com.aws.greengrass.logmanager.LogManagerService.COMPONENT_LOGS_CONFIG_TOPIC_NAME;
+import static com.aws.greengrass.logmanager.LogManagerService.COMPONENT_NAME_CONFIG_TOPIC_NAME;
 import static com.aws.greengrass.logmanager.LogManagerService.DELETE_LOG_FILES_AFTER_UPLOAD_CONFIG_TOPIC_NAME;
 import static com.aws.greengrass.logmanager.LogManagerService.DISK_SPACE_LIMIT_CONFIG_TOPIC_NAME;
 import static com.aws.greengrass.logmanager.LogManagerService.DISK_SPACE_LIMIT_UNIT_CONFIG_TOPIC_NAME;
@@ -81,7 +83,6 @@ import static com.aws.greengrass.logmanager.LogManagerService.PERSISTED_LAST_FIL
 import static com.aws.greengrass.logmanager.LogManagerService.SYSTEM_LOGS_COMPONENT_NAME;
 import static com.aws.greengrass.logmanager.LogManagerService.SYSTEM_LOGS_CONFIG_TOPIC_NAME;
 import static com.aws.greengrass.logmanager.LogManagerService.UPLOAD_TO_CW_CONFIG_TOPIC_NAME;
-import static com.aws.greengrass.logmanager.LogManagerService.COMPONENT_NAME_CONFIG_TOPIC_NAME;
 import static com.aws.greengrass.testcommons.testutilities.ExceptionLogProtector.ignoreExceptionOfType;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -109,7 +110,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
     @Captor
     private ArgumentCaptor<Consumer<CloudWatchAttempt>> callbackCaptor;
     @Captor
-    private ArgumentCaptor<Map<String, Object>> replaceAndWaitCaptor;
+    private ArgumentCaptor<Map<String, Object>> updateFromMapCaptor;
     @Captor
     private ArgumentCaptor<Number> numberObjectCaptor;
 
@@ -196,6 +197,10 @@ class LogManagerServiceTest extends GGServiceTestUtil {
     public void setup() {
         serviceFullName = "aws.greengrass.LogManager";
         initializeMockedConfig();
+        lenient().when(context.runOnPublishQueueAndWait(any())).thenAnswer((s) -> {
+            ((Crashable)s.getArgument(0)).run();
+            return null;
+        });
     }
 
     private void mockDefaultPersistedState() {
@@ -569,7 +574,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
                 .thenReturn(lastFileProcessedTimeStampTopics);
 
         Topics componentTopics3 = mock(Topics.class);
-        doNothing().when(componentTopics3).replaceAndWait(replaceAndWaitCaptor.capture());
+        doNothing().when(componentTopics3).updateFromMap(updateFromMapCaptor.capture(), any());
         Topics runtimeConfig = mock(Topics.class);
         when(config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC))
                 .thenReturn(runtimeConfig);
@@ -614,10 +619,10 @@ class LogManagerServiceTest extends GGServiceTestUtil {
 
         callbackCaptor.getValue().accept(attempt);
 
-        assertThat(replaceAndWaitCaptor.getAllValues(), IsNot.not(IsEmptyCollection.empty()));
+        assertThat(updateFromMapCaptor.getAllValues(), IsNot.not(IsEmptyCollection.empty()));
         assertThat(numberObjectCaptor.getAllValues(), IsNot.not(IsEmptyCollection.empty()));
         List<Number> completedComponentLastProcessedFileInformation = numberObjectCaptor.getAllValues();
-        List<Map<String, Object>> partiallyReadComponentLogFileInformation = replaceAndWaitCaptor.getAllValues();
+        List<Map<String, Object>> partiallyReadComponentLogFileInformation = updateFromMapCaptor.getAllValues();
         assertEquals(1, completedComponentLastProcessedFileInformation.size());
         assertEquals(1, partiallyReadComponentLogFileInformation.size());
         assertEquals(file1.lastModified(), Coerce.toLong(completedComponentLastProcessedFileInformation.get(0)));

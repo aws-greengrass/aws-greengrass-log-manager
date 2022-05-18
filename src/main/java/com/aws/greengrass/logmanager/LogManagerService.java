@@ -8,6 +8,7 @@ package com.aws.greengrass.logmanager;
 import ch.qos.logback.core.util.FileSize;
 import com.aws.greengrass.config.Topic;
 import com.aws.greengrass.config.Topics;
+import com.aws.greengrass.config.UpdateBehaviorTree;
 import com.aws.greengrass.config.WhatHappened;
 import com.aws.greengrass.dependency.ImplementsService;
 import com.aws.greengrass.lifecyclemanager.PluginService;
@@ -396,7 +397,10 @@ public class LogManagerService extends PluginService {
                     CurrentProcessingFileInformation.builder().build();
             currentProcessingComponentTopics.iterator().forEachRemaining(node ->
                     currentProcessingFileInformation.updateFromTopic((Topic) node));
-            componentCurrentProcessingLogFile.put(componentName, currentProcessingFileInformation);
+            // Only store the processing information when the filename is not empty or null.
+            if (Utils.isNotEmpty(currentProcessingFileInformation.getFileName())) {
+                componentCurrentProcessingLogFile.put(componentName, currentProcessingFileInformation);
+            }
         }
         Topics lastFileProcessedComponentTopics = getRuntimeConfig()
                 .lookupTopics(PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP, componentName);
@@ -468,11 +472,17 @@ public class LogManagerService extends PluginService {
         });
         currentProcessingLogFilePerComponent.forEach(componentCurrentProcessingLogFile::put);
 
-        componentCurrentProcessingLogFile.forEach((componentName, currentProcessingFileInformation) -> {
-            Topics componentTopics = getRuntimeConfig()
-                    .lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION, componentName);
-            componentTopics.replaceAndWait(currentProcessingFileInformation.convertToMapOfObjects());
+        context.runOnPublishQueueAndWait(() -> {
+            componentCurrentProcessingLogFile.forEach((componentName, currentProcessingFileInformation) -> {
+                Topics componentTopics =
+                        getRuntimeConfig().lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION,
+                                componentName);
+                componentTopics.updateFromMap(currentProcessingFileInformation.convertToMapOfObjects(),
+                        new UpdateBehaviorTree(UpdateBehaviorTree.UpdateBehavior.REPLACE, System.currentTimeMillis()));
+            });
         });
+        context.waitForPublishQueueToClear();
+
         lastComponentUploadedLogFileInstantMap.forEach((componentName, instant) -> {
             Topics componentTopics = getRuntimeConfig()
                     .lookupTopics(PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP, componentName);

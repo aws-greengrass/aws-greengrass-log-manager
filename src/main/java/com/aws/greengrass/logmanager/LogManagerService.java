@@ -159,6 +159,10 @@ public class LogManagerService extends PluginService {
         }
     }
 
+    /**
+     * Find the current 'logsUploaderConfiguration' configuration from runtime
+     * @param topics
+     */
     private void handleLogsUploaderConfig(Topics topics) {
         Topics logsUploaderTopics = topics.lookupTopics(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC);
         Map<String, Object> logsUploaderConfigTopicsPojo = logsUploaderTopics.toPOJO();
@@ -579,6 +583,10 @@ public class LogManagerService extends PluginService {
                     }
                     // Sort the files by the last modified time.
                     allFiles.sort(Comparator.comparingLong(File::lastModified));
+                    /**
+                     * sublist to rotated file and active file
+                     * for the active file, calculate the hash based on the first log line
+                     */
                     // If there are no rotated log files for the component, then return.
                     if (allFiles.size() - 1 <= 0) {
                         continue;
@@ -593,6 +601,11 @@ public class LogManagerService extends PluginService {
                                     .desiredLogLevel(componentLogConfiguration.getMinimumLogLevel())
                                     .componentType(componentLogConfiguration.getComponentType())
                                     .build()));
+                    /**
+                     * For each file,
+                     *  check if the component exists in currentProcessingLogFIle
+                     *  check if either filename or hash value equal, if yes, get the startPosition
+                     */
                     allFiles.forEach(file -> {
                         long startPosition = 0;
                         // If the file was partially read in the previous run, then get the starting position for

@@ -11,6 +11,7 @@ import com.aws.greengrass.logmanager.model.CloudWatchAttempt;
 import com.aws.greengrass.logmanager.model.CloudWatchAttemptLogInformation;
 import com.aws.greengrass.logmanager.model.ComponentLogFileInformation;
 import com.aws.greengrass.logmanager.model.ComponentType;
+import com.aws.greengrass.logmanager.model.LogFile;
 import com.aws.greengrass.logmanager.model.LogFileInformation;
 import com.aws.greengrass.testcommons.testutilities.GGExtension;
 import com.aws.greengrass.testcommons.testutilities.GGServiceTestUtil;
@@ -98,8 +99,9 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
             throws URISyntaxException {
         ignoreExceptionOfType(ec, DateTimeParseException.class);
         File file1 = new File(getClass().getResource("testlogs2.log").toURI());
+        LogFile logFile1 = LogFile.of(file1);
         List<LogFileInformation> logFileInformationSet = new ArrayList<>();
-        logFileInformationSet.add(LogFileInformation.builder().startPosition(0).file(file1).build());
+        logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile1).build());
         ComponentLogFileInformation componentLogFileInformation = ComponentLogFileInformation.builder()
                 .name("TestComponent")
                 .desiredLogLevel(Level.INFO)
@@ -139,8 +141,9 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
         ignoreExceptionOfType(ec, DateTimeParseException.class);
 
         File file1 = new File(getClass().getResource("testlogs2.log").toURI());
+        LogFile logFile1 = LogFile.of(file1);
         List<LogFileInformation> logFileInformationSet = new ArrayList<>();
-        logFileInformationSet.add(LogFileInformation.builder().startPosition(0).file(file1).build());
+        logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile1).build());
         ComponentLogFileInformation componentLogFileInformation = ComponentLogFileInformation.builder()
                 .name("TestComponent")
                 .desiredLogLevel(Level.INFO)
@@ -180,8 +183,9 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
         ignoreExceptionOfType(ec, DateTimeParseException.class);
 
         File file1 = new File(getClass().getResource("testlogs2.log").toURI());
+        LogFile logFile1 = LogFile.of(file1);
         List<LogFileInformation> logFileInformationSet = new ArrayList<>();
-        logFileInformationSet.add(LogFileInformation.builder().startPosition(0).file(file1).build());
+        logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile1).build());
         ComponentLogFileInformation componentLogFileInformation = ComponentLogFileInformation.builder()
                 .name("TestComponent")
                 .desiredLogLevel(Level.INFO)
@@ -221,6 +225,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
 
         ignoreExceptionOfType(context1, DateTimeParseException.class);
         File file = new File(directoryPath.resolve("greengrass_test.log").toUri());
+        LogFile logFile = LogFile.of(file);
         assertTrue(file.createNewFile());
         assertTrue(file.setReadable(true));
         assertTrue(file.setWritable(true));
@@ -237,7 +242,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
 
         try {
             List<LogFileInformation> logFileInformationSet = new ArrayList<>();
-            logFileInformationSet.add(LogFileInformation.builder().startPosition(0).file(file).build());
+            logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile).build());
             ComponentLogFileInformation componentLogFileInformation = ComponentLogFileInformation.builder()
                     .name("TestComponent")
                     .desiredLogLevel(Level.INFO)
@@ -280,6 +285,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
     void GIVEN_one_component_one_file_24h_gap_WHEN_merge_THEN_reads_partial_file()
             throws IOException {
         File file = new File(directoryPath.resolve("greengrass_test.log").toUri());
+        LogFile logFile = LogFile.of(file);
         assertTrue(file.createNewFile());
         assertTrue(file.setReadable(true));
         assertTrue(file.setWritable(true));
@@ -295,7 +301,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
 
         try {
             List<LogFileInformation> logFileInformationSet = new ArrayList<>();
-            logFileInformationSet.add(LogFileInformation.builder().startPosition(0).file(file).build());
+            logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile).build());
             ComponentLogFileInformation componentLogFileInformation = ComponentLogFileInformation.builder()
                     .name("TestComponent")
                     .desiredLogLevel(Level.INFO)
@@ -320,6 +326,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
     void GIVEN_one_component_WHEN_file_older_than_14_days_THEN_skip_file()
             throws IOException {
         File file = new File(directoryPath.resolve("greengrass_test.log").toUri());
+        LogFile logFile = LogFile.of(file);
         assertTrue(file.createNewFile());
         assertTrue(file.setReadable(true));
         assertTrue(file.setWritable(true));
@@ -335,7 +342,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
 
         try {
             List<LogFileInformation> logFileInformationSet = new ArrayList<>();
-            logFileInformationSet.add(LogFileInformation.builder().startPosition(0).file(file).build());
+            logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile).build());
             ComponentLogFileInformation componentLogFileInformation = ComponentLogFileInformation.builder()
                     .name("TestComponent")
                     .desiredLogLevel(Level.INFO)
@@ -364,10 +371,12 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
         ignoreExceptionOfType(ec, DateTimeParseException.class);
 
         File file1 = new File(getClass().getResource("testlogs2.log").toURI());
+        LogFile logFile1 = LogFile.of(file1);
         File file2 = new File(getClass().getResource("testlogs1.log").toURI());
+        LogFile logFile2 = LogFile.of(file2);
         List<LogFileInformation> logFileInformationSet = new ArrayList<>();
-        logFileInformationSet.add(LogFileInformation.builder().startPosition(0).file(file1).build());
-        logFileInformationSet.add(LogFileInformation.builder().startPosition(0).file(file2).build());
+        logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile1).build());
+        logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile2).build());
         ComponentLogFileInformation componentLogFileInformation = ComponentLogFileInformation.builder()
                 .name("TestComponent")
                 .desiredLogLevel(Level.INFO)
@@ -417,6 +426,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
 
         ignoreExceptionOfType(ec, DateTimeParseException.class);
         File file = new File(directoryPath.resolve("greengrass_test.log").toUri());
+        LogFile logFile = LogFile.of(file);
         assertTrue(file.createNewFile());
         assertTrue(file.setReadable(true));
         assertTrue(file.setWritable(true));
@@ -439,7 +449,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
             fileOutputStream.write(fileContentBytes);
 
             List<LogFileInformation> logFileInformationSet = new ArrayList<>();
-            logFileInformationSet.add(LogFileInformation.builder().startPosition(0).file(file).build());
+            logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile).build());
             ComponentLogFileInformation componentLogFileInformation =
                     ComponentLogFileInformation.builder().name("TestComponent")
                             .desiredLogLevel(Level.INFO).componentType(ComponentType.GreengrassSystemComponent)
@@ -483,6 +493,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
 
         ignoreExceptionOfType(ec, DateTimeParseException.class);
         File file = new File(directoryPath.resolve("greengrass_test.log").toUri());
+        LogFile logFile = LogFile.of(file);
         assertTrue(file.createNewFile());
         assertTrue(file.setReadable(true));
         assertTrue(file.setWritable(true));
@@ -504,7 +515,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
             fileOutputStream.write(fileContent.toString().getBytes(StandardCharsets.UTF_8));
 
             List<LogFileInformation> logFileInformationSet = new ArrayList<>();
-            logFileInformationSet.add(LogFileInformation.builder().startPosition(0).file(file).build());
+            logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile).build());
             ComponentLogFileInformation componentLogFileInformation =
                     ComponentLogFileInformation.builder().name("TestComponent")
                             .desiredLogLevel(Level.INFO).componentType(ComponentType.GreengrassSystemComponent)
@@ -541,6 +552,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
 
         ignoreExceptionOfType(ec, DateTimeParseException.class);
         File file = new File(directoryPath.resolve("greengrass_test.log").toUri());
+        LogFile logFile = LogFile.of(file);
         assertTrue(file.createNewFile());
         assertTrue(file.setReadable(true));
         assertTrue(file.setWritable(true));
@@ -550,7 +562,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
 
         try {
             List<LogFileInformation> logFileInformationSet = new ArrayList<>();
-            logFileInformationSet.add(LogFileInformation.builder().startPosition(0).file(file).build());
+            logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile).build());
             ComponentLogFileInformation componentLogFileInformation = ComponentLogFileInformation.builder()
                     .name("TestComponent")
                     .desiredLogLevel(Level.INFO)
@@ -593,6 +605,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
 
         ignoreExceptionOfType(ec, DateTimeParseException.class);
         File file = new File(directoryPath.resolve("greengrass_test.log").toUri());
+        LogFile logFile = LogFile.of(file);
         assertTrue(file.createNewFile());
         assertTrue(file.setReadable(true));
         assertTrue(file.setWritable(true));
@@ -609,7 +622,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
 
         try {
             List<LogFileInformation> logFileInformationSet = new ArrayList<>();
-            logFileInformationSet.add(LogFileInformation.builder().startPosition(0).file(file).build());
+            logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile).build());
             ComponentLogFileInformation componentLogFileInformation = ComponentLogFileInformation.builder()
                     .name("TestComponent")
                     .desiredLogLevel(Level.INFO)
@@ -650,6 +663,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
     @Test
     void GIVEN_component_multiline_pattern_default_WHEN_logs_start_with_whitespace_THEN_append_to_previous_log() throws IOException{
         File file = new File(directoryPath.resolve("greengrass_test.log").toUri());
+        LogFile logFile = LogFile.of(file);
         assertTrue(file.createNewFile());
         assertTrue(file.setReadable(true));
         assertTrue(file.setWritable(true));
@@ -663,7 +677,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
         }
         try {
             List<LogFileInformation> logFileInformationSet = new ArrayList<>();
-            logFileInformationSet.add(LogFileInformation.builder().startPosition(0).file(file).build());
+            logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile).build());
             ComponentLogFileInformation componentLogFileInformation = ComponentLogFileInformation.builder()
                     .name("TestComponent")
                     .desiredLogLevel(Level.INFO)
@@ -691,6 +705,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
     @Test
     void GIVEN_component_multiline_pattern_set_WHEN_log_lines_do_not_match_pattern_THEN_append_to_previous_log() throws IOException{
         File file = new File(directoryPath.resolve("greengrass_test.log").toUri());
+        LogFile logFile = LogFile.of(file);
         assertTrue(file.createNewFile());
         assertTrue(file.setReadable(true));
         assertTrue(file.setWritable(true));
@@ -705,7 +720,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
         }
         try {
             List<LogFileInformation> logFileInformationSet = new ArrayList<>();
-            logFileInformationSet.add(LogFileInformation.builder().startPosition(0).file(file).build());
+            logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile).build());
             ComponentLogFileInformation componentLogFileInformation = ComponentLogFileInformation.builder()
                     .name("TestComponent")
                     .desiredLogLevel(Level.INFO)
@@ -741,9 +756,10 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
         System.setOut(new PrintStream(outputCaptor));
 
         File file = new File(getClass().getResource("stackoverflow.log").toURI());
+        LogFile logFile = LogFile.of(file);
 
         List<LogFileInformation> logFileInformationSet = new ArrayList<>();
-        logFileInformationSet.add(LogFileInformation.builder().startPosition(0).file(file).build());
+        logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile).build());
         ComponentLogFileInformation componentLogFileInformation = ComponentLogFileInformation.builder()
                 .name("TestComponent")
                 .desiredLogLevel(Level.INFO)

@@ -20,6 +20,7 @@ import com.aws.greengrass.logmanager.model.CloudWatchAttemptLogInformation;
 import com.aws.greengrass.logmanager.model.ComponentLogConfiguration;
 import com.aws.greengrass.logmanager.model.ComponentLogFileInformation;
 import com.aws.greengrass.logmanager.model.ComponentType;
+import com.aws.greengrass.logmanager.model.LogFile;
 import com.aws.greengrass.logmanager.model.LogFileInformation;
 import com.aws.greengrass.util.Coerce;
 import com.aws.greengrass.util.Utils;
@@ -67,6 +68,7 @@ import javax.inject.Inject;
 import static com.aws.greengrass.componentmanager.KernelConfigResolver.CONFIGURATION_CONFIG_KEY;
 import static com.aws.greengrass.logmanager.LogManagerService.LOGS_UPLOADER_SERVICE_TOPICS;
 
+
 @ImplementsService(name = LOGS_UPLOADER_SERVICE_TOPICS, version = "2.0.0")
 public class LogManagerService extends PluginService {
     public static final String LOGS_UPLOADER_SERVICE_TOPICS = "aws.greengrass.LogManager";
@@ -97,6 +99,7 @@ public class LogManagerService extends PluginService {
     public static final String UPLOAD_TO_CW_CONFIG_TOPIC_NAME = "uploadToCloudWatch";
     public static final String MULTILINE_PATTERN_CONFIG_TOPIC_NAME = "multiLineStartPattern";
     public static final int DEFAULT_PERIODIC_UPDATE_INTERVAL_SEC = 300;
+    public static final int DEFAULT_LINES_FOR_DIGEST_NUM = 1;
     private final Object spaceManagementLock = new Object();
 
     // public only for integ tests
@@ -159,6 +162,10 @@ public class LogManagerService extends PluginService {
         }
     }
 
+    /**
+     * Find the current 'logsUploaderConfiguration' configuration from runtime
+     * @param topics
+     */
     private void handleLogsUploaderConfig(Topics topics) {
         Topics logsUploaderTopics = topics.lookupTopics(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC);
         Map<String, Object> logsUploaderConfigTopicsPojo = logsUploaderTopics.toPOJO();
@@ -564,11 +571,12 @@ public class LogManagerService extends PluginService {
                         lastComponentUploadedLogFileInstantMap.getOrDefault(componentName,
                                 Instant.EPOCH);
                 File folder = new File(componentLogConfiguration.getDirectoryPath().toUri());
-                List<File> allFiles = new ArrayList<>();
+                List<LogFile> allFiles = new ArrayList<>();
+
                 try {
-                    File[] files = folder.listFiles();
-                    if (files != null) {
-                        for (File file : files) {
+                    LogFile[] files = LogFile.of(folder.listFiles());
+                    if (files.length != 0) {
+                        for (LogFile file : files) {
                             if (file.isFile()
                                     && lastUploadedLogFileTimeMs.isBefore(Instant.ofEpochMilli(file.lastModified()))
                                     && componentLogConfiguration.getFileNameRegex().matcher(file.getName()).find()
@@ -577,14 +585,9 @@ public class LogManagerService extends PluginService {
                             }
                         }
                     }
-                    // Sort the files by the last modified time.
-                    allFiles.sort(Comparator.comparingLong(File::lastModified));
-                    // If there are no rotated log files for the component, then return.
-                    if (allFiles.size() - 1 <= 0) {
-                        continue;
-                    }
-                    // Don't consider the active log file.
-                    allFiles = allFiles.subList(0, allFiles.size() - 1);
+                    // Sort the files by the last modified time. Then try to proceed oldest file first to avoid data
+                    // loss caused by auto deletion
+                    allFiles.sort(Comparator.comparingLong(LogFile::lastModified));
 
                     componentLogFileInformation.set(Optional.of(
                             ComponentLogFileInformation.builder()
@@ -593,10 +596,12 @@ public class LogManagerService extends PluginService {
                                     .desiredLogLevel(componentLogConfiguration.getMinimumLogLevel())
                                     .componentType(componentLogConfiguration.getComponentType())
                                     .build()));
+
                     allFiles.forEach(file -> {
                         long startPosition = 0;
                         // If the file was partially read in the previous run, then get the starting position for
                         // new log lines.
+                        //TODO: replace the filename with hashvalue
                         if (componentCurrentProcessingLogFile.containsKey(componentName)) {
                             CurrentProcessingFileInformation processingFileInformation =
                                     componentCurrentProcessingLogFile.get(componentName);
@@ -606,8 +611,9 @@ public class LogManagerService extends PluginService {
                             }
                         }
                         LogFileInformation logFileInformation = LogFileInformation.builder()
-                                .file(file)
+                                .logFile(file)
                                 .startPosition(startPosition)
+                                .fileHash(file.hashString())
                                 .build();
                         componentLogFileInformation.get().get().getLogFileInformationList().add(logFileInformation);
                     });
@@ -627,6 +633,8 @@ public class LogManagerService extends PluginService {
             }
         }
     }
+
+
 
     @Override
     public void startup() throws InterruptedException {

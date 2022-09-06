@@ -10,11 +10,13 @@ import lombok.Getter;
 import lombok.Value;
 
 import java.io.File;
+import java.util.Optional;
 
 @Builder
 @Value
 @Getter
 public class LogFileInformation {
-    private File file;
+    private LogFile logFile;
     private long startPosition;
+    private Optional fileHash;
 }

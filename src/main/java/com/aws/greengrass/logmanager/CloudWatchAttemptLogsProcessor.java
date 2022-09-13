@@ -128,6 +128,7 @@ public class CloudWatchAttemptLogsProcessor {
         while (!componentLogFileInformation.getLogFileInformationList().isEmpty() && !reachedMaxSize.get()) {
             File file = componentLogFileInformation.getLogFileInformationList().get(0).getFile();
             long startPosition = componentLogFileInformation.getLogFileInformationList().get(0).getStartPosition();
+            Optional fileHash = componentLogFileInformation.getLogFileInformationList().get(0).getFileHash();
             String fileName = file.getAbsolutePath();
             long lastModified = file.lastModified();
 

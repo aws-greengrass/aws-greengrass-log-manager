@@ -128,6 +128,7 @@ public class CloudWatchAttemptLogsProcessor {
         while (!componentLogFileInformation.getLogFileInformationList().isEmpty() && !reachedMaxSize.get()) {
             File file = componentLogFileInformation.getLogFileInformationList().get(0).getFile();
             long startPosition = componentLogFileInformation.getLogFileInformationList().get(0).getStartPosition();
+            Optional fileHash = componentLogFileInformation.getLogFileInformationList().get(0).getFileHash();
             String fileName = file.getAbsolutePath();
             long lastModified = file.lastModified();
 
@@ -222,6 +223,9 @@ public class CloudWatchAttemptLogsProcessor {
         CloudWatchAttemptLogInformation attemptLogInformation;
         Optional<GreengrassLogMessage> logMessage = tryGetStructuredLogMessage(dataStr);
         Pair<Boolean, AtomicInteger> addEventResult;
+        // if the message is in JSON format, directly grab the message timestamp as logStreamName
+        // otherwise, try to find if any timestamp matched in text. If not, set the local (where LM is) time as the
+        // logStreamName
         if (logMessage.isPresent()) {
             logStreamName = logStreamName.replace("{date}",
                     DATE_FORMATTER.get().format(new Date(logMessage.get().getTimestamp())));

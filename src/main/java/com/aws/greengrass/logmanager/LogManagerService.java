@@ -14,8 +14,6 @@ import com.aws.greengrass.dependency.ImplementsService;
 import com.aws.greengrass.lifecyclemanager.PluginService;
 import com.aws.greengrass.logging.impl.LogManager;
 import com.aws.greengrass.logging.impl.config.LogConfig;
-import com.aws.greengrass.logmanager.exceptions.InvalidDigestTargetLinesNumberException;
-import com.aws.greengrass.logmanager.exceptions.NotEnoughLinesForDigestException;
 import com.aws.greengrass.logmanager.model.CloudWatchAttempt;
 import com.aws.greengrass.logmanager.model.CloudWatchAttemptLogFileInformation;
 import com.aws.greengrass.logmanager.model.CloudWatchAttemptLogInformation;
@@ -23,6 +21,7 @@ import com.aws.greengrass.logmanager.model.ComponentLogConfiguration;
 import com.aws.greengrass.logmanager.model.ComponentLogFileInformation;
 import com.aws.greengrass.logmanager.model.ComponentType;
 import com.aws.greengrass.logmanager.model.LogFileInformation;
+import com.aws.greengrass.logmanager.util.FileHashGenerator;
 import com.aws.greengrass.util.Coerce;
 import com.aws.greengrass.util.Utils;
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -34,22 +33,16 @@ import org.slf4j.event.Level;
 
 import java.io.File;
 import java.io.IOException;
-import java.io.InputStreamReader;
 import java.io.UncheckedIOException;
-import java.nio.channels.Channels;
-import java.nio.channels.SeekableByteChannel;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.nio.file.StandardOpenOption;
 import java.nio.file.StandardWatchEventKinds;
 import java.nio.file.WatchEvent;
 import java.nio.file.WatchKey;
 import java.nio.file.WatchService;
 import java.nio.file.Watchable;
-import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -74,7 +67,7 @@ import javax.inject.Inject;
 
 import static com.aws.greengrass.componentmanager.KernelConfigResolver.CONFIGURATION_CONFIG_KEY;
 import static com.aws.greengrass.logmanager.LogManagerService.LOGS_UPLOADER_SERVICE_TOPICS;
-import static com.aws.greengrass.util.Digest.calculate;
+
 
 @ImplementsService(name = LOGS_UPLOADER_SERVICE_TOPICS, version = "2.0.0")
 public class LogManagerService extends PluginService {
@@ -106,7 +99,7 @@ public class LogManagerService extends PluginService {
     public static final String UPLOAD_TO_CW_CONFIG_TOPIC_NAME = "uploadToCloudWatch";
     public static final String MULTILINE_PATTERN_CONFIG_TOPIC_NAME = "multiLineStartPattern";
     public static final int DEFAULT_PERIODIC_UPDATE_INTERVAL_SEC = 300;
-    private static final int DEFAULT_LINES_FOR_DIGEST_NUM = 1;
+    public static final int DEFAULT_LINES_FOR_DIGEST_NUM = 1;
     private final Object spaceManagementLock = new Object();
 
     // public only for integ tests
@@ -579,7 +572,6 @@ public class LogManagerService extends PluginService {
                                 Instant.EPOCH);
                 File folder = new File(componentLogConfiguration.getDirectoryPath().toUri());
                 List<File> allFiles = new ArrayList<>();
-                List<File> rotatedFiles = new ArrayList<>();
 
                 try {
                     File[] files = folder.listFiles();
@@ -593,17 +585,9 @@ public class LogManagerService extends PluginService {
                             }
                         }
                     }
-                    // Sort the files by the last modified time.
+                    // Sort the files by the last modified time. Then try to proceed oldest file first to avoid data
+                    // loss caused by auto deletion
                     allFiles.sort(Comparator.comparingLong(File::lastModified));
-
-                     // sublist allFiles to rotated file and active file, calculate the hash for active file with
-                    // some lines, default is 1 line
-                    allFiles = allFiles.subList(0, allFiles.size() - 1);
-                    rotatedFiles = allFiles.subList(0, allFiles.size() - 1);
-                    File activeFile = allFiles.get(allFiles.size() - 1);
-
-                    //calculate the hash value for activeFile
-                    Optional activeFileHash = Optional.ofNullable(calculateHashForActiveFile(activeFile));
 
                     componentLogFileInformation.set(Optional.of(
                             ComponentLogFileInformation.builder()
@@ -615,8 +599,10 @@ public class LogManagerService extends PluginService {
 
                     allFiles.forEach(file -> {
                         long startPosition = 0;
+                        Optional fileHash = FileHashGenerator.calculateHashForLogFile(file, DEFAULT_LINES_FOR_DIGEST_NUM);
                         // If the file was partially read in the previous run, then get the starting position for
                         // new log lines.
+                        //TODO: replace the filename with hashvalue
                         if (componentCurrentProcessingLogFile.containsKey(componentName)) {
                             CurrentProcessingFileInformation processingFileInformation =
                                     componentCurrentProcessingLogFile.get(componentName);
@@ -628,6 +614,7 @@ public class LogManagerService extends PluginService {
                         LogFileInformation logFileInformation = LogFileInformation.builder()
                                 .file(file)
                                 .startPosition(startPosition)
+                                .fileHash(fileHash)
                                 .build();
                         componentLogFileInformation.get().get().getLogFileInformationList().add(logFileInformation);
                     });
@@ -648,54 +635,7 @@ public class LogManagerService extends PluginService {
         }
     }
 
-    /**
-     * calculate the hash for the active file, which takes and digests first some lines (default is 1) in the file.
-     * If the content of file is insufficient, or incorrect setting for DEFAULT_LINES_FOR_DIGEST_NUM, the hash is null.
-     * @param activeFile
-     * @return the nullable calculated hash for active file
-     */
-    private Optional<String> calculateHashForActiveFile(File activeFile) {
-        Optional activeFileHash = Optional.ofNullable(null);
-        // String activeFileHash = null;
-        try (SeekableByteChannel chan = Files.newByteChannel(activeFile.toPath(), StandardOpenOption.READ);
-             PositionTrackingBufferedReader r =
-                new PositionTrackingBufferedReader(new InputStreamReader(Channels.newInputStream(chan),
-                        StandardCharsets.UTF_8))) {
-            r.setInitialPosition(0);
-            chan.position(0);
-            StringBuilder data = new StringBuilder(r.readLine());
 
-            // if the lines for digest is less than 1 line, skip this file and generate error.
-            if (DEFAULT_LINES_FOR_DIGEST_NUM < 1) {
-                logger.atError().cause(new InvalidDigestTargetLinesNumberException("The active log file is " +
-                        "not read because the Digest requires at least one line message."));
-            } else {
-                int linesReadForDigest = 0;
-                String oneLine;
-                // read the target number of lines, break if reach the end of file
-                while (linesReadForDigest < DEFAULT_LINES_FOR_DIGEST_NUM) {
-                    oneLine = r.readLine();
-                    if (oneLine == null) break;
-                    data.append(oneLine);
-                    linesReadForDigest ++;
-                }
-                // if the lines in the file does not meet the required number of lines for Digest,
-                // the hash for the file is null
-                if (linesReadForDigest == DEFAULT_LINES_FOR_DIGEST_NUM)
-                    activeFileHash = Optional.of(calculate(data.toString()));
-                else
-                    logger.atError().cause(new NotEnoughLinesForDigestException("File does not have enough " +
-                            "lines for Digest"));
-            }
-        } catch (IOException e) {
-            // File probably does not exist
-            logger.atError().cause(e).log("Unable to read file {}", activeFile.getAbsolutePath());
-        } catch (NoSuchAlgorithmException e) {
-            logger.atError().cause(e).log("The Digest Algorithm is invalid.");
-        }
-
-        return activeFileHash;
-    }
 
     @Override
     public void startup() throws InterruptedException {

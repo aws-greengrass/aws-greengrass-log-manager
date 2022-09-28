@@ -99,8 +99,8 @@ public class LogManagerService extends PluginService {
     public static final String UPLOAD_TO_CW_CONFIG_TOPIC_NAME = "uploadToCloudWatch";
     public static final String MULTILINE_PATTERN_CONFIG_TOPIC_NAME = "multiLineStartPattern";
     public static final int DEFAULT_PERIODIC_UPDATE_INTERVAL_SEC = 300;
-    public static final int DEFAULT_LINES_FOR_DIGEST_NUM = 1;
     private final Object spaceManagementLock = new Object();
+    private static final String HASH_VALUE_OF_EMPTY_STRING = "";
 
     // public only for integ tests
     public final Map<String, Instant> lastComponentUploadedLogFileInstantMap =
@@ -588,6 +588,12 @@ public class LogManagerService extends PluginService {
                     // Sort the files by the last modified time. Then try to proceed oldest file first to avoid data
                     // loss caused by auto deletion
                     allFiles.sort(Comparator.comparingLong(LogFile::lastModified));
+                    // If there are no rotated log files for the component, then return.
+                    if (allFiles.size() - 1 <= 0) {
+                        continue;
+                    }
+                    // Don't consider the active log file.
+                    allFiles = allFiles.subList(0, allFiles.size() - 1);
 
                     componentLogFileInformation.set(Optional.of(
                             ComponentLogFileInformation.builder()
@@ -599,23 +605,26 @@ public class LogManagerService extends PluginService {
 
                     allFiles.forEach(file -> {
                         long startPosition = 0;
-                        // If the file was partially read in the previous run, then get the starting position for
-                        // new log lines.
-                        //TODO: replace the filename with hashvalue
-                        if (componentCurrentProcessingLogFile.containsKey(componentName)) {
-                            CurrentProcessingFileInformation processingFileInformation =
-                                    componentCurrentProcessingLogFile.get(componentName);
-                            if (processingFileInformation.fileName.equals(file.getAbsolutePath())
-                                    && processingFileInformation.lastModifiedTime == file.lastModified()) {
-                                startPosition = processingFileInformation.startPosition;
+                        String fileHash = file.hashString();
+                        // It must be a valid file for uploading
+                        if (!fileHash.equals(HASH_VALUE_OF_EMPTY_STRING)) {
+                            // If the file was partially read in the previous run, then get the starting position for
+                            // new log lines.
+                            if (componentCurrentProcessingLogFile.containsKey(componentName)) {
+                                CurrentProcessingFileInformation processingFileInformation =
+                                        componentCurrentProcessingLogFile.get(componentName);
+                                if (processingFileInformation.fileName.equals(file.getAbsolutePath())
+                                        && processingFileInformation.lastModifiedTime == file.lastModified()) {
+                                    startPosition = processingFileInformation.startPosition;
+                                }
                             }
+                            LogFileInformation logFileInformation = LogFileInformation.builder()
+                                            .logFile(file)
+                                            .startPosition(startPosition)
+                                            .fileHash(fileHash)
+                                            .build();
+                            componentLogFileInformation.get().get().getLogFileInformationList().add(logFileInformation);
                         }
-                        LogFileInformation logFileInformation = LogFileInformation.builder()
-                                .logFile(file)
-                                .startPosition(startPosition)
-                                .fileHash(file.hashString())
-                                .build();
-                        componentLogFileInformation.get().get().getLogFileInformationList().add(logFileInformation);
                     });
                     break;
                 } catch (SecurityException e) {

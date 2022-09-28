@@ -14,10 +14,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.NoSuchAlgorithmException;
-import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 
 
 @ExtendWith({MockitoExtension.class, GGExtension.class})
@@ -26,6 +24,7 @@ public class LogFileTest {
     @TempDir
     static Path directoryPath;
     private final static int DEFAULT_LINES_FOR_DIGEST_NUM = 1;
+    private static final String HASH_VALUE_OF_EMPTY_STRING = "";
 
     private void writeFiles(File file, int linesNeeded) throws IOException {
         try (OutputStream fileOutputStream = Files.newOutputStream(file.toPath())) {
@@ -41,8 +40,8 @@ public class LogFileTest {
     void GIVEN_empty_file_WHEN_calculate_file_hash_THEN_we_get_null() throws IOException {
         File file = new File(directoryPath.resolve("greengrass_test.log").toUri());
         LogFile logFile = LogFile.of(file);
-        Optional<String> fileHash = logFile.hashString();
-        assertFalse(fileHash.isPresent());
+        String fileHash = logFile.hashString();
+        assertEquals(fileHash, HASH_VALUE_OF_EMPTY_STRING);
     }
 
     @Test
@@ -55,8 +54,8 @@ public class LogFileTest {
             msg.append("line").append(i + 1);
         }
         LogFile logFile = LogFile.of(file);
-        Optional<String> fileHash = logFile.hashString();
-        assertEquals(fileHash.get(), calculate(msg.toString()));
+        String fileHash = logFile.hashString();
+        assertEquals(fileHash, calculate(msg.toString()));
         file.delete();
     }
 
@@ -70,8 +69,8 @@ public class LogFileTest {
             msg.append("line").append(i + 1);
         }
         LogFile logFile = LogFile.of(file);
-        Optional<String> fileHash = logFile.hashString();
-        assertEquals(fileHash.get(), calculate(msg.toString()));
+        String fileHash = logFile.hashString();
+        assertEquals(fileHash, calculate(msg.toString()));
         file.delete();
     }
 }

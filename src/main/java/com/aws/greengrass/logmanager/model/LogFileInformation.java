@@ -9,7 +9,6 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.Value;
 
-import java.util.Optional;
 
 @Builder
 @Value
@@ -17,5 +16,5 @@ import java.util.Optional;
 public class LogFileInformation {
     private LogFile logFile;
     private long startPosition;
-    private Optional fileHash;
+    private String fileHash;
 }

@@ -13,7 +13,6 @@ import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Optional;
 
 import static com.aws.greengrass.util.Digest.calculate;
 
@@ -80,21 +79,22 @@ public class LogFile extends File {
      * Get the hash of the logfile with target lines.
      * @return the calculated hash value of the logfile
      */
-    public Optional<String> hashString() {
-        if (!this.exists()) {
-            return Optional.empty();
-        }
-        List<String> lines = getLines();
-        if (lines.size() < linesNeeded) {
-            return Optional.empty();
-        }
-
+    public String hashString() {
+        String fileHash = "";
         try {
-            return Optional.of(calculate(String.join("", lines)));
-        } catch (NoSuchAlgorithmException e) {
-            logger.atError().cause(e).log("The Digest Algorithm is invalid.");
+            if (!this.exists()) {
+                return fileHash;
+            }
+            List<String> lines = getLines();
+            if (lines.size() < linesNeeded) {
+                return fileHash;
+            }
+            fileHash = calculate(String.join("", lines));
+        }  catch (NoSuchAlgorithmException e) {
+            logger.atError().cause(e).log("The digest algorithm is invalid");
         }
 
-        return Optional.empty();
+        return fileHash;
+
     }
 }

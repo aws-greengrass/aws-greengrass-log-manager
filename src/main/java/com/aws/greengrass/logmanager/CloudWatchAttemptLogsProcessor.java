@@ -23,7 +23,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.event.Level;
 import software.amazon.awssdk.services.cloudwatchlogs.model.InputLogEvent;
 
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.channels.Channels;
@@ -129,7 +128,8 @@ public class CloudWatchAttemptLogsProcessor {
         while (!componentLogFileInformation.getLogFileInformationList().isEmpty() && !reachedMaxSize.get()) {
             LogFile logFile = componentLogFileInformation.getLogFileInformationList().get(0).getLogFile();
             long startPosition = componentLogFileInformation.getLogFileInformationList().get(0).getStartPosition();
-            Optional<String> fileHash = componentLogFileInformation.getLogFileInformationList().get(0).getFileHash();
+            //TODO Optional<String> fileHash = componentLogFileInformation.getLogFileInformationList().get(0)
+            // .getFileHash();
             String fileName = logFile.getAbsolutePath();
             long lastModified = logFile.lastModified();
 

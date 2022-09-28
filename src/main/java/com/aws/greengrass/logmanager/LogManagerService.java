@@ -163,8 +163,8 @@ public class LogManagerService extends PluginService {
     }
 
     /**
-     * Find the current 'logsUploaderConfiguration' configuration from runtime
-     * @param topics
+     * Find the current 'logsUploaderConfiguration' configuration from runtime.
+     * @param topics The topics to search.
      */
     private void handleLogsUploaderConfig(Topics topics) {
         Topics logsUploaderTopics = topics.lookupTopics(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC);
@@ -577,7 +577,7 @@ public class LogManagerService extends PluginService {
                     LogFile[] files = LogFile.of(folder.listFiles());
                     if (files.length != 0) {
                         for (LogFile file : files) {
-                            if (file.isFile()
+                            if (file.isLogFile()
                                     && lastUploadedLogFileTimeMs.isBefore(Instant.ofEpochMilli(file.lastModified()))
                                     && componentLogConfiguration.getFileNameRegex().matcher(file.getName()).find()
                                     && file.length() > 0) {

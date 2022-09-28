@@ -6,7 +6,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import static com.aws.greengrass.logmanager.LogManagerService.HASH_VALUE_OF_EMPTY_STRING;
+import static com.aws.greengrass.logmanager.model.LogFile.HASH_VALUE_OF_EMPTY_STRING;
 import static com.aws.greengrass.util.Digest.calculate;
 
 import java.io.File;

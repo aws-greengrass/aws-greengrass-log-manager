@@ -15,7 +15,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-import static com.aws.greengrass.logmanager.LogManagerService.HASH_VALUE_OF_EMPTY_STRING;
 import static com.aws.greengrass.util.Digest.calculate;
 
 public class LogFile extends File {
@@ -23,6 +22,7 @@ public class LogFile extends File {
     private static final long serialVersionUID = 123;
     private static final Logger logger = LogManager.getLogger(LogManagerService.class);
     private static final int linesNeeded = 1;
+    public static final String HASH_VALUE_OF_EMPTY_STRING = "";
 
     public LogFile(String pathname) {
         super(pathname);
@@ -56,11 +56,10 @@ public class LogFile extends File {
      */
     private List<String> getLines() {
         List<String> linesRead = new ArrayList<>();
-        String oneLine;
         try (BufferedReader r = Files.newBufferedReader(this.toPath(), StandardCharsets.UTF_8)) {
             // read target number of lines
             while (linesRead.size() < linesNeeded) {
-                oneLine = r.readLine();
+                String oneLine = r.readLine();
                 if (oneLine == null) {
                     break;
                 }
@@ -78,7 +77,7 @@ public class LogFile extends File {
 
     /**
      * Get the hash of the logfile with target lines.
-     * @return the calculated hash value of the logfile
+     * @return the calculated hash value of the logfile, empty string if not enough lines for digest.
      */
     public String hashString() {
         String fileHash = HASH_VALUE_OF_EMPTY_STRING;

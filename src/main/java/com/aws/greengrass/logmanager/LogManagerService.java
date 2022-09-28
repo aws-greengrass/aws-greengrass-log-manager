@@ -67,6 +67,7 @@ import javax.inject.Inject;
 
 import static com.aws.greengrass.componentmanager.KernelConfigResolver.CONFIGURATION_CONFIG_KEY;
 import static com.aws.greengrass.logmanager.LogManagerService.LOGS_UPLOADER_SERVICE_TOPICS;
+import static com.aws.greengrass.logmanager.model.LogFile.HASH_VALUE_OF_EMPTY_STRING;
 
 
 @ImplementsService(name = LOGS_UPLOADER_SERVICE_TOPICS, version = "2.0.0")
@@ -100,7 +101,6 @@ public class LogManagerService extends PluginService {
     public static final String MULTILINE_PATTERN_CONFIG_TOPIC_NAME = "multiLineStartPattern";
     public static final int DEFAULT_PERIODIC_UPDATE_INTERVAL_SEC = 300;
     private final Object spaceManagementLock = new Object();
-    public static final String HASH_VALUE_OF_EMPTY_STRING = "";
 
     // public only for integ tests
     public final Map<String, Instant> lastComponentUploadedLogFileInstantMap =
@@ -606,7 +606,7 @@ public class LogManagerService extends PluginService {
                     allFiles.forEach(file -> {
                         long startPosition = 0;
                         String fileHash = file.hashString();
-                        // It must be a valid file for uploading
+                        // The file must contain enough lines for digest hash, otherwise fileHash is empty string
                         if (!HASH_VALUE_OF_EMPTY_STRING.equals(fileHash)) {
                             // If the file was partially read in the previous run, then get the starting position for
                             // new log lines.

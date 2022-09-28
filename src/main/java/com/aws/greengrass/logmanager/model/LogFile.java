@@ -6,6 +6,7 @@ import com.aws.greengrass.logmanager.LogManagerService;
 
 import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -14,6 +15,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
+import static com.aws.greengrass.logmanager.LogManagerService.HASH_VALUE_OF_EMPTY_STRING;
 import static com.aws.greengrass.util.Digest.calculate;
 
 public class LogFile extends File {
@@ -47,10 +49,6 @@ public class LogFile extends File {
         return Arrays.stream(files).map(LogFile::of).toArray(LogFile[]::new);
     }
 
-    public boolean isLogFile() {
-        return super.isFile();
-    }
-
     /**
      * Read target lines from the file.
      * The file must contain (minLine + 1) lines. One extra line is needed to prevent incomplete line when hashing.
@@ -68,6 +66,9 @@ public class LogFile extends File {
                 }
                 linesRead.add(oneLine);
             }
+        } catch (FileNotFoundException e) {
+            // The file may be deleted as expected.
+            logger.atDebug().cause(e).log("The file {} does not exist", this.getAbsolutePath());
         } catch (IOException e) {
             // File may not exist
             logger.atError().cause(e).log("Unable to read file {}", this.getAbsolutePath());
@@ -80,7 +81,7 @@ public class LogFile extends File {
      * @return the calculated hash value of the logfile
      */
     public String hashString() {
-        String fileHash = "";
+        String fileHash = HASH_VALUE_OF_EMPTY_STRING;
         try {
             if (!this.exists()) {
                 return fileHash;

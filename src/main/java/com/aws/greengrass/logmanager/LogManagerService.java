@@ -100,7 +100,7 @@ public class LogManagerService extends PluginService {
     public static final String MULTILINE_PATTERN_CONFIG_TOPIC_NAME = "multiLineStartPattern";
     public static final int DEFAULT_PERIODIC_UPDATE_INTERVAL_SEC = 300;
     private final Object spaceManagementLock = new Object();
-    private static final String HASH_VALUE_OF_EMPTY_STRING = "";
+    public static final String HASH_VALUE_OF_EMPTY_STRING = "";
 
     // public only for integ tests
     public final Map<String, Instant> lastComponentUploadedLogFileInstantMap =
@@ -577,7 +577,7 @@ public class LogManagerService extends PluginService {
                     LogFile[] files = LogFile.of(folder.listFiles());
                     if (files.length != 0) {
                         for (LogFile file : files) {
-                            if (file.isLogFile()
+                            if (file.isFile()
                                     && lastUploadedLogFileTimeMs.isBefore(Instant.ofEpochMilli(file.lastModified()))
                                     && componentLogConfiguration.getFileNameRegex().matcher(file.getName()).find()
                                     && file.length() > 0) {
@@ -607,7 +607,7 @@ public class LogManagerService extends PluginService {
                         long startPosition = 0;
                         String fileHash = file.hashString();
                         // It must be a valid file for uploading
-                        if (!fileHash.equals(HASH_VALUE_OF_EMPTY_STRING)) {
+                        if (!HASH_VALUE_OF_EMPTY_STRING.equals(fileHash)) {
                             // If the file was partially read in the previous run, then get the starting position for
                             // new log lines.
                             if (componentCurrentProcessingLogFile.containsKey(componentName)) {

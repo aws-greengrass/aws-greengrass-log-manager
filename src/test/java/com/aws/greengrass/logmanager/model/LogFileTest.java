@@ -5,6 +5,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 import org.mockito.junit.jupiter.MockitoExtension;
+
+import static com.aws.greengrass.logmanager.LogManagerService.HASH_VALUE_OF_EMPTY_STRING;
 import static com.aws.greengrass.util.Digest.calculate;
 
 import java.io.File;
@@ -24,7 +26,6 @@ public class LogFileTest {
     @TempDir
     static Path directoryPath;
     private final static int DEFAULT_LINES_FOR_DIGEST_NUM = 1;
-    private static final String HASH_VALUE_OF_EMPTY_STRING = "";
 
     private void writeFiles(File file, int linesNeeded) throws IOException {
         try (OutputStream fileOutputStream = Files.newOutputStream(file.toPath())) {

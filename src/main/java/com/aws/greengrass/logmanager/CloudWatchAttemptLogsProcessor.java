@@ -13,6 +13,7 @@ import com.aws.greengrass.logmanager.model.CloudWatchAttempt;
 import com.aws.greengrass.logmanager.model.CloudWatchAttemptLogFileInformation;
 import com.aws.greengrass.logmanager.model.CloudWatchAttemptLogInformation;
 import com.aws.greengrass.logmanager.model.ComponentLogFileInformation;
+import com.aws.greengrass.logmanager.model.LogFile;
 import com.aws.greengrass.util.Coerce;
 import com.aws.greengrass.util.Pair;
 import com.aws.greengrass.util.Utils;
@@ -22,7 +23,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.event.Level;
 import software.amazon.awssdk.services.cloudwatchlogs.model.InputLogEvent;
 
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.channels.Channels;
@@ -126,14 +126,16 @@ public class CloudWatchAttemptLogsProcessor {
         // Run the loop until all the log files from the component have been read or the max message
         // size has been reached.
         while (!componentLogFileInformation.getLogFileInformationList().isEmpty() && !reachedMaxSize.get()) {
-            File file = componentLogFileInformation.getLogFileInformationList().get(0).getFile();
+            LogFile logFile = componentLogFileInformation.getLogFileInformationList().get(0).getLogFile();
             long startPosition = componentLogFileInformation.getLogFileInformationList().get(0).getStartPosition();
-            String fileName = file.getAbsolutePath();
-            long lastModified = file.lastModified();
+            //TODO Optional<String> fileHash = componentLogFileInformation.getLogFileInformationList().get(0)
+            // .getFileHash();
+            String fileName = logFile.getAbsolutePath();
+            long lastModified = logFile.lastModified();
 
             // If we have read the file already, we are at the correct offset in the file to start reading from
             // Let's get that file handle to read the new log line.
-            try (SeekableByteChannel chan = Files.newByteChannel(file.toPath(), StandardOpenOption.READ);
+            try (SeekableByteChannel chan = Files.newByteChannel(logFile.toPath(), StandardOpenOption.READ);
                  PositionTrackingBufferedReader r =
                          new PositionTrackingBufferedReader(new InputStreamReader(Channels.newInputStream(chan),
                          StandardCharsets.UTF_8))) {
@@ -174,14 +176,14 @@ public class CloudWatchAttemptLogsProcessor {
                         // Need to read more lines until we get a complete log line. Let's add this to the SB.
                         data.append(partialLogLine);
                     } catch (IOException e) {
-                        logger.atError().cause(e).log("Unable to read file {}", file.getAbsolutePath());
+                        logger.atError().cause(e).log("Unable to read file {}", logFile.getAbsolutePath());
                         componentLogFileInformation.getLogFileInformationList().remove(0);
                         break;
                     }
                 }
             } catch (IOException e) {
                 // File probably does not exist.
-                logger.atError().cause(e).log("Unable to read file {}", file.getAbsolutePath());
+                logger.atError().cause(e).log("Unable to read file {}", logFile.getAbsolutePath());
                 componentLogFileInformation.getLogFileInformationList().remove(0);
             }
         }
@@ -222,6 +224,9 @@ public class CloudWatchAttemptLogsProcessor {
         CloudWatchAttemptLogInformation attemptLogInformation;
         Optional<GreengrassLogMessage> logMessage = tryGetStructuredLogMessage(dataStr);
         Pair<Boolean, AtomicInteger> addEventResult;
+        // if the message is in JSON format, directly grab the message timestamp as logStreamName
+        // otherwise, try to find if any timestamp matched in text. If not, set the local (where LM is) time as the
+        // logStreamName
         if (logMessage.isPresent()) {
             logStreamName = logStreamName.replace("{date}",
                     DATE_FORMATTER.get().format(new Date(logMessage.get().getTimestamp())));

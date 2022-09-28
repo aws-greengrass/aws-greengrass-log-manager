@@ -20,6 +20,7 @@ import com.aws.greengrass.logmanager.model.CloudWatchAttemptLogInformation;
 import com.aws.greengrass.logmanager.model.ComponentLogConfiguration;
 import com.aws.greengrass.logmanager.model.ComponentLogFileInformation;
 import com.aws.greengrass.logmanager.model.ComponentType;
+import com.aws.greengrass.logmanager.model.LogFile;
 import com.aws.greengrass.logmanager.model.LogFileInformation;
 import com.aws.greengrass.util.Coerce;
 import com.aws.greengrass.util.Utils;
@@ -66,6 +67,8 @@ import javax.inject.Inject;
 
 import static com.aws.greengrass.componentmanager.KernelConfigResolver.CONFIGURATION_CONFIG_KEY;
 import static com.aws.greengrass.logmanager.LogManagerService.LOGS_UPLOADER_SERVICE_TOPICS;
+import static com.aws.greengrass.logmanager.model.LogFile.HASH_VALUE_OF_EMPTY_STRING;
+
 
 @ImplementsService(name = LOGS_UPLOADER_SERVICE_TOPICS, version = "2.0.0")
 public class LogManagerService extends PluginService {
@@ -159,6 +162,10 @@ public class LogManagerService extends PluginService {
         }
     }
 
+    /**
+     * Find the current 'logsUploaderConfiguration' configuration from runtime.
+     * @param topics The topics to search.
+     */
     private void handleLogsUploaderConfig(Topics topics) {
         Topics logsUploaderTopics = topics.lookupTopics(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC);
         Map<String, Object> logsUploaderConfigTopicsPojo = logsUploaderTopics.toPOJO();
@@ -564,11 +571,12 @@ public class LogManagerService extends PluginService {
                         lastComponentUploadedLogFileInstantMap.getOrDefault(componentName,
                                 Instant.EPOCH);
                 File folder = new File(componentLogConfiguration.getDirectoryPath().toUri());
-                List<File> allFiles = new ArrayList<>();
+                List<LogFile> allFiles = new ArrayList<>();
+
                 try {
-                    File[] files = folder.listFiles();
-                    if (files != null) {
-                        for (File file : files) {
+                    LogFile[] files = LogFile.of(folder.listFiles());
+                    if (files.length != 0) {
+                        for (LogFile file : files) {
                             if (file.isFile()
                                     && lastUploadedLogFileTimeMs.isBefore(Instant.ofEpochMilli(file.lastModified()))
                                     && componentLogConfiguration.getFileNameRegex().matcher(file.getName()).find()
@@ -577,8 +585,9 @@ public class LogManagerService extends PluginService {
                             }
                         }
                     }
-                    // Sort the files by the last modified time.
-                    allFiles.sort(Comparator.comparingLong(File::lastModified));
+                    // Sort the files by the last modified time. Then try to proceed oldest file first to avoid data
+                    // loss caused by auto deletion
+                    allFiles.sort(Comparator.comparingLong(LogFile::lastModified));
                     // If there are no rotated log files for the component, then return.
                     if (allFiles.size() - 1 <= 0) {
                         continue;
@@ -593,23 +602,29 @@ public class LogManagerService extends PluginService {
                                     .desiredLogLevel(componentLogConfiguration.getMinimumLogLevel())
                                     .componentType(componentLogConfiguration.getComponentType())
                                     .build()));
+
                     allFiles.forEach(file -> {
                         long startPosition = 0;
-                        // If the file was partially read in the previous run, then get the starting position for
-                        // new log lines.
-                        if (componentCurrentProcessingLogFile.containsKey(componentName)) {
-                            CurrentProcessingFileInformation processingFileInformation =
-                                    componentCurrentProcessingLogFile.get(componentName);
-                            if (processingFileInformation.fileName.equals(file.getAbsolutePath())
-                                    && processingFileInformation.lastModifiedTime == file.lastModified()) {
-                                startPosition = processingFileInformation.startPosition;
+                        String fileHash = file.hashString();
+                        // The file must contain enough lines for digest hash, otherwise fileHash is empty string
+                        if (!HASH_VALUE_OF_EMPTY_STRING.equals(fileHash)) {
+                            // If the file was partially read in the previous run, then get the starting position for
+                            // new log lines.
+                            if (componentCurrentProcessingLogFile.containsKey(componentName)) {
+                                CurrentProcessingFileInformation processingFileInformation =
+                                        componentCurrentProcessingLogFile.get(componentName);
+                                if (processingFileInformation.fileName.equals(file.getAbsolutePath())
+                                        && processingFileInformation.lastModifiedTime == file.lastModified()) {
+                                    startPosition = processingFileInformation.startPosition;
+                                }
                             }
+                            LogFileInformation logFileInformation = LogFileInformation.builder()
+                                            .logFile(file)
+                                            .startPosition(startPosition)
+                                            .fileHash(fileHash)
+                                            .build();
+                            componentLogFileInformation.get().get().getLogFileInformationList().add(logFileInformation);
                         }
-                        LogFileInformation logFileInformation = LogFileInformation.builder()
-                                .file(file)
-                                .startPosition(startPosition)
-                                .build();
-                        componentLogFileInformation.get().get().getLogFileInformationList().add(logFileInformation);
                     });
                     break;
                 } catch (SecurityException e) {
@@ -627,6 +642,8 @@ public class LogManagerService extends PluginService {
             }
         }
     }
+
+
 
     @Override
     public void startup() throws InterruptedException {

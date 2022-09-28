@@ -9,12 +9,12 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.Value;
 
-import java.io.File;
 
 @Builder
 @Value
 @Getter
 public class LogFileInformation {
-    private File file;
+    private LogFile logFile;
     private long startPosition;
+    private String fileHash;
 }

@@ -7,6 +7,7 @@ import org.junit.jupiter.api.io.TempDir;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static com.aws.greengrass.logmanager.model.LogFile.HASH_VALUE_OF_EMPTY_STRING;
+import static com.aws.greengrass.logmanager.model.LogFile.bytesNeeded;
 import static com.aws.greengrass.util.Digest.calculate;
 
 import java.io.File;
@@ -16,6 +17,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.NoSuchAlgorithmException;
+import java.util.Arrays;
+import java.util.Random;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -25,38 +28,59 @@ public class LogFileTest {
 
     @TempDir
     static Path directoryPath;
-    private final static int DEFAULT_LINES_FOR_DIGEST_NUM = 1;
+    private final static int DEFAULT_BYTES_FOR_DIGEST_NUM = 1024;
 
-    private void writeFiles(File file, int linesNeeded) throws IOException {
+    public static String getRandomTestStrings(int bytesNeeded) {
+        StringBuilder testStrings = new StringBuilder();
+        Random rnd = new Random();
+        String testChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqestuvwxyz0123456789";
+        while (testStrings.length() < bytesNeeded) {
+            int charIdx = (int) (rnd.nextFloat() * testChars.length());
+            testStrings.append(testChars.charAt(charIdx));
+        }
+        return testStrings.toString();
+    }
+
+    private void writeFiles(File file, byte[] byteArray) throws IOException {
         try (OutputStream fileOutputStream = Files.newOutputStream(file.toPath())) {
-            for (int i = 0; i < linesNeeded; i++) {
-                fileOutputStream.write("line".getBytes(StandardCharsets.UTF_8));
-                fileOutputStream.write(String.valueOf(i + 1).getBytes(StandardCharsets.UTF_8));
-                fileOutputStream.write("\n".getBytes(StandardCharsets.UTF_8));
-            }
+            fileOutputStream.write(byteArray);
         }
     }
 
     @Test
     void GIVEN_empty_file_WHEN_calculate_file_hash_THEN_we_get_null() throws IOException {
         File file = new File(directoryPath.resolve("greengrass_test.log").toUri());
+        byte[] bytesArray = getRandomTestStrings(0).getBytes(StandardCharsets.UTF_8);
+        writeFiles(file, bytesArray);
         LogFile logFile = LogFile.of(file);
         String fileHash = logFile.hashString();
         assertEquals(fileHash, HASH_VALUE_OF_EMPTY_STRING);
+        file.delete();
     }
+
+    @Test
+    void GIVEN_log_file_with_less_than_target_lines_WHEN_calculate_file_hash_THEN_we_get_null()
+            throws IOException {
+        File file = new File(directoryPath.resolve("greengrass_test.log").toUri());
+        byte[] bytesArray = getRandomTestStrings(DEFAULT_BYTES_FOR_DIGEST_NUM - 100).getBytes(StandardCharsets.UTF_8);
+        writeFiles(file, bytesArray);
+        LogFile logFile = LogFile.of(file);
+        String fileHash = logFile.hashString();
+        assertEquals(fileHash, HASH_VALUE_OF_EMPTY_STRING);
+        file.delete();
+    }
+
 
     @Test
     void GIVEN_log_file_with_equal_to_target_lines_WHEN_calculate_file_hash_THEN_we_get_null()
             throws IOException, NoSuchAlgorithmException {
         File file = new File(directoryPath.resolve("greengrass_test.log").toUri());
-        writeFiles(file, DEFAULT_LINES_FOR_DIGEST_NUM);
-        StringBuilder msg = new StringBuilder();
-        for (int i = 0; i < DEFAULT_LINES_FOR_DIGEST_NUM; i++) {
-            msg.append("line").append(i + 1);
-        }
+        byte[] bytesArray = getRandomTestStrings(DEFAULT_BYTES_FOR_DIGEST_NUM).getBytes(StandardCharsets.UTF_8);
+        writeFiles(file, bytesArray);
         LogFile logFile = LogFile.of(file);
         String fileHash = logFile.hashString();
-        assertEquals(fileHash, calculate(msg.toString()));
+        String msg = new String(bytesArray);
+        assertEquals(fileHash, calculate(msg));
         file.delete();
     }
 
@@ -64,14 +88,26 @@ public class LogFileTest {
     void GIVEN_log_file_with_more_than_target_lines_WHEN_calculate_file_hash_THEN_we_get_hash()
             throws IOException, NoSuchAlgorithmException {
         File file = new File(directoryPath.resolve("greengrass_test.log").toUri());
-        writeFiles(file, DEFAULT_LINES_FOR_DIGEST_NUM + 1);
-        StringBuilder msg = new StringBuilder();
-        for (int i = 0; i < DEFAULT_LINES_FOR_DIGEST_NUM; i++) {
-            msg.append("line").append(i + 1);
-        }
+        byte[] bytesArray = getRandomTestStrings(DEFAULT_BYTES_FOR_DIGEST_NUM + 100).getBytes(StandardCharsets.UTF_8);
+        writeFiles(file, bytesArray);
         LogFile logFile = LogFile.of(file);
         String fileHash = logFile.hashString();
-        assertEquals(fileHash, calculate(msg.toString()));
+        String msg = new String(Arrays.copyOfRange(bytesArray, 0, DEFAULT_BYTES_FOR_DIGEST_NUM));
+        assertEquals(fileHash, calculate(msg));
+        file.delete();
+    }
+
+    @Test
+    void GIVEN_log_file_with_less_than_target_lines_but_has_new_line_WHEN_calculate_file_hash_THEN_we_get_hash()
+            throws IOException, NoSuchAlgorithmException {
+        File file = new File(directoryPath.resolve("greengrass_test.log").toUri());
+        StringBuilder testString = new StringBuilder(getRandomTestStrings(DEFAULT_BYTES_FOR_DIGEST_NUM - 100));
+        testString.append(System.lineSeparator());
+        byte[] bytesArray = testString.toString().getBytes(StandardCharsets.UTF_8);
+        writeFiles(file, bytesArray);
+        LogFile logFile = LogFile.of(file);
+        String fileHash = logFile.hashString();
+        assertEquals(fileHash, calculate(testString.toString()));
         file.delete();
     }
 }

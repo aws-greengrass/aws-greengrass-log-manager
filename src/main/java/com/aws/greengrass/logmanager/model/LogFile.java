@@ -3,26 +3,27 @@ package com.aws.greengrass.logmanager.model;
 import com.aws.greengrass.logging.api.Logger;
 import com.aws.greengrass.logging.impl.LogManager;
 import com.aws.greengrass.logmanager.LogManagerService;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 
-import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.security.NoSuchAlgorithmException;
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.List;
 
 import static com.aws.greengrass.util.Digest.calculate;
 
+@SuppressFBWarnings("EQ_DOESNT_OVERRIDE_EQUALS")
 public class LogFile extends File {
     // custom serialVersionUID for class extends Serializable class
     private static final long serialVersionUID = 123;
     private static final Logger logger = LogManager.getLogger(LogManagerService.class);
-    private static final int linesNeeded = 1;
+    public static final int bytesNeeded = 1024;
     public static final String HASH_VALUE_OF_EMPTY_STRING = "";
+    private int didRead = -1;
 
     public LogFile(String pathname) {
         super(pathname);
@@ -49,22 +50,15 @@ public class LogFile extends File {
         return Arrays.stream(files).map(LogFile::of).toArray(LogFile[]::new);
     }
 
+
     /**
-     * Read target lines from the file.
-     * The file must contain (minLine + 1) lines. One extra line is needed to prevent incomplete line when hashing.
-     * @return an ArrayList of lines or empty ArrayList
+     * Read target bytes from the file.
+     * @return read byte array.
      */
-    private List<String> getLines() {
-        List<String> linesRead = new ArrayList<>();
-        try (BufferedReader r = Files.newBufferedReader(this.toPath(), StandardCharsets.UTF_8)) {
-            // read target number of lines
-            while (linesRead.size() < linesNeeded) {
-                String oneLine = r.readLine();
-                if (oneLine == null) {
-                    break;
-                }
-                linesRead.add(oneLine);
-            }
+    private byte[] readBytes() {
+        byte[] bytesReadArray = new byte[bytesNeeded];
+        try (InputStream r = Files.newInputStream(this.toPath())) {
+            didRead = r.read(bytesReadArray);
         } catch (FileNotFoundException e) {
             // The file may be deleted as expected.
             logger.atDebug().cause(e).log("The file {} does not exist", this.getAbsolutePath());
@@ -72,7 +66,7 @@ public class LogFile extends File {
             // File may not exist
             logger.atError().cause(e).log("Unable to read file {}", this.getAbsolutePath());
         }
-        return linesRead;
+        return bytesReadArray;
     }
 
     /**
@@ -85,11 +79,14 @@ public class LogFile extends File {
             if (!this.exists()) {
                 return fileHash;
             }
-            List<String> lines = getLines();
-            if (lines.size() < linesNeeded) {
-                return fileHash;
+            String bytesReadString = new String(readBytes(), StandardCharsets.UTF_8);
+            // if the we read less then 1KB but it contains an entire line, it is still valid.
+            if (didRead < bytesNeeded && bytesReadString.indexOf('\n') > -1) {
+                fileHash = calculate(bytesReadString.substring(0, bytesReadString.indexOf('\n') + 1));
             }
-            fileHash = calculate(String.join("", lines));
+            if (didRead == bytesNeeded) {
+                fileHash = calculate(bytesReadString);
+            }
         }  catch (NoSuchAlgorithmException e) {
             logger.atError().cause(e).log("The digest algorithm is invalid");
         }

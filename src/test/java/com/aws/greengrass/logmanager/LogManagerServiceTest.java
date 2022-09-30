@@ -83,6 +83,8 @@ import static com.aws.greengrass.logmanager.LogManagerService.PERSISTED_LAST_FIL
 import static com.aws.greengrass.logmanager.LogManagerService.SYSTEM_LOGS_COMPONENT_NAME;
 import static com.aws.greengrass.logmanager.LogManagerService.SYSTEM_LOGS_CONFIG_TOPIC_NAME;
 import static com.aws.greengrass.logmanager.LogManagerService.UPLOAD_TO_CW_CONFIG_TOPIC_NAME;
+import static com.aws.greengrass.logmanager.model.LogFile.bytesNeeded;
+import static com.aws.greengrass.logmanager.model.LogFileTest.givenAStringOfSize;
 import static com.aws.greengrass.testcommons.testutilities.ExceptionLogProtector.ignoreExceptionOfType;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -135,13 +137,13 @@ class LogManagerServiceTest extends GGServiceTestUtil {
             assertTrue(file.setWritable(true));
 
             try (OutputStream fileOutputStream = Files.newOutputStream(file.toPath())) {
-                fileOutputStream.write("TEST".getBytes(StandardCharsets.UTF_8));
+                fileOutputStream.write(givenAStringOfSize(bytesNeeded).getBytes(StandardCharsets.UTF_8));
             }
             TimeUnit.SECONDS.sleep(1);
         }
         File currentFile = new File(directoryPath.resolve("UserComponentA.log").toUri());
         try (OutputStream currentFileOutputStream = Files.newOutputStream(currentFile.toPath())) {
-            currentFileOutputStream.write("TEST".getBytes(StandardCharsets.UTF_8));
+            currentFileOutputStream.write(givenAStringOfSize(bytesNeeded).getBytes(StandardCharsets.UTF_8));
         }
 
         LogManager.getLogConfigurations().putIfAbsent("UserComponentB",
@@ -153,13 +155,13 @@ class LogManagerServiceTest extends GGServiceTestUtil {
             assertTrue(file.setWritable(true));
 
             try (OutputStream fileOutputStream = Files.newOutputStream(file.toPath())) {
-                fileOutputStream.write("TEST".getBytes(StandardCharsets.UTF_8));
+                fileOutputStream.write(givenAStringOfSize(bytesNeeded).getBytes(StandardCharsets.UTF_8));
             }
             TimeUnit.SECONDS.sleep(1);
         }
         currentFile = new File(directoryPath.resolve("UserComponentB.log").toUri());
         try (OutputStream currentFileOutputStream = Files.newOutputStream(currentFile.toPath())) {
-            currentFileOutputStream.write("TEST".getBytes(StandardCharsets.UTF_8));
+            currentFileOutputStream.write(givenAStringOfSize(bytesNeeded).getBytes(StandardCharsets.UTF_8));
         }
         for (int i = 0; i < 5; i++) {
             File file = new File(directoryPath.resolve("greengrass_test_" + i + ".log").toUri());
@@ -168,13 +170,13 @@ class LogManagerServiceTest extends GGServiceTestUtil {
             assertTrue(file.setWritable(true));
 
             try (OutputStream fileOutputStream = Files.newOutputStream(file.toPath())) {
-                fileOutputStream.write("TEST".getBytes(StandardCharsets.UTF_8));
+                fileOutputStream.write(givenAStringOfSize(bytesNeeded).getBytes(StandardCharsets.UTF_8));
             }
             TimeUnit.SECONDS.sleep(1);
         }
         currentFile = new File(directoryPath.resolve("greengrass.log").toUri());
         try (OutputStream currentFileOutputStream = Files.newOutputStream(currentFile.toPath())) {
-            currentFileOutputStream.write("TEST".getBytes(StandardCharsets.UTF_8));
+            currentFileOutputStream.write(givenAStringOfSize(bytesNeeded).getBytes(StandardCharsets.UTF_8));
         }
     }
 

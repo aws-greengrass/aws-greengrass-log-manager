@@ -9,6 +9,7 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.security.NoSuchAlgorithmException;
@@ -23,10 +24,13 @@ public class LogFile extends File {
     private static final Logger logger = LogManager.getLogger(LogManagerService.class);
     public static final int bytesNeeded = 1024;
     public static final String HASH_VALUE_OF_EMPTY_STRING = "";
-    private int didRead = -1;
 
     public LogFile(String pathname) {
         super(pathname);
+    }
+
+    public LogFile(URI uri) {
+        super(uri);
     }
 
     /**
@@ -55,10 +59,20 @@ public class LogFile extends File {
      * Read target bytes from the file.
      * @return read byte array.
      */
-    private byte[] readBytes() {
+    private String readBytesToString() {
         byte[] bytesReadArray = new byte[bytesNeeded];
+        int bytesRead;
         try (InputStream r = Files.newInputStream(this.toPath())) {
-            didRead = r.read(bytesReadArray);
+            bytesRead = r.read(bytesReadArray);
+            String bytesReadString = new String(bytesReadArray, StandardCharsets.UTF_8);
+            // if there is an entire line before 1KB, we hash the line; Otherwise, we hash 1KB to prevent super long
+            // single line.
+            if (bytesReadString.indexOf('\n') > -1) {
+                return bytesReadString.substring(0, bytesReadString.indexOf('\n') + 1);
+            }
+            if (bytesRead >= bytesNeeded) {
+                return bytesReadString;
+            }
         } catch (FileNotFoundException e) {
             // The file may be deleted as expected.
             logger.atDebug().cause(e).log("The file {} does not exist", this.getAbsolutePath());
@@ -66,7 +80,7 @@ public class LogFile extends File {
             // File may not exist
             logger.atError().cause(e).log("Unable to read file {}", this.getAbsolutePath());
         }
-        return bytesReadArray;
+        return "";
     }
 
     /**
@@ -79,13 +93,9 @@ public class LogFile extends File {
             if (!this.exists()) {
                 return fileHash;
             }
-            String bytesReadString = new String(readBytes(), StandardCharsets.UTF_8);
-            // if the we read less then 1KB but it contains an entire line, it is still valid.
-            if (didRead < bytesNeeded && bytesReadString.indexOf('\n') > -1) {
-                fileHash = calculate(bytesReadString.substring(0, bytesReadString.indexOf('\n') + 1));
-            }
-            if (didRead == bytesNeeded) {
-                fileHash = calculate(bytesReadString);
+            String stringToHash = readBytesToString();
+            if (!stringToHash.isEmpty()) {
+                fileHash = calculate(stringToHash);
             }
         }  catch (NoSuchAlgorithmException e) {
             logger.atError().cause(e).log("The digest algorithm is invalid");

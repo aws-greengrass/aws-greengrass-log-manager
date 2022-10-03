@@ -18,4 +18,6 @@ public class CloudWatchAttemptLogFileInformation {
     private long startPosition;
     private long bytesRead;
     private long lastModifiedTime;
+    private String fileHash;
+    private String fileName;
 }

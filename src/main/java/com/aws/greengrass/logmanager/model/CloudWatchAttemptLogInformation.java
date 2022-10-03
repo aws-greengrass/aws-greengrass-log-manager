@@ -25,6 +25,7 @@ public class CloudWatchAttemptLogInformation {
     protected static final Comparator<InputLogEvent> EVENT_COMPARATOR = Comparator.comparing(InputLogEvent::timestamp);
     @Builder.Default
     private List<InputLogEvent> logEvents = new ArrayList<>();
+    // Map<fileHash, AttemptLogFileInfo>
     @Builder.Default
     private Map<String, CloudWatchAttemptLogFileInformation> attemptLogFileInformationMap = new HashMap<>();
     private String componentName;

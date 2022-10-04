@@ -1,8 +1,5 @@
 package com.aws.greengrass.logmanager.model;
 
-
-import java.io.File;
-import java.nio.file.Path;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -10,22 +7,23 @@ public class FileHashNamePair {
     // filehash -> filename
     private Map<String, String> fileHashNamePairs = new ConcurrentHashMap<>();
 
-    public void updatePair(Path path) {
-        File folder = new File(path.toUri());
-        LogFile[] files = LogFile.of(folder.listFiles());
-        if (files.length != 0) {
-            for (LogFile file : files) {
-                String fileHash = file.hashString();
-                String fileName = file.getAbsolutePath();
-                fileHashNamePairs.putIfAbsent(fileHash, fileName);
-                if (fileHashNamePairs.get(fileHash) != fileName) {
-                    fileHashNamePairs.replace(fileHash, fileName);
-                }
-            }
+    /**
+     * Update the fileHash and fileName pair in case new file is created or file rotation happens.
+     * @param fileHash The hash generated for a valid file (contains enough messages).
+     * @param fileName The absolute file path of a file.
+     */
+    public void updatePair(String fileHash, String fileName) {
+        fileHashNamePairs.putIfAbsent(fileHash, fileName);
+        if (fileHashNamePairs.get(fileHash) != fileName) {
+            fileHashNamePairs.replace(fileHash, fileName);
         }
     }
 
     public String get(String key) {
         return fileHashNamePairs.get(key);
+    }
+
+    public void remove(String fileHash) {
+        fileHashNamePairs.remove(fileHash);
     }
 }

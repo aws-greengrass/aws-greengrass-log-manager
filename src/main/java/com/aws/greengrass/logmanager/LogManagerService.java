@@ -104,6 +104,7 @@ public class LogManagerService extends PluginService {
     public static final String MULTILINE_PATTERN_CONFIG_TOPIC_NAME = "multiLineStartPattern";
     public static final int DEFAULT_PERIODIC_UPDATE_INTERVAL_SEC = 300;
     private final Object spaceManagementLock = new Object();
+    private FileHashNamePair fileHashNamePairs = new FileHashNamePair();
 
     // public only for integ tests
     public final Map<String, Instant> lastComponentUploadedLogFileInstantMap =
@@ -120,7 +121,6 @@ public class LogManagerService extends PluginService {
     @Getter
     private int periodicUpdateIntervalSec;
     private Future<?> spaceManagementThread;
-    private FileHashNamePair fileHashNamePairs = new FileHashNamePair();
 
     /**
      * Constructor.
@@ -450,15 +450,15 @@ public class LogManagerService extends PluginService {
                                     currentProcessingLogFilePerComponent, attemptLogInformation, fileHash,
                                     cloudWatchAttemptLogFileInformation));
         });
-
         completedLogFilePerComponent.forEach((componentName, fileNames) -> {
-            fileNames.stream().map(File::new).forEach(file -> {
+            fileNames.stream().map(LogFile::new).forEach(file -> {
                 if (!lastComponentUploadedLogFileInstantMap.containsKey(componentName)
                         || lastComponentUploadedLogFileInstantMap.get(componentName)
                         .isBefore(Instant.ofEpochMilli(file.lastModified()))) {
                     lastComponentUploadedLogFileInstantMap.put(componentName,
                             Instant.ofEpochMilli(file.lastModified()));
                 }
+                fileHashNamePairs.remove(file.hashString());
             });
             if (!componentLogConfigurations.containsKey(componentName)) {
                 return;
@@ -609,8 +609,10 @@ public class LogManagerService extends PluginService {
                     allFiles.forEach(file -> {
                         long startPosition = 0;
                         String fileHash = file.hashString();
+                        String fileName = file.getAbsolutePath();
                         // The file must contain enough lines for digest hash, otherwise fileHash is empty string
                         if (!HASH_VALUE_OF_EMPTY_STRING.equals(fileHash)) {
+                            fileHashNamePairs.updatePair(fileHash, fileName);
                             // If the file was partially read in the previous run, then get the starting position for
                             // new log lines.
                             if (componentCurrentProcessingLogFile.containsKey(componentName)) {
@@ -717,15 +719,7 @@ public class LogManagerService extends PluginService {
                             list.forEach(componentLogConfiguration ->
                                     updatedComponentsConfiguration.putIfAbsent(componentLogConfiguration.getName(),
                                             componentLogConfiguration));
-                            listFileRotated = allComponentsConfiguration.stream()
-                                    .filter(componentLogConfiguration -> (componentLogConfiguration
-                                            .getFileNameRegex().matcher(fileName).find()
-                                            && (event.kind() == StandardWatchEventKinds.ENTRY_CREATE)))
-                                    .collect(Collectors.toList());
                         }
-                        // Update the filename and filehash map
-                        listFileRotated.forEach(componentLogConfiguration ->
-                                fileHashNamePairs.updatePair(componentLogConfiguration.getDirectoryPath()));
 
 
                         // Get the total log files size in the directories for all updates components. If the log files
@@ -847,6 +841,7 @@ public class LogManagerService extends PluginService {
                     break;
                 case PERSISTED_CURRENT_PROCESSING_FILE_HASH:
                     fileHash = Coerce.toString(topic);
+                    break;
                 default:
                     break;
             }

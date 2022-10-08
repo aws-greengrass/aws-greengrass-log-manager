@@ -28,6 +28,8 @@ public class CloudWatchAttemptLogInformation {
     @Builder.Default
     private Map<String, CloudWatchAttemptLogFileInformation> attemptLogFileInformationMap = new HashMap<>();
     private String componentName;
+    @Builder.Default
+    private String activeFileName = "";
 
     /**
      * Get the log events in chronological order.

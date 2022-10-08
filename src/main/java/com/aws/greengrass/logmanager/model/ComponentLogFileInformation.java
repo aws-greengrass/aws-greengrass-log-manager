@@ -20,8 +20,10 @@ import java.util.regex.Pattern;
 public class ComponentLogFileInformation {
     @Builder.Default
     private List<LogFileInformation> logFileInformationList = new ArrayList<>();
-    private String name;
+    private String componentName;
     private Pattern multiLineStartPattern;
     private Level desiredLogLevel;
     private ComponentType componentType;
+    @Builder.Default
+    private String activeFileName = "";
 }

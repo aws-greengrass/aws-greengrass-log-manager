@@ -19,6 +19,7 @@ import com.aws.greengrass.logmanager.model.CloudWatchAttemptLogFileInformation;
 import com.aws.greengrass.logmanager.model.CloudWatchAttemptLogInformation;
 import com.aws.greengrass.logmanager.model.ComponentLogFileInformation;
 import com.aws.greengrass.logmanager.model.ComponentType;
+import com.aws.greengrass.logmanager.model.LogFile;
 import com.aws.greengrass.testcommons.testutilities.GGExtension;
 import com.aws.greengrass.testcommons.testutilities.GGServiceTestUtil;
 import com.aws.greengrass.util.Coerce;
@@ -297,7 +298,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         assertNotNull(componentLogsInformationCaptor.getValue());
         ComponentLogFileInformation componentLogFileInformation = componentLogsInformationCaptor.getValue();
         assertNotNull(componentLogFileInformation);
-        assertEquals("System", componentLogFileInformation.getName());
+        assertEquals("System", componentLogFileInformation.getComponentName());
         assertEquals(ComponentType.GreengrassSystemComponent, componentLogFileInformation.getComponentType());
         assertEquals(Level.INFO, componentLogFileInformation.getDesiredLogLevel());
         assertNotNull(componentLogFileInformation.getLogFileInformationList());
@@ -588,15 +589,17 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         CloudWatchAttempt attempt = new CloudWatchAttempt();
         Map<String, CloudWatchAttemptLogInformation> logStreamsToLogInformationMap = new HashMap<>();
         File file1 = new File(getClass().getResource("testlogs2.log").toURI());
+        String filehash1 = "123456";
         File file2 = new File(getClass().getResource("testlogs1.log").toURI());
+        String filehash2 = "987654";
         Map<String, CloudWatchAttemptLogFileInformation> attemptLogFileInformationMap1 = new HashMap<>();
-        attemptLogFileInformationMap1.put(file1.getAbsolutePath(), CloudWatchAttemptLogFileInformation.builder()
+        attemptLogFileInformationMap1.put(filehash1, CloudWatchAttemptLogFileInformation.builder()
                 .startPosition(0)
                 .bytesRead(2943)
                 .lastModifiedTime(file1.lastModified())
                 .build());
         Map<String, CloudWatchAttemptLogFileInformation> attemptLogFileInformationMap2 = new HashMap<>();
-        attemptLogFileInformationMap2.put(file2.getAbsolutePath(), CloudWatchAttemptLogFileInformation.builder()
+        attemptLogFileInformationMap2.put(filehash2, CloudWatchAttemptLogFileInformation.builder()
                 .startPosition(0)
                 .bytesRead(1061)
                 .lastModifiedTime(file2.lastModified())
@@ -617,6 +620,14 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         doNothing().when(mockUploader).registerAttemptStatus(anyString(), callbackCaptor.capture());
 
         logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor);
+        logsUploaderService.fileHashNamePairs.putIfAbsent(filehash1, file1.getAbsolutePath());
+        if (!logsUploaderService.fileHashNamePairs.get(filehash1).equals(file1.getAbsolutePath())) {
+            logsUploaderService.fileHashNamePairs.replace(filehash1, file1.getAbsolutePath());
+        }
+        logsUploaderService.fileHashNamePairs.putIfAbsent(filehash2, file2.getAbsolutePath());
+        if (!logsUploaderService.fileHashNamePairs.get(filehash2).equals(file2.getAbsolutePath())) {
+            logsUploaderService.fileHashNamePairs.replace(filehash2, file2.getAbsolutePath());
+        }
         startServiceOnAnotherThread();
 
         callbackCaptor.getValue().accept(attempt);
@@ -631,7 +642,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         LogManagerService.CurrentProcessingFileInformation currentProcessingFileInformation =
                 LogManagerService.CurrentProcessingFileInformation
                         .convertFromMapOfObjects(partiallyReadComponentLogFileInformation.get(0));
-        assertEquals(file2.getAbsolutePath(), currentProcessingFileInformation.getFileName());
+        assertEquals(filehash2, currentProcessingFileInformation.getFileHash());
         assertEquals(1061, currentProcessingFileInformation.getStartPosition());
         assertEquals(file2.lastModified(), currentProcessingFileInformation.getLastModifiedTime());
 
@@ -643,7 +654,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         assertNotNull(logsUploaderService.componentCurrentProcessingLogFile);
         assertThat(logsUploaderService.componentCurrentProcessingLogFile.entrySet(), IsNot.not(IsEmptyCollection.empty()));
         assertTrue(logsUploaderService.componentCurrentProcessingLogFile.containsKey("TestComponent2"));
-        assertEquals(file2.getAbsolutePath(), logsUploaderService.componentCurrentProcessingLogFile.get("TestComponent2").getFileName());
+        assertEquals(filehash2, logsUploaderService.componentCurrentProcessingLogFile.get("TestComponent2").getFileHash());
         assertEquals(1061, logsUploaderService.componentCurrentProcessingLogFile.get("TestComponent2").getStartPosition());
     }
 
@@ -669,12 +680,13 @@ class LogManagerServiceTest extends GGServiceTestUtil {
                 .thenReturn(logsUploaderConfigTopics);
 
         logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor);
-        File file = new File(directoryPath.resolve("greengrass_test_2.log").toUri());
-        File currentProcessingFile = new File(directoryPath.resolve("greengrass_test_3.log").toUri());
+        LogFile file = new LogFile(directoryPath.resolve("greengrass_test_2.log").toUri());
+        LogFile currentProcessingFile = new LogFile(directoryPath.resolve("greengrass_test_3.log").toUri());
         logsUploaderService.lastComponentUploadedLogFileInstantMap.put(SYSTEM_LOGS_COMPONENT_NAME,
                 Instant.ofEpochMilli(file.lastModified()));
         logsUploaderService.componentCurrentProcessingLogFile.put(SYSTEM_LOGS_COMPONENT_NAME,
                 LogManagerService.CurrentProcessingFileInformation.builder()
+                        .fileHash(currentProcessingFile.hashString())
                         .fileName(currentProcessingFile.getAbsolutePath())
                         .lastModifiedTime(currentProcessingFile.lastModified())
                         .startPosition(2)
@@ -686,7 +698,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         assertNotNull(componentLogsInformationCaptor.getValue());
         ComponentLogFileInformation componentLogFileInformation = componentLogsInformationCaptor.getValue();
         assertNotNull(componentLogFileInformation);
-        assertEquals("System", componentLogFileInformation.getName());
+        assertEquals("System", componentLogFileInformation.getComponentName());
         assertEquals(ComponentType.GreengrassSystemComponent, componentLogFileInformation.getComponentType());
         assertEquals(Level.INFO, componentLogFileInformation.getDesiredLogLevel());
         assertNotNull(componentLogFileInformation.getLogFileInformationList());
@@ -810,15 +822,17 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         }
         CloudWatchAttempt attempt = new CloudWatchAttempt();
         Map<String, CloudWatchAttemptLogInformation> logStreamsToLogInformationMap = new HashMap<>();
-        File file1 = new File(directoryPath.resolve(fileNames.get(0)).toUri());
-        File file2 = new File(directoryPath.resolve(fileNames.get(1)).toUri());
+        LogFile file1 = new LogFile(directoryPath.resolve(fileNames.get(0)).toUri());
+        String fileHash1 = file1.hashString();
+        LogFile file2 = new LogFile(directoryPath.resolve(fileNames.get(1)).toUri());
+        String fileHash2 = file2.hashString();
         Map<String, CloudWatchAttemptLogFileInformation> attemptLogFileInformationMap1 = new HashMap<>();
-        attemptLogFileInformationMap1.put(file1.getAbsolutePath(), CloudWatchAttemptLogFileInformation.builder()
+        attemptLogFileInformationMap1.put(fileHash1, CloudWatchAttemptLogFileInformation.builder()
                 .startPosition(0)
                 .bytesRead(file1.length())
                 .lastModifiedTime(file1.lastModified())
                 .build());
-        attemptLogFileInformationMap1.put(file2.getAbsolutePath(), CloudWatchAttemptLogFileInformation.builder()
+        attemptLogFileInformationMap1.put(fileHash2, CloudWatchAttemptLogFileInformation.builder()
                 .startPosition(0)
                 .bytesRead(file2.length())
                 .lastModifiedTime(file2.lastModified())
@@ -842,6 +856,14 @@ class LogManagerServiceTest extends GGServiceTestUtil {
                 .thenReturn(componentTopics1);
 
         logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor);
+        logsUploaderService.fileHashNamePairs.putIfAbsent(fileHash1, file1.getAbsolutePath());
+        if (!logsUploaderService.fileHashNamePairs.get(fileHash1).equals(file1.getAbsolutePath())) {
+            logsUploaderService.fileHashNamePairs.replace(fileHash1, file1.getAbsolutePath());
+        }
+        logsUploaderService.fileHashNamePairs.putIfAbsent(fileHash2, file2.getAbsolutePath());
+        if (!logsUploaderService.fileHashNamePairs.get(fileHash2).equals(file2.getAbsolutePath())) {
+            logsUploaderService.fileHashNamePairs.replace(fileHash2, file2.getAbsolutePath());
+        }
         startServiceOnAnotherThread();
 
         callbackCaptor.getValue().accept(attempt);
@@ -880,14 +902,15 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor);
         startServiceOnAnotherThread();
 
-        File file = new File(directoryPath.resolve("greengrass.log_test_2").toUri());
-        File currentProcessingFile = new File(directoryPath.resolve("greengrass.log_test-3").toUri());
+        LogFile file = new LogFile(directoryPath.resolve("greengrass.log_test_2").toUri());
+        LogFile currentProcessingFile = new LogFile(directoryPath.resolve("greengrass.log_test-3").toUri());
         logsUploaderService.lastComponentUploadedLogFileInstantMap.put(SYSTEM_LOGS_COMPONENT_NAME,
                 Instant.ofEpochMilli(file.lastModified()));
         logsUploaderService.componentCurrentProcessingLogFile.put(SYSTEM_LOGS_COMPONENT_NAME,
                 LogManagerService.CurrentProcessingFileInformation.builder()
+                        .fileHash(currentProcessingFile.hashString())
                         .fileName(currentProcessingFile.getAbsolutePath())
-                        .lastModifiedTime(currentProcessingFile.lastModified() - 1000)
+                        .lastModifiedTime(currentProcessingFile.lastModified())
                         .startPosition(2)
                         .build());
 
@@ -896,7 +919,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         assertNotNull(componentLogsInformationCaptor.getValue());
         ComponentLogFileInformation componentLogFileInformation = componentLogsInformationCaptor.getValue();
         assertNotNull(componentLogFileInformation);
-        assertEquals("System", componentLogFileInformation.getName());
+        assertEquals("System", componentLogFileInformation.getComponentName());
         assertEquals(ComponentType.GreengrassSystemComponent, componentLogFileInformation.getComponentType());
         assertEquals(Level.INFO, componentLogFileInformation.getDesiredLogLevel());
         assertNotNull(componentLogFileInformation.getLogFileInformationList());

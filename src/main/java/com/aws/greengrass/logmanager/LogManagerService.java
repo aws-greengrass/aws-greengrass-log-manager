@@ -643,7 +643,7 @@ public class LogManagerService extends PluginService {
                                 fileHashNamePairs.replace(fileHash, file.getAbsolutePath());
                             }
 
-                            // if the file is uploaded and it is not active file, then it rotates, thus delete it
+                            // if the file is uploaded and it is not active file, means it rotates, thus delete it
                             // if the file is uploaded and it is active file, means all files are uploaded
                             if (startPosition == file.length()) {
                                 if (!activeFileName.equals(file.getName())) {

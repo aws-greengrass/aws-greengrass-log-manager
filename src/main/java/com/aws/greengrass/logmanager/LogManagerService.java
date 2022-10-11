@@ -651,6 +651,7 @@ public class LogManagerService extends PluginService {
                                     Map<String, Set<String>> deleteFileMap = new HashMap<>();
                                     deleteFileMap.put(componentName, deleteFileHash);
                                     deleteFilesInComponents(deleteFileMap);
+                                    continue;
                                 }
                                 hasOnlyActiveFileButUploaded = true;
                                 break;

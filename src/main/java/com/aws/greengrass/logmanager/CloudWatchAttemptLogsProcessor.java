@@ -133,7 +133,7 @@ public class CloudWatchAttemptLogsProcessor {
             long startPosition = tempLogFileInfomation.getStartPosition();
             String fileHash = tempLogFileInfomation.getFileHash();
             String fileName = logFile.getAbsolutePath();
-            if (Utils.isEmpty(fileHash)) {
+            if ("".equals(fileHash)) {
                 componentLogFileInformation.getLogFileInformationList().remove(0);
                 continue;
             }

@@ -102,6 +102,9 @@ public class LogManagerService extends PluginService {
     public static final String MULTILINE_PATTERN_CONFIG_TOPIC_NAME = "multiLineStartPattern";
     public static final int DEFAULT_PERIODIC_UPDATE_INTERVAL_SEC = 300;
     private final Object spaceManagementLock = new Object();
+    // TODO: this is the flag to marking the code that used for the feature development, in order to maintain PR
+    //  small and we can modify tests in the following PR.
+    public static final boolean ACTIVE_LOG_FILE_FEATURE_ENABLED_FLAG = false;
 
     // public only for integ tests
     public final Map<String, Instant> lastComponentUploadedLogFileInstantMap =
@@ -509,9 +512,12 @@ public class LogManagerService extends PluginService {
                                                                 cloudWatchAttemptLogFileInformation) {
         LogFile file = new LogFile(fileName);
         String componentName = attemptLogInformation.getComponentName();
-        LogFileGroup logFileGroup = attemptLogInformation.getLogFileGroup();
-        // TODO: the following logic is only for passing this small PR while not changing the current context
-        boolean isActiveFile = logFileGroup.isActiveFile("");
+        boolean isActiveFile = false;
+        if (ACTIVE_LOG_FILE_FEATURE_ENABLED_FLAG) {
+            LogFileGroup logFileGroup = attemptLogInformation.getLogFileGroup();
+            // TODO: the following logic is only for passing this small PR while not changing the current context
+            isActiveFile = logFileGroup.isActiveFile("");
+        }
         // If we have completely read the file, then we need add it to the completed files list and remove it
         // it (if necessary) for the current processing list.
         if (!isActiveFile && file.length() == cloudWatchAttemptLogFileInformation.getBytesRead()
@@ -582,7 +588,7 @@ public class LogManagerService extends PluginService {
                     if (logFileGroup.getLogFiles().isEmpty()) {
                         continue;
                     }
-                    
+
                     componentLogFileInformation.set(Optional.of(
                             ComponentLogFileInformation.builder()
                                     .name(componentName)

@@ -141,7 +141,12 @@ public class CloudWatchAttemptLogsProcessor {
                          StandardCharsets.UTF_8))) {
                 r.setInitialPosition(startPosition);
                 chan.position(startPosition);
-                StringBuilder data = new StringBuilder(r.readLine());
+                String line = r.readLine();
+                // Initialize string builder with empty string when the file is empty
+                if (line == null) {
+                    line = "";
+                }
+                StringBuilder data = new StringBuilder(line);
 
                 // Run the loop until we detect that the log file is completely read, or that we have reached the max
                 // message size or if we detect any IOException while reading from the file.

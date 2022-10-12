@@ -21,6 +21,7 @@ import com.aws.greengrass.logmanager.model.ComponentLogConfiguration;
 import com.aws.greengrass.logmanager.model.ComponentLogFileInformation;
 import com.aws.greengrass.logmanager.model.ComponentType;
 import com.aws.greengrass.logmanager.model.LogFile;
+import com.aws.greengrass.logmanager.model.LogFileGroup;
 import com.aws.greengrass.logmanager.model.LogFileInformation;
 import com.aws.greengrass.util.Coerce;
 import com.aws.greengrass.util.Utils;
@@ -506,11 +507,14 @@ public class LogManagerService extends PluginService {
                                                         String fileName,
                                                         CloudWatchAttemptLogFileInformation
                                                                 cloudWatchAttemptLogFileInformation) {
-        File file = new File(fileName);
+        LogFile file = new LogFile(fileName);
         String componentName = attemptLogInformation.getComponentName();
+        LogFileGroup logFileGroup = attemptLogInformation.getLogFileGroup();
+        // TODO: the following logic is only for passing this small PR while not changing the current context
+        boolean isActiveFile = logFileGroup.isActiveFile("");
         // If we have completely read the file, then we need add it to the completed files list and remove it
         // it (if necessary) for the current processing list.
-        if (file.length() == cloudWatchAttemptLogFileInformation.getBytesRead()
+        if (!isActiveFile && file.length() == cloudWatchAttemptLogFileInformation.getBytesRead()
                 + cloudWatchAttemptLogFileInformation.getStartPosition()) {
             Set<String> completedFileNames = completedLogFilePerComponent.getOrDefault(componentName, new HashSet<>());
             completedFileNames.add(fileName);
@@ -570,40 +574,25 @@ public class LogManagerService extends PluginService {
                 Instant lastUploadedLogFileTimeMs =
                         lastComponentUploadedLogFileInstantMap.getOrDefault(componentName,
                                 Instant.EPOCH);
-                File folder = new File(componentLogConfiguration.getDirectoryPath().toUri());
-                List<LogFile> allFiles = new ArrayList<>();
 
                 try {
-                    LogFile[] files = LogFile.of(folder.listFiles());
-                    if (files.length != 0) {
-                        for (LogFile file : files) {
-                            if (file.isFile()
-                                    && lastUploadedLogFileTimeMs.isBefore(Instant.ofEpochMilli(file.lastModified()))
-                                    && componentLogConfiguration.getFileNameRegex().matcher(file.getName()).find()
-                                    && file.length() > 0) {
-                                allFiles.add(file);
-                            }
-                        }
-                    }
-                    // Sort the files by the last modified time. Then try to proceed oldest file first to avoid data
-                    // loss caused by auto deletion
-                    allFiles.sort(Comparator.comparingLong(LogFile::lastModified));
-                    // If there are no rotated log files for the component, then return.
-                    if (allFiles.size() - 1 <= 0) {
+                    LogFileGroup logFileGroup =
+                            LogFileGroup.create(componentLogConfiguration.getFileNameRegex(),
+                                    componentLogConfiguration.getDirectoryPath().toUri(), lastUploadedLogFileTimeMs);
+                    if (logFileGroup.getLogFiles().isEmpty()) {
                         continue;
                     }
-                    // Don't consider the active log file.
-                    allFiles = allFiles.subList(0, allFiles.size() - 1);
-
+                    
                     componentLogFileInformation.set(Optional.of(
                             ComponentLogFileInformation.builder()
                                     .name(componentName)
                                     .multiLineStartPattern(componentLogConfiguration.getMultiLineStartPattern())
                                     .desiredLogLevel(componentLogConfiguration.getMinimumLogLevel())
                                     .componentType(componentLogConfiguration.getComponentType())
+                                    .logFileGroup(logFileGroup)
                                     .build()));
 
-                    allFiles.forEach(file -> {
+                    logFileGroup.getLogFiles().forEach(file -> {
                         long startPosition = 0;
                         String fileHash = file.hashString();
                         // The file must contain enough lines for digest hash, otherwise fileHash is empty string

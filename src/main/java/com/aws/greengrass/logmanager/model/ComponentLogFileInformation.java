@@ -24,4 +24,5 @@ public class ComponentLogFileInformation {
     private Pattern multiLineStartPattern;
     private Level desiredLogLevel;
     private ComponentType componentType;
+    private LogFileGroup logFileGroup;
 }

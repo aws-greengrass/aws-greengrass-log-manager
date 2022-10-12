@@ -102,6 +102,6 @@ public class LogFile extends File {
         }
 
         return fileHash;
-
     }
+
 }

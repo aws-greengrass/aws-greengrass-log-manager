@@ -14,6 +14,7 @@ import com.aws.greengrass.dependency.ImplementsService;
 import com.aws.greengrass.lifecyclemanager.PluginService;
 import com.aws.greengrass.logging.impl.LogManager;
 import com.aws.greengrass.logging.impl.config.LogConfig;
+import com.aws.greengrass.logmanager.exceptions.InvalidLogGroupException;
 import com.aws.greengrass.logmanager.model.CloudWatchAttempt;
 import com.aws.greengrass.logmanager.model.CloudWatchAttemptLogFileInformation;
 import com.aws.greengrass.logmanager.model.CloudWatchAttemptLogInformation;
@@ -513,10 +514,14 @@ public class LogManagerService extends PluginService {
         LogFile file = new LogFile(fileName);
         String componentName = attemptLogInformation.getComponentName();
         boolean isActiveFile = false;
+        //TODO: setting this flag is only to develop incrementally without having to changed all tests yet, so that
+        // we can avoid a massive PR. This will be removed in the end.
         if (ACTIVE_LOG_FILE_FEATURE_ENABLED_FLAG) {
             LogFileGroup logFileGroup = attemptLogInformation.getLogFileGroup();
-            // TODO: the following logic is only for passing this small PR while not changing the current context
-            isActiveFile = logFileGroup.isActiveFile("");
+            // TODO: the following logic is only for passing this small PR while not changing the current context.
+            //  We will grab the fileHash in the future.
+            String fileHash = "";
+            isActiveFile = logFileGroup.isActiveFile(fileHash);
         }
         // If we have completely read the file, then we need add it to the completed files list and remove it
         // it (if necessary) for the current processing list.
@@ -585,7 +590,7 @@ public class LogManagerService extends PluginService {
                     LogFileGroup logFileGroup =
                             LogFileGroup.create(componentLogConfiguration.getFileNameRegex(),
                                     componentLogConfiguration.getDirectoryPath().toUri(), lastUploadedLogFileTimeMs);
-                    if (logFileGroup.getLogFiles().isEmpty()) {
+                    if (logFileGroup.isEmpty()) {
                         continue;
                     }
 
@@ -598,7 +603,7 @@ public class LogManagerService extends PluginService {
                                     .logFileGroup(logFileGroup)
                                     .build()));
 
-                    logFileGroup.getLogFiles().forEach(file -> {
+                    logFileGroup.forEach(file -> {
                         long startPosition = 0;
                         String fileHash = file.hashString();
                         // The file must contain enough lines for digest hash, otherwise fileHash is empty string
@@ -625,6 +630,8 @@ public class LogManagerService extends PluginService {
                 } catch (SecurityException e) {
                     logger.atError().cause(e).log("Unable to get log files for {} from {}",
                             componentName, componentLogConfiguration.getDirectoryPath());
+                } catch (InvalidLogGroupException e) {
+                    logger.atError().cause(e).log("Unable to read the directory");
                 }
             }
             if (componentLogFileInformation.get().isPresent()) {

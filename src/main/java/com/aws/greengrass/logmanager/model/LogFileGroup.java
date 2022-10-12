@@ -1,5 +1,6 @@
 package com.aws.greengrass.logmanager.model;
 
+import com.aws.greengrass.logmanager.exceptions.InvalidLogGroupException;
 import com.aws.greengrass.util.Utils;
 import lombok.Getter;
 
@@ -9,13 +10,14 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.function.Consumer;
 import java.util.regex.Pattern;
 
 import static com.aws.greengrass.logmanager.LogManagerService.ACTIVE_LOG_FILE_FEATURE_ENABLED_FLAG;
 
 public final class LogFileGroup {
     @Getter
-    List<LogFile> logFiles;
+    private List<LogFile> logFiles;
 
     private LogFileGroup(List<LogFile> files) {
         this.logFiles = files;
@@ -27,12 +29,14 @@ public final class LogFileGroup {
      * @param path the directory path of the log files of component.
      * @param lastUpdated the saved updated time of the last uploaded log of a component.
      * @return list of logFile.
+     * @throws InvalidLogGroupException the exception if this is not a valid directory.
      */
-    public static LogFileGroup create(Pattern filePattern, URI path, Instant lastUpdated) {
+    public static LogFileGroup create(Pattern filePattern, URI path, Instant lastUpdated)
+            throws InvalidLogGroupException {
         File folder = new File(path);
 
         if (!folder.isDirectory()) {
-            throw new RuntimeException("Must be a folder.");
+            throw new InvalidLogGroupException("Must be a folder.");
         }
 
         LogFile[] files = LogFile.of(folder.listFiles());
@@ -48,6 +52,8 @@ public final class LogFileGroup {
             }
         }
         allFiles.sort(Comparator.comparingLong(LogFile::lastModified));
+        //TODO: setting this flag is only to develop incrementally without having to changed all tests yet, so that
+        // we can avoid a massive PR. This will be removed in the end.
         if (!ACTIVE_LOG_FILE_FEATURE_ENABLED_FLAG) {
             if (allFiles.size() - 1 <= 0) {
                 return new LogFileGroup(new ArrayList<>());
@@ -68,5 +74,13 @@ public final class LogFileGroup {
         }
         LogFile activeFile = logFiles.get(logFiles.size() - 1);
         return activeFile.hashString().equals(fileHash);
+    }
+
+    public void forEach(Consumer<LogFile> callback) {
+        logFiles.forEach(callback::accept);
+    }
+
+    public boolean isEmpty() {
+        return this.logFiles.isEmpty();
     }
 }

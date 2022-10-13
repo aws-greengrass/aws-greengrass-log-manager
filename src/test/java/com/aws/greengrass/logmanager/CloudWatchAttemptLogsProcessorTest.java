@@ -557,7 +557,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
         assertTrue(file.setReadable(true));
         assertTrue(file.setWritable(true));
         try (OutputStream fileOutputStream = Files.newOutputStream(file.toPath())) {
-            fileOutputStream.write("null".getBytes(StandardCharsets.UTF_8));
+            fileOutputStream.write("null\n".getBytes(StandardCharsets.UTF_8));
         }
 
         try {

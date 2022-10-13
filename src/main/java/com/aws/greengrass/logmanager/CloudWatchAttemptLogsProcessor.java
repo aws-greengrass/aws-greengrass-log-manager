@@ -135,7 +135,7 @@ public class CloudWatchAttemptLogsProcessor {
             String fileName = logFile.getAbsolutePath();
             //TODO: this is only for passing the checkstyle check in the current PR. It will be removed since we will
             // only add the non-empty fileHash into the logFileInformation
-            if ("".equals(fileHash)) {
+            if (logFile.isEmpty()) {
                 componentLogFileInformation.getLogFileInformationList().remove(0);
                 continue;
             }

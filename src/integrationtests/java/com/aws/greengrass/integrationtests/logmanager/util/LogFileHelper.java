@@ -16,6 +16,8 @@ import java.util.List;
 import java.util.Random;
 
 public final class LogFileHelper {
+    public static final int DEFAULT_FILE_SIZE = 10_240;
+    public static final int DEFAULT_LOG_LINE_IN_FILE = 10;
 
     private LogFileHelper() { }
 

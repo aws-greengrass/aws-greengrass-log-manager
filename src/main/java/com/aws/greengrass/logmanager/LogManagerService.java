@@ -511,6 +511,7 @@ public class LogManagerService extends PluginService {
                                                         String fileName,
                                                         CloudWatchAttemptLogFileInformation
                                                                 cloudWatchAttemptLogFileInformation) {
+        //Todo: eventually the file and fileName should be obtained by the fileHash
         LogFile file = new LogFile(fileName);
         String componentName = attemptLogInformation.getComponentName();
         boolean isActiveFile = false;

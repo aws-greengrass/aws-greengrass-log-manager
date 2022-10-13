@@ -104,4 +104,7 @@ public class LogFile extends File {
         return fileHash;
     }
 
+    public boolean isEmpty() {
+        return "".equals(this.hashString());
+    }
 }

@@ -57,6 +57,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
 import static com.aws.greengrass.deployment.converter.DeploymentDocumentConverter.LOCAL_DEPLOYMENT_GROUP_NAME;
+import static com.aws.greengrass.integrationtests.logmanager.util.LogFileHelper.DEFAULT_FILE_SIZE;
+import static com.aws.greengrass.integrationtests.logmanager.util.LogFileHelper.DEFAULT_LOG_LINE_IN_FILE;
 import static com.aws.greengrass.integrationtests.logmanager.util.LogFileHelper.createFileAndWriteData;
 import static com.aws.greengrass.integrationtests.logmanager.util.LogFileHelper.createTempFileAndWriteData;
 import static com.aws.greengrass.logging.impl.config.LogConfig.newLogConfigFromRootConfig;
@@ -84,6 +86,7 @@ class LogManagerTest extends BaseITCase {
     private LogManagerService logManagerService;
     private Path tempDirectoryPath;
     private final static ObjectMapper YAML_OBJECT_MAPPER = new ObjectMapper(new YAMLFactory());
+
 
     static {
         DATE_FORMATTER.setTimeZone(TimeZone.getTimeZone("UTC"));
@@ -367,7 +370,7 @@ class LogManagerTest extends BaseITCase {
         createTempFileAndWriteData(tempDirectoryPath, "integTestRandomLogFiles.log",  "");
 
         setupKernel(tempDirectoryPath, "smallPeriodicIntervalUserComponentConfig.yaml");
-
+        //TOdo: a better mechanism will be written
         TimeUnit.SECONDS.sleep(30);
         verify(cloudWatchLogsClient, atLeastOnce()).putLogEvents(captor.capture());
 
@@ -378,8 +381,9 @@ class LogManagerTest extends BaseITCase {
             assertEquals("/aws/greengrass/UserComponent/" + AWS_REGION + "/UserComponentA",
                     request.logGroupName());
             assertNotNull(request.logEvents());
-            assertEquals(60, request.logEvents().size());
-            assertEquals(61440, request.logEvents().stream().mapToLong(value -> value.message().length())
+            assertEquals(DEFAULT_LOG_LINE_IN_FILE * 6, request.logEvents().size());
+            assertEquals(DEFAULT_FILE_SIZE * 6,
+                    request.logEvents().stream().mapToLong(value -> value.message().length())
                     .sum());
         }
         File folder = tempDirectoryPath.toFile();

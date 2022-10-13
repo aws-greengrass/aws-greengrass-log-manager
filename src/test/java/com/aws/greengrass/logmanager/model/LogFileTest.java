@@ -7,15 +7,14 @@ import org.junit.jupiter.api.io.TempDir;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static com.aws.greengrass.logmanager.model.LogFile.HASH_VALUE_OF_EMPTY_STRING;
+import static com.aws.greengrass.logmanager.util.UnitTestLogFileHelper.givenAStringOfSize;
+import static com.aws.greengrass.logmanager.util.UnitTestLogFileHelper.writeFile;
 import static com.aws.greengrass.util.Digest.calculate;
 
 import java.io.IOException;
-import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.NoSuchAlgorithmException;
-import java.util.Random;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -26,23 +25,6 @@ public class LogFileTest {
     @TempDir
     static Path directoryPath;
     private final static int DEFAULT_BYTES_FOR_DIGEST_NUM = 1024;
-
-    public static String givenAStringOfSize(int bytesNeeded) {
-        StringBuilder testStrings = new StringBuilder();
-        Random rnd = new Random();
-        String testChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqestuvwxyz0123456789";
-        while (testStrings.length() < bytesNeeded) {
-            int charIdx = (int) (rnd.nextFloat() * testChars.length());
-            testStrings.append(testChars.charAt(charIdx));
-        }
-        return testStrings.toString();
-    }
-
-    private void writeFile(LogFile file, byte[] byteArray) throws IOException {
-        try (OutputStream fileOutputStream = Files.newOutputStream(file.toPath())) {
-            fileOutputStream.write(byteArray);
-        }
-    }
 
     @Test
     void GIVEN_empty_file_WHEN_calculate_file_hash_THEN_we_get_null() throws IOException {

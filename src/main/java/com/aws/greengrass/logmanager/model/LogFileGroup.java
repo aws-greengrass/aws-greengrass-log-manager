@@ -1,7 +1,6 @@
 package com.aws.greengrass.logmanager.model;
 
 import com.aws.greengrass.logmanager.exceptions.InvalidLogGroupException;
-import com.aws.greengrass.util.Utils;
 import lombok.Getter;
 
 import java.io.File;
@@ -69,7 +68,7 @@ public final class LogFileGroup {
      * @return boolean if this is the active file.
      */
     public boolean isActiveFile(String fileHash) {
-        if (Utils.isEmpty(fileHash)) {
+        if (fileHash.isEmpty()) {
             return false;
         }
         LogFile activeFile = logFiles.get(logFiles.size() - 1);

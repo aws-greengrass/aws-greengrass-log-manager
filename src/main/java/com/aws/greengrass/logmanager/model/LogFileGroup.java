@@ -54,7 +54,7 @@ public final class LogFileGroup {
         allFiles.sort(Comparator.comparingLong(LogFile::lastModified));
         //TODO: setting this flag is only to develop incrementally without having to changed all tests yet, so that
         // we can avoid a massive PR. This will be removed in the end.
-        if (!ACTIVE_LOG_FILE_FEATURE_ENABLED_FLAG) {
+        if (!ACTIVE_LOG_FILE_FEATURE_ENABLED_FLAG.get()) {
             if (allFiles.size() - 1 <= 0) {
                 return new LogFileGroup(new ArrayList<>());
             }

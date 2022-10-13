@@ -350,4 +350,52 @@ class LogManagerTest extends BaseITCase {
         }
         assertEquals(1, allFiles.size());
     }
+
+    //TODO: this test is only for getting some certain level of knowledge of current change uploading active log file
+    // . It will be eventually removed.
+    @Test
+    void GIVEN_user_component_config_with_small_periodic_interval_WHEN_active_logs_included_THEN_logs_are_uploaded_to_cloud()
+            throws Exception {
+        when(cloudWatchLogsClient.putLogEvents(any(PutLogEventsRequest.class)))
+                .thenReturn(PutLogEventsResponse.builder().nextSequenceToken("nextToken").build());
+        logManagerService.ACTIVE_LOG_FILE_FEATURE_ENABLED_FLAG.set(true);
+        tempDirectoryPath = Files.createTempDirectory(tempRootDir, "IntegrationTestsTemporaryLogFiles");
+
+        for (int i = 0; i < 5; i++) {
+            createTempFileAndWriteData(tempDirectoryPath, "integTestRandomLogFiles.log_",  "");
+        }
+        createTempFileAndWriteData(tempDirectoryPath, "integTestRandomLogFiles.log",  "");
+
+        setupKernel(tempDirectoryPath, "smallPeriodicIntervalUserComponentConfig.yaml");
+
+        TimeUnit.SECONDS.sleep(30);
+        verify(cloudWatchLogsClient, atLeastOnce()).putLogEvents(captor.capture());
+
+        List<PutLogEventsRequest> putLogEventsRequests = captor.getAllValues();
+        assertEquals(1, putLogEventsRequests.size());
+        for (PutLogEventsRequest request : putLogEventsRequests) {
+            assertEquals(calculateLogStreamName(THING_NAME, LOCAL_DEPLOYMENT_GROUP_NAME), request.logStreamName());
+            assertEquals("/aws/greengrass/UserComponent/" + AWS_REGION + "/UserComponentA",
+                    request.logGroupName());
+            assertNotNull(request.logEvents());
+            assertEquals(60, request.logEvents().size());
+            assertEquals(61440, request.logEvents().stream().mapToLong(value -> value.message().length())
+                    .sum());
+        }
+        File folder = tempDirectoryPath.toFile();
+        Pattern logFileNamePattern = Pattern.compile("^integTestRandomLogFiles.log\\w*");
+        List<File> allFiles = new ArrayList<>();
+        File[] files = folder.listFiles();
+        if (files != null) {
+            for (File file : files) {
+                if (file.isFile()
+                        && logFileNamePattern.matcher(file.getName()).find()
+                        && file.length() > 0) {
+                    allFiles.add(file);
+                }
+            }
+        }
+        assertEquals(1, allFiles.size());
+        logManagerService.ACTIVE_LOG_FILE_FEATURE_ENABLED_FLAG.set(false);
+    }
 }

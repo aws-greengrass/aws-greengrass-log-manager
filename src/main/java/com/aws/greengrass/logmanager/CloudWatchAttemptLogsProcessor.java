@@ -128,10 +128,10 @@ public class CloudWatchAttemptLogsProcessor {
         // Run the loop until all the log files from the component have been read or the max message
         // size has been reached.
         while (!componentLogFileInformation.getLogFileInformationList().isEmpty() && !reachedMaxSize.get()) {
-            LogFileInformation tempLogFileInfomation = componentLogFileInformation.getLogFileInformationList().get(0);
-            LogFile logFile = tempLogFileInfomation.getLogFile();
-            long startPosition = tempLogFileInfomation.getStartPosition();
-            String fileHash = tempLogFileInfomation.getFileHash();
+            LogFileInformation logFileInformation = componentLogFileInformation.getLogFileInformationList().get(0);
+            LogFile logFile = logFileInformation.getLogFile();
+            long startPosition = logFileInformation.getStartPosition();
+            String fileHash = logFileInformation.getFileHash();
             String fileName = logFile.getAbsolutePath();
             //TODO: this is only for passing the checkstyle check in the current PR. It will be removed since we will
             // only add the non-empty fileHash into the logFileInformation

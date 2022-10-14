@@ -645,6 +645,21 @@ public class LogManagerService extends PluginService {
                                     && processingFileInformation.lastModifiedTime == file.lastModified()) {
                                 startPosition = processingFileInformation.startPosition;
                             }
+
+                            //TODO: setting this flag is only to develop incrementally without having to changed all
+                            // tests yet, so that we can avoid a massive PR. This will be removed in the end.
+                            if (ACTIVE_LOG_FILE_FEATURE_ENABLED_FLAG.get()) {
+                                if (logFileGroup.isActiveFile(fileHash) && startPosition == file.length()) {
+                                    isActiveFileCompleted.set(true);
+                                }
+                            }
+
+                            LogFileInformation logFileInformation = LogFileInformation.builder()
+                                            .logFile(file)
+                                            .startPosition(startPosition)
+                                            .fileHash(fileHash)
+                                            .build();
+                            componentLogFileInformation.get().get().getLogFileInformationList().add(logFileInformation);
                         }
 
                         //TODO: setting this flag is only to develop incrementally without having to changed all
@@ -667,7 +682,7 @@ public class LogManagerService extends PluginService {
                     logger.atError().cause(e).log("Unable to get log files for {} from {}",
                             componentName, componentLogConfiguration.getDirectoryPath());
                 } catch (InvalidLogGroupException e) {
-                    logger.atError().cause(e).log("Unable to read the directory");
+                    logger.atDebug().cause(e).log("Unable to read the directory");
                 }
             }
             if (!isActiveFileCompleted.get() && componentLogFileInformation.get().isPresent()) {

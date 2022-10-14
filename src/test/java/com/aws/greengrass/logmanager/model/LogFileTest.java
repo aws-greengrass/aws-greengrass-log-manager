@@ -7,8 +7,13 @@ import org.junit.jupiter.api.io.TempDir;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static com.aws.greengrass.logmanager.model.LogFile.HASH_VALUE_OF_EMPTY_STRING;
+<<<<<<< HEAD
 import static com.aws.greengrass.logmanager.util.UnitTestLogFileHelper.givenAStringOfSize;
 import static com.aws.greengrass.logmanager.util.UnitTestLogFileHelper.writeFile;
+=======
+import static com.aws.greengrass.logmanager.util.TestUtils.givenAStringOfSize;
+import static com.aws.greengrass.logmanager.util.TestUtils.writeFile;
+>>>>>>> origin
 import static com.aws.greengrass.util.Digest.calculate;
 
 import java.io.IOException;

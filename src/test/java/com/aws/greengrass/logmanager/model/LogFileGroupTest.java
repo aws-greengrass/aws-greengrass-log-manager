@@ -15,8 +15,13 @@ import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
 import static com.aws.greengrass.logmanager.LogManagerService.ACTIVE_LOG_FILE_FEATURE_ENABLED_FLAG;
+<<<<<<< HEAD
 import static com.aws.greengrass.logmanager.util.UnitTestLogFileHelper.givenAStringOfSize;
 import static com.aws.greengrass.logmanager.util.UnitTestLogFileHelper.writeFile;
+=======
+import static com.aws.greengrass.logmanager.util.TestUtils.givenAStringOfSize;
+import static com.aws.greengrass.logmanager.util.TestUtils.writeFile;
+>>>>>>> origin
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -34,6 +39,10 @@ public class LogFileGroupTest {
         byte[] bytesArray = givenAStringOfSize(1024).getBytes(StandardCharsets.UTF_8);
         writeFile(file, bytesArray);
 
+<<<<<<< HEAD
+=======
+        //Intentionally sleep lazily here to differ the creation time of two files.
+>>>>>>> origin
         TimeUnit.SECONDS.sleep(1);
 
         LogFile file2 = new LogFile(directoryPath.resolve("greengrass_test.log_2").toUri());

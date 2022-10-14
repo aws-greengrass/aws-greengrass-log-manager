@@ -518,11 +518,17 @@ public class LogManagerService extends PluginService {
         //TODO: setting this flag is only to develop incrementally without having to changed all tests yet, so that
         // we can avoid a massive PR. This will be removed in the end.
         if (ACTIVE_LOG_FILE_FEATURE_ENABLED_FLAG.get()) {
-            String fileHash = cloudWatchAttemptLogFileInformation.getFileHash();
-            LogFileGroup logFileGroup = attemptLogInformation.getLogFileGroup();
-            // TODO: the following logic is only for passing this small PR while not changing the current context.
-            //  We will grab the fileHash in the future.
-            isActiveFile = logFileGroup.isActiveFile(fileHash);
+            try {
+                String fileHash = cloudWatchAttemptLogFileInformation.getFileHash();
+                LogFileGroup logFileGroup = attemptLogInformation.getLogFileGroup().update();
+                file = logFileGroup.getFile(fileHash);
+                fileName = file.getAbsolutePath();
+                // TODO: the following logic is only for passing this small PR while not changing the current context.
+                //  We will grab the fileHash in the future.
+                isActiveFile = logFileGroup.isActiveFile(fileHash);
+            } catch (InvalidLogGroupException e) {
+                logger.atDebug().cause(e).log();
+            }
         }
         // If we have completely read the file, then we need add it to the completed files list and remove it
         // it (if necessary) for the current processing list.

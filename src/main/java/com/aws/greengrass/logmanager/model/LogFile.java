@@ -108,4 +108,8 @@ public class LogFile extends File {
     public boolean isEmpty() {
         return Utils.isEmpty(this.hashString());
     }
+
+    public boolean isEmpty(String hash) {
+        return Utils.isEmpty(hash);
+    }
 }

@@ -3,6 +3,7 @@ package com.aws.greengrass.logmanager.model;
 import com.aws.greengrass.logging.api.Logger;
 import com.aws.greengrass.logging.impl.LogManager;
 import com.aws.greengrass.logmanager.LogManagerService;
+import com.aws.greengrass.util.Utils;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 
 import java.io.File;
@@ -105,10 +106,10 @@ public class LogFile extends File {
     }
 
     public boolean isEmpty() {
-        return "".equals(this.hashString());
+        return Utils.isEmpty(this.hashString());
     }
 
     public boolean isEmpty(String hash) {
-        return "".equals(hash);
+        return Utils.isEmpty(hash);
     }
 }

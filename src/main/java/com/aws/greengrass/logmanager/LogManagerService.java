@@ -518,34 +518,40 @@ public class LogManagerService extends PluginService {
         //TODO: setting this flag is only to develop incrementally without having to changed all tests yet, so that
         // we can avoid a massive PR. This will be removed in the end.
         if (ACTIVE_LOG_FILE_FEATURE_ENABLED_FLAG.get()) {
-            String fileHash = cloudWatchAttemptLogFileInformation.getFileHash();
-            LogFileGroup logFileGroup = attemptLogInformation.getLogFileGroup();
-            LogFile file1 = logFileGroup.getFile(fileHash);
-            // TODO: the following logic is only for passing this small PR while not changing the current context.
-            //  We will grab the fileHash in the future.
-            isActiveFile = logFileGroup.isActiveFile(fileHash);
-            // If we have completely read the file, then we need add it to the completed files list and remove it
-            // it (if necessary) for the current processing list.
-            if (!isActiveFile && file1.length() == cloudWatchAttemptLogFileInformation.getBytesRead() + cloudWatchAttemptLogFileInformation.getStartPosition()) {
-                Set<String> completedFileNames1 = completedLogFilePerComponent.getOrDefault(componentName,
-                        new HashSet<>());
-                completedFileNames1.add(file1.getName());
-                completedLogFilePerComponent.put(componentName, completedFileNames1);
-                if (currentProcessingLogFilePerComponent.containsKey(componentName)) {
-                    CurrentProcessingFileInformation fileInformation = currentProcessingLogFilePerComponent.get(componentName);
-                    if (fileInformation.fileName.equals(file1.getName())) {
-                        currentProcessingLogFilePerComponent.remove(componentName);
+            try {
+                String fileHash = cloudWatchAttemptLogFileInformation.getFileHash();
+                LogFileGroup logFileGroup = attemptLogInformation.getLogFileGroup().update();
+                file = logFileGroup.getFile(fileHash);
+                fileName = file.getAbsolutePath();
+                // TODO: the following logic is only for passing this small PR while not changing the current context.
+                //  We will grab the fileHash in the future.
+                isActiveFile = logFileGroup.isActiveFile(fileHash);
+
+                // If we have completely read the file, then we need add it to the completed files list and remove it
+                // it (if necessary) for the current processing list.
+                if (!isActiveFile && file.length() == cloudWatchAttemptLogFileInformation.getBytesRead() + cloudWatchAttemptLogFileInformation.getStartPosition()) {
+                    Set<String> completedFileNames1 = completedLogFilePerComponent.getOrDefault(componentName,
+                            new HashSet<>());
+                    completedFileNames1.add(fileName);
+                    completedLogFilePerComponent.put(componentName, completedFileNames1);
+                    if (currentProcessingLogFilePerComponent.containsKey(componentName)) {
+                        CurrentProcessingFileInformation fileInformation = currentProcessingLogFilePerComponent.get(componentName);
+                        if (fileInformation.fileName.equals(fileName)) {
+                            currentProcessingLogFilePerComponent.remove(componentName);
+                        }
                     }
+                } else {
+                    // Add the file to the current processing list for the component.
+                    // Note: There should always be only 1 file which will be in progress at any given time.
+                    CurrentProcessingFileInformation processingFileInformation =
+                            CurrentProcessingFileInformation.builder().fileName(fileName).startPosition(
+                                            cloudWatchAttemptLogFileInformation.getStartPosition() + cloudWatchAttemptLogFileInformation.getBytesRead())
+                                    .lastModifiedTime(cloudWatchAttemptLogFileInformation.getLastModifiedTime()).build();
+                    currentProcessingLogFilePerComponent.put(attemptLogInformation.getComponentName(),
+                            processingFileInformation);
                 }
-            } else {
-                // Add the file to the current processing list for the component.
-                // Note: There should always be only 1 file which will be in progress at any given time.
-                CurrentProcessingFileInformation processingFileInformation =
-                        CurrentProcessingFileInformation.builder().fileName(fileName).startPosition(
-                                        cloudWatchAttemptLogFileInformation.getStartPosition() + cloudWatchAttemptLogFileInformation.getBytesRead())
-                                .lastModifiedTime(cloudWatchAttemptLogFileInformation.getLastModifiedTime()).build();
-                currentProcessingLogFilePerComponent.put(attemptLogInformation.getComponentName(),
-                        processingFileInformation);
+            } catch (InvalidLogGroupException e) {
+                logger.atDebug().cause(e).log();
             }
         } else {
             // If we have completely read the file, then we need add it to the completed files list and remove it

@@ -8,7 +8,6 @@ import lombok.Getter;
 
 import java.io.File;
 import java.net.URI;
-import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -23,8 +22,12 @@ import static com.aws.greengrass.logmanager.LogManagerService.ACTIVE_LOG_FILE_FE
 public final class LogFileGroup {
     @Getter
     private List<LogFile> logFiles;
-    private static Map<String, LogFile> fileHashToFileMap = new ConcurrentHashMap<>();
+    private static Map<String, LogFile> fileHashToFileMap;
     private static final Logger logger = LogManager.getLogger(LogManagerService.class);
+    private static Pattern savedFilePattern;
+    private static URI savedPath;
+    private static Instant savedLastUpdated;
+
     private LogFileGroup(List<LogFile> files) {
         this.logFiles = files;
     }
@@ -39,7 +42,12 @@ public final class LogFileGroup {
      */
     public static LogFileGroup create(Pattern filePattern, URI path, Instant lastUpdated)
             throws InvalidLogGroupException {
+        savedFilePattern = filePattern;
+        savedPath = path;
+        savedLastUpdated = lastUpdated;
+
         File folder = new File(path);
+        fileHashToFileMap = new ConcurrentHashMap<>();
 
         if (!folder.isDirectory()) {
             throw new InvalidLogGroupException("Must be a folder.");
@@ -97,5 +105,9 @@ public final class LogFileGroup {
             logger.atDebug().log("FileHash does not exist");
         }
         return fileHashToFileMap.get(fileHash);
+    }
+
+    public LogFileGroup update() throws InvalidLogGroupException {
+        return create(savedFilePattern, savedPath, savedLastUpdated);
     }
 }

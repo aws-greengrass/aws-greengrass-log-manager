@@ -14,6 +14,7 @@ import com.aws.greengrass.dependency.ImplementsService;
 import com.aws.greengrass.lifecyclemanager.PluginService;
 import com.aws.greengrass.logging.impl.LogManager;
 import com.aws.greengrass.logging.impl.config.LogConfig;
+import com.aws.greengrass.logmanager.exceptions.InvalidLogGroupException;
 import com.aws.greengrass.logmanager.model.CloudWatchAttempt;
 import com.aws.greengrass.logmanager.model.CloudWatchAttemptLogFileInformation;
 import com.aws.greengrass.logmanager.model.CloudWatchAttemptLogInformation;
@@ -21,6 +22,7 @@ import com.aws.greengrass.logmanager.model.ComponentLogConfiguration;
 import com.aws.greengrass.logmanager.model.ComponentLogFileInformation;
 import com.aws.greengrass.logmanager.model.ComponentType;
 import com.aws.greengrass.logmanager.model.LogFile;
+import com.aws.greengrass.logmanager.model.LogFileGroup;
 import com.aws.greengrass.logmanager.model.LogFileInformation;
 import com.aws.greengrass.util.Coerce;
 import com.aws.greengrass.util.Utils;
@@ -101,6 +103,9 @@ public class LogManagerService extends PluginService {
     public static final String MULTILINE_PATTERN_CONFIG_TOPIC_NAME = "multiLineStartPattern";
     public static final int DEFAULT_PERIODIC_UPDATE_INTERVAL_SEC = 300;
     private final Object spaceManagementLock = new Object();
+    // TODO: this is the flag to marking the code that used for the feature development, in order to maintain PR
+    //  small and we can modify tests in the following PR.
+    public static final AtomicBoolean ACTIVE_LOG_FILE_FEATURE_ENABLED_FLAG = new AtomicBoolean(false);
 
     // public only for integ tests
     public final Map<String, Instant> lastComponentUploadedLogFileInstantMap =
@@ -506,11 +511,22 @@ public class LogManagerService extends PluginService {
                                                         String fileName,
                                                         CloudWatchAttemptLogFileInformation
                                                                 cloudWatchAttemptLogFileInformation) {
-        File file = new File(fileName);
+        //Todo: eventually the file and fileName should be obtained by the fileHash
+        LogFile file = new LogFile(fileName);
         String componentName = attemptLogInformation.getComponentName();
+        boolean isActiveFile = false;
+        //TODO: setting this flag is only to develop incrementally without having to changed all tests yet, so that
+        // we can avoid a massive PR. This will be removed in the end.
+        if (ACTIVE_LOG_FILE_FEATURE_ENABLED_FLAG.get()) {
+            String fileHash = cloudWatchAttemptLogFileInformation.getFileHash();
+            LogFileGroup logFileGroup = attemptLogInformation.getLogFileGroup();
+            // TODO: the following logic is only for passing this small PR while not changing the current context.
+            //  We will grab the fileHash in the future.
+            isActiveFile = logFileGroup.isActiveFile(fileHash);
+        }
         // If we have completely read the file, then we need add it to the completed files list and remove it
         // it (if necessary) for the current processing list.
-        if (file.length() == cloudWatchAttemptLogFileInformation.getBytesRead()
+        if (!isActiveFile && file.length() == cloudWatchAttemptLogFileInformation.getBytesRead()
                 + cloudWatchAttemptLogFileInformation.getStartPosition()) {
             Set<String> completedFileNames = completedLogFilePerComponent.getOrDefault(componentName, new HashSet<>());
             completedFileNames.add(fileName);
@@ -549,6 +565,7 @@ public class LogManagerService extends PluginService {
      *     It will then get all the log files which have not yet been uploaded to the cloud. This is done by checking
      *     the last uploaded log file time for that component.
      */
+    @SuppressWarnings("PMD.CollapsibleIfStatements")
     private void processLogsAndUpload() throws InterruptedException {
         while (true) {
             // If there is already an upload ongoing, don't do anything. Wait for the next schedule to trigger to
@@ -560,40 +577,26 @@ public class LogManagerService extends PluginService {
             }
             AtomicReference<Optional<ComponentLogFileInformation>> componentLogFileInformation =
                     new AtomicReference<>(Optional.empty());
+            AtomicBoolean isActiveFileCompleted = new AtomicBoolean(false);
             // Get the latest known configurations because the componentLogConfigurations can change if a new
             // configuration is received from the customer.
             for (ComponentLogConfiguration componentLogConfiguration : componentLogConfigurations.values()) {
                 if (componentLogFileInformation.get().isPresent()) {
                     break;
                 }
+                isActiveFileCompleted.set(false);
                 String componentName = componentLogConfiguration.getName();
                 Instant lastUploadedLogFileTimeMs =
                         lastComponentUploadedLogFileInstantMap.getOrDefault(componentName,
                                 Instant.EPOCH);
-                File folder = new File(componentLogConfiguration.getDirectoryPath().toUri());
-                List<LogFile> allFiles = new ArrayList<>();
 
                 try {
-                    LogFile[] files = LogFile.of(folder.listFiles());
-                    if (files.length != 0) {
-                        for (LogFile file : files) {
-                            if (file.isFile()
-                                    && lastUploadedLogFileTimeMs.isBefore(Instant.ofEpochMilli(file.lastModified()))
-                                    && componentLogConfiguration.getFileNameRegex().matcher(file.getName()).find()
-                                    && file.length() > 0) {
-                                allFiles.add(file);
-                            }
-                        }
-                    }
-                    // Sort the files by the last modified time. Then try to proceed oldest file first to avoid data
-                    // loss caused by auto deletion
-                    allFiles.sort(Comparator.comparingLong(LogFile::lastModified));
-                    // If there are no rotated log files for the component, then return.
-                    if (allFiles.size() - 1 <= 0) {
+                    LogFileGroup logFileGroup =
+                            LogFileGroup.create(componentLogConfiguration.getFileNameRegex(),
+                                    componentLogConfiguration.getDirectoryPath().toUri(), lastUploadedLogFileTimeMs);
+                    if (logFileGroup.isEmpty()) {
                         continue;
                     }
-                    // Don't consider the active log file.
-                    allFiles = allFiles.subList(0, allFiles.size() - 1);
 
                     componentLogFileInformation.set(Optional.of(
                             ComponentLogFileInformation.builder()
@@ -601,9 +604,10 @@ public class LogManagerService extends PluginService {
                                     .multiLineStartPattern(componentLogConfiguration.getMultiLineStartPattern())
                                     .desiredLogLevel(componentLogConfiguration.getMinimumLogLevel())
                                     .componentType(componentLogConfiguration.getComponentType())
+                                    .logFileGroup(logFileGroup)
                                     .build()));
 
-                    allFiles.forEach(file -> {
+                    logFileGroup.forEach(file -> {
                         long startPosition = 0;
                         String fileHash = file.hashString();
                         // The file must contain enough lines for digest hash, otherwise fileHash is empty string
@@ -618,6 +622,15 @@ public class LogManagerService extends PluginService {
                                     startPosition = processingFileInformation.startPosition;
                                 }
                             }
+
+                            //TODO: setting this flag is only to develop incrementally without having to changed all
+                            // tests yet, so that we can avoid a massive PR. This will be removed in the end.
+                            if (ACTIVE_LOG_FILE_FEATURE_ENABLED_FLAG.get()) {
+                                if (logFileGroup.isActiveFile(fileHash) && startPosition == file.length()) {
+                                    isActiveFileCompleted.set(true);
+                                }
+                            }
+
                             LogFileInformation logFileInformation = LogFileInformation.builder()
                                             .logFile(file)
                                             .startPosition(startPosition)
@@ -630,9 +643,11 @@ public class LogManagerService extends PluginService {
                 } catch (SecurityException e) {
                     logger.atError().cause(e).log("Unable to get log files for {} from {}",
                             componentName, componentLogConfiguration.getDirectoryPath());
+                } catch (InvalidLogGroupException e) {
+                    logger.atDebug().cause(e).log("Unable to read the directory");
                 }
             }
-            if (componentLogFileInformation.get().isPresent()) {
+            if (!isActiveFileCompleted.get() && componentLogFileInformation.get().isPresent()) {
                 CloudWatchAttempt cloudWatchAttempt =
                         logsProcessor.processLogFiles(componentLogFileInformation.get().get());
                 uploader.upload(cloudWatchAttempt, 1);

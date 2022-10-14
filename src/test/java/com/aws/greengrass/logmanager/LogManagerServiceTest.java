@@ -84,7 +84,7 @@ import static com.aws.greengrass.logmanager.LogManagerService.SYSTEM_LOGS_COMPON
 import static com.aws.greengrass.logmanager.LogManagerService.SYSTEM_LOGS_CONFIG_TOPIC_NAME;
 import static com.aws.greengrass.logmanager.LogManagerService.UPLOAD_TO_CW_CONFIG_TOPIC_NAME;
 import static com.aws.greengrass.logmanager.model.LogFile.bytesNeeded;
-import static com.aws.greengrass.logmanager.model.LogFileTest.givenAStringOfSize;
+import static com.aws.greengrass.logmanager.util.TestUtils.givenAStringOfSize;
 import static com.aws.greengrass.testcommons.testutilities.ExceptionLogProtector.ignoreExceptionOfType;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;

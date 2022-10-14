@@ -57,6 +57,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
 import static com.aws.greengrass.deployment.converter.DeploymentDocumentConverter.LOCAL_DEPLOYMENT_GROUP_NAME;
+import static com.aws.greengrass.integrationtests.logmanager.util.LogFileHelper.DEFAULT_FILE_SIZE;
+import static com.aws.greengrass.integrationtests.logmanager.util.LogFileHelper.DEFAULT_LOG_LINE_IN_FILE;
 import static com.aws.greengrass.integrationtests.logmanager.util.LogFileHelper.createFileAndWriteData;
 import static com.aws.greengrass.integrationtests.logmanager.util.LogFileHelper.createTempFileAndWriteData;
 import static com.aws.greengrass.logging.impl.config.LogConfig.newLogConfigFromRootConfig;
@@ -84,6 +86,7 @@ class LogManagerTest extends BaseITCase {
     private LogManagerService logManagerService;
     private Path tempDirectoryPath;
     private final static ObjectMapper YAML_OBJECT_MAPPER = new ObjectMapper(new YAMLFactory());
+
 
     static {
         DATE_FORMATTER.setTimeZone(TimeZone.getTimeZone("UTC"));
@@ -349,5 +352,105 @@ class LogManagerTest extends BaseITCase {
             }
         }
         assertEquals(1, allFiles.size());
+    }
+
+    //TODO: this test is only for getting some certain level of knowledge of current change uploading active log file
+    // . It will be eventually removed.
+    @Test
+    void GIVEN_user_component_config_with_small_periodic_interval_WHEN_active_logs_included_THEN_logs_are_uploaded_to_cloud()
+            throws Exception {
+        when(cloudWatchLogsClient.putLogEvents(any(PutLogEventsRequest.class)))
+                .thenReturn(PutLogEventsResponse.builder().nextSequenceToken("nextToken").build());
+        logManagerService.ACTIVE_LOG_FILE_FEATURE_ENABLED_FLAG.set(true);
+        tempDirectoryPath = Files.createTempDirectory(tempRootDir, "IntegrationTestsTemporaryLogFiles");
+
+        for (int i = 0; i < 5; i++) {
+            createTempFileAndWriteData(tempDirectoryPath, "integTestRandomLogFiles.log_",  "");
+        }
+        createTempFileAndWriteData(tempDirectoryPath, "integTestRandomLogFiles.log",  "");
+
+        setupKernel(tempDirectoryPath, "smallPeriodicIntervalUserComponentConfig.yaml");
+        //TODO: a better mechanism should be written. The lazy sleep should be replaced by some condition checks.
+        TimeUnit.SECONDS.sleep(30);
+        verify(cloudWatchLogsClient, atLeastOnce()).putLogEvents(captor.capture());
+
+        List<PutLogEventsRequest> putLogEventsRequests = captor.getAllValues();
+        assertEquals(1, putLogEventsRequests.size());
+        for (PutLogEventsRequest request : putLogEventsRequests) {
+            assertEquals(calculateLogStreamName(THING_NAME, LOCAL_DEPLOYMENT_GROUP_NAME), request.logStreamName());
+            assertEquals("/aws/greengrass/UserComponent/" + AWS_REGION + "/UserComponentA",
+                    request.logGroupName());
+            assertNotNull(request.logEvents());
+            assertEquals(DEFAULT_LOG_LINE_IN_FILE * 6, request.logEvents().size());
+            assertEquals(DEFAULT_FILE_SIZE * 6,
+                    request.logEvents().stream().mapToLong(value -> value.message().length())
+                    .sum());
+        }
+        File folder = tempDirectoryPath.toFile();
+        Pattern logFileNamePattern = Pattern.compile("^integTestRandomLogFiles.log\\w*");
+        List<File> allFiles = new ArrayList<>();
+        File[] filesInDirectory = folder.listFiles();
+        if (filesInDirectory != null) {
+            for (File file : filesInDirectory) {
+                if (file.isFile()
+                        && logFileNamePattern.matcher(file.getName()).find()
+                        && file.length() > 0) {
+                    allFiles.add(file);
+                }
+            }
+        }
+        assertEquals(1, allFiles.size());
+        logManagerService.ACTIVE_LOG_FILE_FEATURE_ENABLED_FLAG.set(false);
+    }
+
+    //TODO: this test is only for getting some certain level of knowledge of current change uploading active log file
+    // . It will be eventually removed.
+    @Test
+    void GIVEN_system_config_with_small_periodic_interval_WHEN_active_logs_included_THEN_logs_are_uploaded_to_cloud(
+            ExtensionContext ec) throws Exception {
+        when(cloudWatchLogsClient.putLogEvents(any(PutLogEventsRequest.class)))
+                .thenReturn(PutLogEventsResponse.builder().nextSequenceToken("nextToken").build());
+        logManagerService.ACTIVE_LOG_FILE_FEATURE_ENABLED_FLAG.set(true);
+        LogManager.getRootLogConfiguration().setStoreDirectory(tempRootDir);
+        tempDirectoryPath = LogManager.getRootLogConfiguration().getStoreDirectory().resolve("logs");
+        String fileName = LogManager.getRootLogConfiguration().getFileName();
+        Files.createDirectory(tempDirectoryPath);
+        for (int i = 0; i < 5; i++) {
+            createTempFileAndWriteData(tempDirectoryPath, fileName, ".log");
+        }
+        createTempFileAndWriteData(tempDirectoryPath, fileName + ".log", "");
+
+        setupKernel(tempRootDir, "smallPeriodicIntervalSystemComponentConfig.yaml");
+        //TODO: a better mechanism will be written. The lazy sleep should be replaced by some condition checks.
+        TimeUnit.SECONDS.sleep(30);
+        verify(cloudWatchLogsClient, atLeastOnce()).putLogEvents(captor.capture());
+
+        List<PutLogEventsRequest> putLogEventsRequests = captor.getAllValues();
+        assertEquals(1, putLogEventsRequests.size());
+
+        for (PutLogEventsRequest request : putLogEventsRequests) {
+            assertEquals(calculateLogStreamName(THING_NAME, LOCAL_DEPLOYMENT_GROUP_NAME), request.logStreamName());
+            assertEquals("/aws/greengrass/GreengrassSystemComponent/" + AWS_REGION + "/System",
+                    request.logGroupName());
+            assertNotNull(request.logEvents());
+            assertTrue(request.logEvents().size() >= DEFAULT_LOG_LINE_IN_FILE * 6);
+            assertTrue(request.logEvents().stream().mapToLong(value -> value.message().length()).sum()
+                    >= DEFAULT_FILE_SIZE * 6);
+        }
+        File folder = tempDirectoryPath.toFile();
+        Pattern logFileNamePattern = Pattern.compile(String.format(DEFAULT_FILE_REGEX, fileName));
+        List<File> allFiles = new ArrayList<>();
+        File[] filesInDirectory = folder.listFiles();
+        if (filesInDirectory != null) {
+            for (File file : filesInDirectory) {
+                if (file.isFile()
+                        && logFileNamePattern.matcher(file.getName()).find()
+                        && file.length() > 0) {
+                    allFiles.add(file);
+                }
+            }
+        }
+        assertEquals(1, allFiles.size());
+        logManagerService.ACTIVE_LOG_FILE_FEATURE_ENABLED_FLAG.set(false);
     }
 }

@@ -7,13 +7,12 @@ import java.io.OutputStream;
 import java.nio.file.Files;
 import java.util.Random;
 
-public final class UnitTestLogFileHelper {
-
-    private UnitTestLogFileHelper() { }
+public final class TestUtils {
+    private static Random rnd = new Random();
+    private TestUtils() { }
 
     public static String givenAStringOfSize(int bytesNeeded) {
         StringBuilder testStrings = new StringBuilder();
-        Random rnd = new Random();
         String testChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqestuvwxyz0123456789";
         while (testStrings.length() < bytesNeeded) {
             int charIdx = (int) (rnd.nextFloat() * testChars.length());

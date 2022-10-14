@@ -370,7 +370,7 @@ class LogManagerTest extends BaseITCase {
         createTempFileAndWriteData(tempDirectoryPath, "integTestRandomLogFiles.log",  "");
 
         setupKernel(tempDirectoryPath, "smallPeriodicIntervalUserComponentConfig.yaml");
-        //TOdo: a better mechanism will be written
+        //TODO: a better mechanism should be written. The lazy sleep should be replaced by some condition checks.
         TimeUnit.SECONDS.sleep(30);
         verify(cloudWatchLogsClient, atLeastOnce()).putLogEvents(captor.capture());
 
@@ -389,9 +389,9 @@ class LogManagerTest extends BaseITCase {
         File folder = tempDirectoryPath.toFile();
         Pattern logFileNamePattern = Pattern.compile("^integTestRandomLogFiles.log\\w*");
         List<File> allFiles = new ArrayList<>();
-        File[] files = folder.listFiles();
-        if (files != null) {
-            for (File file : files) {
+        File[] filesInDirectory = folder.listFiles();
+        if (filesInDirectory != null) {
+            for (File file : filesInDirectory) {
                 if (file.isFile()
                         && logFileNamePattern.matcher(file.getName()).find()
                         && file.length() > 0) {
@@ -411,7 +411,6 @@ class LogManagerTest extends BaseITCase {
         when(cloudWatchLogsClient.putLogEvents(any(PutLogEventsRequest.class)))
                 .thenReturn(PutLogEventsResponse.builder().nextSequenceToken("nextToken").build());
         logManagerService.ACTIVE_LOG_FILE_FEATURE_ENABLED_FLAG.set(true);
-        ignoreExceptionOfType(ec, NoSuchFileException.class);
         LogManager.getRootLogConfiguration().setStoreDirectory(tempRootDir);
         tempDirectoryPath = LogManager.getRootLogConfiguration().getStoreDirectory().resolve("logs");
         String fileName = LogManager.getRootLogConfiguration().getFileName();
@@ -422,7 +421,7 @@ class LogManagerTest extends BaseITCase {
         createTempFileAndWriteData(tempDirectoryPath, fileName + ".log", "");
 
         setupKernel(tempRootDir, "smallPeriodicIntervalSystemComponentConfig.yaml");
-        //TOdo: a better mechanism will be written
+        //TODO: a better mechanism will be written. The lazy sleep should be replaced by some condition checks.
         TimeUnit.SECONDS.sleep(30);
         verify(cloudWatchLogsClient, atLeastOnce()).putLogEvents(captor.capture());
 
@@ -441,9 +440,9 @@ class LogManagerTest extends BaseITCase {
         File folder = tempDirectoryPath.toFile();
         Pattern logFileNamePattern = Pattern.compile(String.format(DEFAULT_FILE_REGEX, fileName));
         List<File> allFiles = new ArrayList<>();
-        File[] files = folder.listFiles();
-        if (files != null) {
-            for (File file : files) {
+        File[] filesInDirectory = folder.listFiles();
+        if (filesInDirectory != null) {
+            for (File file : filesInDirectory) {
                 if (file.isFile()
                         && logFileNamePattern.matcher(file.getName()).find()
                         && file.length() > 0) {

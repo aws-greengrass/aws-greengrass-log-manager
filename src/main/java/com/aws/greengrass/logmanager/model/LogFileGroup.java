@@ -35,7 +35,7 @@ public final class LogFileGroup {
         File folder = new File(path);
 
         if (!folder.isDirectory()) {
-            throw new InvalidLogGroupException("Must be a folder.");
+            throw new InvalidLogGroupException(String.format("%s must be a directory", path));
         }
 
         LogFile[] files = LogFile.of(folder.listFiles());

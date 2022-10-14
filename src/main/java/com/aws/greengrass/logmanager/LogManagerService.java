@@ -644,7 +644,7 @@ public class LogManagerService extends PluginService {
                     logger.atError().cause(e).log("Unable to get log files for {} from {}",
                             componentName, componentLogConfiguration.getDirectoryPath());
                 } catch (InvalidLogGroupException e) {
-                    logger.atError().cause(e).log("Unable to read the directory");
+                    logger.atDebug().cause(e).log("Unable to read the directory");
                 }
             }
             if (!isActiveFileCompleted.get() && componentLogFileInformation.get().isPresent()) {

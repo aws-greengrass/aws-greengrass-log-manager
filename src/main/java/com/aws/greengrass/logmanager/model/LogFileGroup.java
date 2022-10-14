@@ -1,14 +1,20 @@
 package com.aws.greengrass.logmanager.model;
 
+import com.aws.greengrass.logging.api.Logger;
+import com.aws.greengrass.logging.impl.LogManager;
+import com.aws.greengrass.logmanager.LogManagerService;
 import com.aws.greengrass.logmanager.exceptions.InvalidLogGroupException;
 import lombok.Getter;
 
 import java.io.File;
 import java.net.URI;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 import java.util.regex.Pattern;
 
@@ -17,7 +23,8 @@ import static com.aws.greengrass.logmanager.LogManagerService.ACTIVE_LOG_FILE_FE
 public final class LogFileGroup {
     @Getter
     private List<LogFile> logFiles;
-
+    private static Map<String, LogFile> fileHashToFileMap = new ConcurrentHashMap<>();
+    private static final Logger logger = LogManager.getLogger(LogManagerService.class);
     private LogFileGroup(List<LogFile> files) {
         this.logFiles = files;
     }
@@ -42,11 +49,13 @@ public final class LogFileGroup {
         List<LogFile> allFiles = new ArrayList<>();
         if (files.length != 0) {
             for (LogFile file: files) {
+                String fileHash = file.hashString();
                 if (file.isFile()
                         && lastUpdated.isBefore(Instant.ofEpochMilli(file.lastModified()))
                         && filePattern.matcher(file.getName()).find()
-                        && file.length() > 0) {
+                        && !file.isEmpty(fileHash)) {
                     allFiles.add(file);
+                    fileHashToFileMap.put(fileHash, file);
                 }
             }
         }
@@ -81,5 +90,12 @@ public final class LogFileGroup {
 
     public boolean isEmpty() {
         return this.logFiles.isEmpty();
+    }
+
+    public LogFile getFile(String fileHash) {
+        if (!fileHashToFileMap.containsKey(fileHash)) {
+            logger.atDebug().log("FileHash does not exist");
+        }
+        return fileHashToFileMap.get(fileHash);
     }
 }

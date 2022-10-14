@@ -520,36 +520,56 @@ public class LogManagerService extends PluginService {
         if (ACTIVE_LOG_FILE_FEATURE_ENABLED_FLAG.get()) {
             String fileHash = cloudWatchAttemptLogFileInformation.getFileHash();
             LogFileGroup logFileGroup = attemptLogInformation.getLogFileGroup();
+            LogFile file1 = logFileGroup.getFile(fileHash);
             // TODO: the following logic is only for passing this small PR while not changing the current context.
             //  We will grab the fileHash in the future.
             isActiveFile = logFileGroup.isActiveFile(fileHash);
-        }
-        // If we have completely read the file, then we need add it to the completed files list and remove it
-        // it (if necessary) for the current processing list.
-        if (!isActiveFile && file.length() == cloudWatchAttemptLogFileInformation.getBytesRead()
-                + cloudWatchAttemptLogFileInformation.getStartPosition()) {
-            Set<String> completedFileNames = completedLogFilePerComponent.getOrDefault(componentName, new HashSet<>());
-            completedFileNames.add(fileName);
-            completedLogFilePerComponent.put(componentName, completedFileNames);
-            if (currentProcessingLogFilePerComponent.containsKey(componentName)) {
-                CurrentProcessingFileInformation fileInformation = currentProcessingLogFilePerComponent
-                        .get(componentName);
-                if (fileInformation.fileName.equals(fileName)) {
-                    currentProcessingLogFilePerComponent.remove(componentName);
+            // If we have completely read the file, then we need add it to the completed files list and remove it
+            // it (if necessary) for the current processing list.
+            if (!isActiveFile && file1.length() == cloudWatchAttemptLogFileInformation.getBytesRead() + cloudWatchAttemptLogFileInformation.getStartPosition()) {
+                Set<String> completedFileNames1 = completedLogFilePerComponent.getOrDefault(componentName,
+                        new HashSet<>());
+                completedFileNames1.add(file1.getName());
+                completedLogFilePerComponent.put(componentName, completedFileNames1);
+                if (currentProcessingLogFilePerComponent.containsKey(componentName)) {
+                    CurrentProcessingFileInformation fileInformation = currentProcessingLogFilePerComponent.get(componentName);
+                    if (fileInformation.fileName.equals(file1.getName())) {
+                        currentProcessingLogFilePerComponent.remove(componentName);
+                    }
                 }
+            } else {
+                // Add the file to the current processing list for the component.
+                // Note: There should always be only 1 file which will be in progress at any given time.
+                CurrentProcessingFileInformation processingFileInformation =
+                        CurrentProcessingFileInformation.builder().fileName(fileName).startPosition(
+                                        cloudWatchAttemptLogFileInformation.getStartPosition() + cloudWatchAttemptLogFileInformation.getBytesRead())
+                                .lastModifiedTime(cloudWatchAttemptLogFileInformation.getLastModifiedTime()).build();
+                currentProcessingLogFilePerComponent.put(attemptLogInformation.getComponentName(),
+                        processingFileInformation);
             }
         } else {
-            // Add the file to the current processing list for the component.
-            // Note: There should always be only 1 file which will be in progress at any given time.
-            CurrentProcessingFileInformation processingFileInformation =
-                    CurrentProcessingFileInformation.builder()
-                            .fileName(fileName)
-                            .startPosition(cloudWatchAttemptLogFileInformation.getStartPosition()
-                                    + cloudWatchAttemptLogFileInformation.getBytesRead())
-                            .lastModifiedTime(cloudWatchAttemptLogFileInformation.getLastModifiedTime())
-                            .build();
-            currentProcessingLogFilePerComponent.put(attemptLogInformation.getComponentName(),
-                    processingFileInformation);
+            // If we have completely read the file, then we need add it to the completed files list and remove it
+            // it (if necessary) for the current processing list.
+            if (file.length() == cloudWatchAttemptLogFileInformation.getBytesRead() + cloudWatchAttemptLogFileInformation.getStartPosition()) {
+                Set<String> completedFileNames = completedLogFilePerComponent.getOrDefault(componentName, new HashSet<>());
+                completedFileNames.add(fileName);
+                completedLogFilePerComponent.put(componentName, completedFileNames);
+                if (currentProcessingLogFilePerComponent.containsKey(componentName)) {
+                    CurrentProcessingFileInformation fileInformation = currentProcessingLogFilePerComponent.get(componentName);
+                    if (fileInformation.fileName.equals(fileName)) {
+                        currentProcessingLogFilePerComponent.remove(componentName);
+                    }
+                }
+            } else {
+                // Add the file to the current processing list for the component.
+                // Note: There should always be only 1 file which will be in progress at any given time.
+                CurrentProcessingFileInformation processingFileInformation =
+                        CurrentProcessingFileInformation.builder().fileName(fileName).startPosition(
+                                        cloudWatchAttemptLogFileInformation.getStartPosition() + cloudWatchAttemptLogFileInformation.getBytesRead())
+                                .lastModifiedTime(cloudWatchAttemptLogFileInformation.getLastModifiedTime()).build();
+                currentProcessingLogFilePerComponent.put(attemptLogInformation.getComponentName(),
+                        processingFileInformation);
+            }
         }
     }
 
@@ -610,34 +630,31 @@ public class LogManagerService extends PluginService {
                     logFileGroup.forEach(file -> {
                         long startPosition = 0;
                         String fileHash = file.hashString();
-                        // The file must contain enough lines for digest hash, otherwise fileHash is empty string
-                        if (!HASH_VALUE_OF_EMPTY_STRING.equals(fileHash)) {
-                            // If the file was partially read in the previous run, then get the starting position for
-                            // new log lines.
-                            if (componentCurrentProcessingLogFile.containsKey(componentName)) {
-                                CurrentProcessingFileInformation processingFileInformation =
-                                        componentCurrentProcessingLogFile.get(componentName);
-                                if (processingFileInformation.fileName.equals(file.getAbsolutePath())
-                                        && processingFileInformation.lastModifiedTime == file.lastModified()) {
-                                    startPosition = processingFileInformation.startPosition;
-                                }
+                        // If the file was partially read in the previous run, then get the starting position for
+                        // new log lines.
+                        if (componentCurrentProcessingLogFile.containsKey(componentName)) {
+                            CurrentProcessingFileInformation processingFileInformation =
+                                    componentCurrentProcessingLogFile.get(componentName);
+                            if (processingFileInformation.fileName.equals(file.getAbsolutePath())
+                                    && processingFileInformation.lastModifiedTime == file.lastModified()) {
+                                startPosition = processingFileInformation.startPosition;
                             }
-
-                            //TODO: setting this flag is only to develop incrementally without having to changed all
-                            // tests yet, so that we can avoid a massive PR. This will be removed in the end.
-                            if (ACTIVE_LOG_FILE_FEATURE_ENABLED_FLAG.get()) {
-                                if (logFileGroup.isActiveFile(fileHash) && startPosition == file.length()) {
-                                    isActiveFileCompleted.set(true);
-                                }
-                            }
-
-                            LogFileInformation logFileInformation = LogFileInformation.builder()
-                                            .logFile(file)
-                                            .startPosition(startPosition)
-                                            .fileHash(fileHash)
-                                            .build();
-                            componentLogFileInformation.get().get().getLogFileInformationList().add(logFileInformation);
                         }
+
+                        //TODO: setting this flag is only to develop incrementally without having to changed all
+                        // tests yet, so that we can avoid a massive PR. This will be removed in the end.
+                        if (ACTIVE_LOG_FILE_FEATURE_ENABLED_FLAG.get()) {
+                            if (logFileGroup.isActiveFile(fileHash) && startPosition == file.length()) {
+                                isActiveFileCompleted.set(true);
+                            }
+                        }
+
+                        LogFileInformation logFileInformation = LogFileInformation.builder()
+                                        .logFile(file)
+                                        .startPosition(startPosition)
+                                        .fileHash(fileHash)
+                                        .build();
+                        componentLogFileInformation.get().get().getLogFileInformationList().add(logFileInformation);
                     });
                     break;
                 } catch (SecurityException e) {

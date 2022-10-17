@@ -1,9 +1,7 @@
 package com.aws.greengrass.logmanager.model;
 
-import com.aws.greengrass.logging.api.Logger;
-import com.aws.greengrass.logging.impl.LogManager;
-import com.aws.greengrass.logmanager.LogManagerService;
 import com.aws.greengrass.logmanager.exceptions.InvalidLogGroupException;
+import com.aws.greengrass.util.Utils;
 import lombok.Getter;
 
 import java.io.File;
@@ -13,6 +11,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 import java.util.regex.Pattern;
@@ -22,34 +21,33 @@ import static com.aws.greengrass.logmanager.LogManagerService.ACTIVE_LOG_FILE_FE
 public final class LogFileGroup {
     @Getter
     private List<LogFile> logFiles;
-    private static Map<String, LogFile> fileHashToFileMap;
-    private static final Logger logger = LogManager.getLogger(LogManagerService.class);
-    private static Pattern savedFilePattern;
-    private static URI savedPath;
-    private static Instant savedLastUpdated;
+    private static Map<String, LogFile> fileHashToLogFile;
+    private final Pattern filePattern;
+    private final URI directoryURI;
+    private final Instant lastUpdated;
 
-    private LogFileGroup(List<LogFile> files) {
+    private LogFileGroup(List<LogFile> files, Pattern filePattern, URI directoryURI, Instant lastUpdated) {
         this.logFiles = files;
+        this.filePattern = filePattern;
+        this.directoryURI = directoryURI;
+        this.lastUpdated = lastUpdated;
     }
 
     /**
      * Create a list of Logfiles that are sorted based on lastModified time.
      * @param filePattern the fileNameRegex used for each component to recognize its log files.
-     * @param path the directory path of the log files of component.
+     * @param directoryURI the directory path of the log files of component.
      * @param lastUpdated the saved updated time of the last uploaded log of a component.
      * @return list of logFile.
      * @throws InvalidLogGroupException the exception if this is not a valid directory.
      */
-    public static LogFileGroup create(Pattern filePattern, URI path, Instant lastUpdated)
+    public static LogFileGroup create(Pattern filePattern, URI directoryURI, Instant lastUpdated)
             throws InvalidLogGroupException {
-        savedFilePattern = filePattern;
-        savedPath = path;
-        savedLastUpdated = lastUpdated;
-        File folder = new File(path);
-        fileHashToFileMap = new ConcurrentHashMap<>();
+        File folder = new File(directoryURI);
+        fileHashToLogFile = new ConcurrentHashMap<>();
 
         if (!folder.isDirectory()) {
-            throw new InvalidLogGroupException(String.format("%s must be a directory", path));
+            throw new InvalidLogGroupException(String.format("%s must be a directory", directoryURI));
         }
 
         LogFile[] files = LogFile.of(folder.listFiles());
@@ -60,9 +58,9 @@ public final class LogFileGroup {
                 if (file.isFile()
                         && lastUpdated.isBefore(Instant.ofEpochMilli(file.lastModified()))
                         && filePattern.matcher(file.getName()).find()
-                        && !file.isEmpty(fileHash)) {
+                        && !Utils.isEmpty(fileHash)) {
                     allFiles.add(file);
-                    fileHashToFileMap.put(fileHash, file);
+                    fileHashToLogFile.put(fileHash, file);
                 }
             }
         }
@@ -71,11 +69,11 @@ public final class LogFileGroup {
         // we can avoid a massive PR. This will be removed in the end.
         if (!ACTIVE_LOG_FILE_FEATURE_ENABLED_FLAG.get()) {
             if (allFiles.size() - 1 <= 0) {
-                return new LogFileGroup(new ArrayList<>());
+                return new LogFileGroup(new ArrayList<>(), filePattern, directoryURI, lastUpdated);
             }
             allFiles = allFiles.subList(0, allFiles.size() - 1);
         }
-        return new LogFileGroup(allFiles);
+        return new LogFileGroup(allFiles, filePattern, directoryURI, lastUpdated);
     }
 
     /**
@@ -84,7 +82,7 @@ public final class LogFileGroup {
      * @return boolean if this is the active file.
      */
     public boolean isActiveFile(String fileHash) {
-        if (fileHash.isEmpty()) {
+        if (fileHash.isEmpty() || logFiles.isEmpty()) {
             return false;
         }
         LogFile activeFile = logFiles.get(logFiles.size() - 1);
@@ -104,15 +102,23 @@ public final class LogFileGroup {
      * @param fileHash the fileHash obtained from uploader.
      * @return the logFile.
      */
-    public LogFile getFile(String fileHash) {
-        if (!fileHashToFileMap.containsKey(fileHash)) {
-            logger.atDebug().log("FileHash does not exist");
+    public Optional<LogFile> getFile(String fileHash) {
+        if (!fileHashToLogFile.containsKey(fileHash)) {
+            return Optional.ofNullable(null);
         }
-        return fileHashToFileMap.get(fileHash);
+        return Optional.ofNullable(fileHashToLogFile.get(fileHash));
     }
 
-    public LogFileGroup update() throws InvalidLogGroupException {
-        return create(savedFilePattern, savedPath, savedLastUpdated);
+    /**
+     * In case of file rotation happen between the processing files and handling upload results, the logFileGroup
+     * uses the (Pattern filePattern, URI directoryURI, Instant lastUpdated) when created to take the latest snapshot
+     * of the same directory. This can guarantee if the active file get rotated during the file processing, it will be
+     * deleted because it is a rotated file now.
+     * @return the LogFileGroup created by the current directory.
+     * @throws InvalidLogGroupException when directory path is not pointing to a valid directory.
+     */
+    public LogFileGroup syncDirectory() throws InvalidLogGroupException {
+        return create(this.filePattern, this.directoryURI, this.lastUpdated);
     }
 
 }

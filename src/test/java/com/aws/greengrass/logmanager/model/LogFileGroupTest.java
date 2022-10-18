@@ -46,8 +46,8 @@ public class LogFileGroupTest {
         LogFileGroup logFileGroup = LogFileGroup.create(pattern, file.getParentFile().toURI(), instant);
 
         assertEquals(2, logFileGroup.getLogFiles().size());
-        assertFalse(logFileGroup.isActiveFile(file.hashString()));
-        assertTrue(logFileGroup.isActiveFile(file2.hashString()));
+        assertFalse(logFileGroup.getActiveFile().get().fileEquals(file));
+        assertTrue(logFileGroup.getActiveFile().get().fileEquals(file2));
         ACTIVE_LOG_FILE_FEATURE_ENABLED_FLAG.set(false);
     }
 }

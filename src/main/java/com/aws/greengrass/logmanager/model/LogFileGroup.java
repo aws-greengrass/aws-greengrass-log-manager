@@ -77,16 +77,14 @@ public final class LogFileGroup {
     }
 
     /**
-     * Given a fileHash of a file, using the sorted log files to detect if the file is the active file.
-     * @param fileHash the fileHash of the target file.
-     * @return boolean if this is the active file.
+     * Using the sorted log files to get the active file.
+     * @return the active logFile.
      */
-    public boolean isActiveFile(String fileHash) {
-        if (fileHash.isEmpty() || logFiles.isEmpty()) {
-            return false;
+    public Optional<LogFile> getActiveFile() {
+        if (logFiles.isEmpty()) {
+            return Optional.empty();
         }
-        LogFile activeFile = logFiles.get(logFiles.size() - 1);
-        return activeFile.hashString().equals(fileHash);
+        return Optional.of(logFiles.get(logFiles.size() - 1));
     }
 
     public void forEach(Consumer<LogFile> callback) {
@@ -104,9 +102,9 @@ public final class LogFileGroup {
      */
     public Optional<LogFile> getFile(String fileHash) {
         if (!fileHashToLogFile.containsKey(fileHash)) {
-            return Optional.ofNullable(null);
+            return Optional.empty();
         }
-        return Optional.ofNullable(fileHashToLogFile.get(fileHash));
+        return Optional.of(fileHashToLogFile.get(fileHash));
     }
 
     /**

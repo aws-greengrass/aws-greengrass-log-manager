@@ -101,12 +101,15 @@ public class LogFile extends File {
         }  catch (NoSuchAlgorithmException e) {
             logger.atError().cause(e).log("The digest algorithm is invalid");
         }
-
         return fileHash;
     }
 
     public boolean isEmpty() {
         return Utils.isEmpty(this.hashString());
+    }
+
+    public boolean fileEquals(LogFile logFile) {
+        return this.hashString().equals(logFile.hashString());
     }
 
 }

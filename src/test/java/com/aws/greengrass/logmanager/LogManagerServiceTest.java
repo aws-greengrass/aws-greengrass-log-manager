@@ -88,8 +88,8 @@ import static com.aws.greengrass.logmanager.LogManagerService.SYSTEM_LOGS_COMPON
 import static com.aws.greengrass.logmanager.LogManagerService.SYSTEM_LOGS_CONFIG_TOPIC_NAME;
 import static com.aws.greengrass.logmanager.LogManagerService.UPLOAD_TO_CW_CONFIG_TOPIC_NAME;
 import static com.aws.greengrass.logmanager.model.LogFile.bytesNeeded;
+import static com.aws.greengrass.logmanager.util.TestUtils.createLogFileWithSize;
 import static com.aws.greengrass.logmanager.util.TestUtils.givenAStringOfSize;
-import static com.aws.greengrass.logmanager.util.TestUtils.writeFile;
 import static com.aws.greengrass.testcommons.testutilities.ExceptionLogProtector.ignoreExceptionOfType;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -594,20 +594,14 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         CloudWatchAttempt attempt = new CloudWatchAttempt();
         Map<String, CloudWatchAttemptLogInformation> logStreamsToLogInformationMap = new HashMap<>();
 
-        LogFile lastProcessedFile = new LogFile(directoryPath.resolve("testlogs2.log").toUri());
-        byte[] bytesArray = givenAStringOfSize(2943).getBytes(StandardCharsets.UTF_8);
-        writeFile(lastProcessedFile, bytesArray);
+        LogFile lastProcessedFile = createLogFileWithSize(directoryPath.resolve("testlogs2.log").toUri(), 2943);
         Pattern pattern1 = Pattern.compile("^testlogs2.log\\w*$");
         Instant instant1 = Instant.EPOCH;
-        // Create an active file intentionally, so that the lastProcessedFile will be processed.
-        LogFile lastProcessedActiveFile = new LogFile(directoryPath.resolve("testlogs2.log_active").toUri());
-        byte[] bytesArray0 = givenAStringOfSize(2943).getBytes(StandardCharsets.UTF_8);
-        writeFile(lastProcessedActiveFile, bytesArray0);
+        // Create another file intentionally, so that the lastProcessedFile will be processed.
+        createLogFileWithSize(directoryPath.resolve("testlogs2.log_active").toUri(), 2943);
         LogFileGroup LastProcessedLogFileGroup = LogFileGroup.create(pattern1, lastProcessedFile.getParentFile().toURI(), instant1);
 
-        LogFile processingFile = new LogFile(directoryPath.resolve("testlogs1.log").toUri());
-        byte[] bytesArray2 = givenAStringOfSize(1061).getBytes(StandardCharsets.UTF_8);
-        writeFile(processingFile, bytesArray2);
+        LogFile processingFile = createLogFileWithSize(directoryPath.resolve("testlogs1.log").toUri(), 1061);
         Pattern pattern2 = Pattern.compile("^testlogs1.log$");
         Instant instant2 = Instant.EPOCH;
         LogFileGroup processingLogFileGroup = LogFileGroup.create(pattern2, processingFile.getParentFile().toURI(), instant2);

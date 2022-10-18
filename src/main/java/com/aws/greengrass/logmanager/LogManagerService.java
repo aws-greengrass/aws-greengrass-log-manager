@@ -513,19 +513,35 @@ public class LogManagerService extends PluginService {
                                                                 cloudWatchAttemptLogFileInformation) {
         //Todo: eventually the file and fileName should be obtained by the fileHash
         LogFile file = new LogFile(fileName);
-        String componentName = attemptLogInformation.getComponentName();
         boolean isActiveFile = false;
         //TODO: setting this flag is only to develop incrementally without having to changed all tests yet, so that
         // we can avoid a massive PR. This will be removed in the end.
         if (ACTIVE_LOG_FILE_FEATURE_ENABLED_FLAG.get()) {
-            String fileHash = cloudWatchAttemptLogFileInformation.getFileHash();
-            LogFileGroup logFileGroup = attemptLogInformation.getLogFileGroup();
-            // TODO: the following logic is only for passing this small PR while not changing the current context.
-            //  We will grab the fileHash in the future.
-            isActiveFile = logFileGroup.isActiveFile(fileHash);
+            try {
+                String fileHash = cloudWatchAttemptLogFileInformation.getFileHash();
+                LogFileGroup logFileGroup = attemptLogInformation.getLogFileGroup().syncDirectory();
+                Optional<LogFile> file1 = logFileGroup.getFile(fileHash);
+                // TODO: this is temporary for not changing the original logic, will be well handled.
+                if (!file1.isPresent()) {
+                    logger.atDebug().log("The fileHash does not exist in directory");
+                    return;
+                }
+                file = file1.get();
+                fileName = file.getAbsolutePath();
+                // TODO: the following logic is only for passing this small PR while not changing the current context.
+                //  We will grab the fileHash in the future.
+                Optional<LogFile> activeFile = logFileGroup.getActiveFile();
+                if (activeFile.isPresent()) {
+                    isActiveFile = activeFile.get().fileEquals(file);
+                }
+            } catch (InvalidLogGroupException e) {
+                logger.atDebug().cause(e).log();
+                return;
+            }
         }
         // If we have completely read the file, then we need add it to the completed files list and remove it
         // it (if necessary) for the current processing list.
+        String componentName = attemptLogInformation.getComponentName();
         if (!isActiveFile && file.length() == cloudWatchAttemptLogFileInformation.getBytesRead()
                 + cloudWatchAttemptLogFileInformation.getStartPosition()) {
             Set<String> completedFileNames = completedLogFilePerComponent.getOrDefault(componentName, new HashSet<>());
@@ -626,7 +642,8 @@ public class LogManagerService extends PluginService {
                             //TODO: setting this flag is only to develop incrementally without having to changed all
                             // tests yet, so that we can avoid a massive PR. This will be removed in the end.
                             if (ACTIVE_LOG_FILE_FEATURE_ENABLED_FLAG.get()) {
-                                if (logFileGroup.isActiveFile(fileHash) && startPosition == file.length()) {
+                                if (file.fileEquals(logFileGroup.getActiveFile().get())
+                                        && startPosition == file.length()) {
                                     isActiveFileCompleted.set(true);
                                 }
                             }

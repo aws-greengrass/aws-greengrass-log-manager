@@ -55,12 +55,20 @@ public final class LogFileGroup {
         if (files.length != 0) {
             for (LogFile file: files) {
                 String fileHash = file.hashString();
+                boolean isModifiedAfterLastUpdatedFile =
+                        lastUpdated.isBefore(Instant.ofEpochMilli(file.lastModified()));
+                boolean isNameMatchPattern = filePattern.matcher(file.getName()).find();
+                boolean isEmptyFileHash = Utils.isEmpty(fileHash);
+                System.out.println("before: " + file.getName() + " | empty hash: " + isEmptyFileHash + " | name "
+                        + "match: "
+                        + isNameMatchPattern + " | modify:" + isModifiedAfterLastUpdatedFile);
                 if (file.isFile()
-                        && lastUpdated.isBefore(Instant.ofEpochMilli(file.lastModified()))
-                        && filePattern.matcher(file.getName()).find()
-                        && !Utils.isEmpty(fileHash)) {
+                        && isModifiedAfterLastUpdatedFile
+                        && isNameMatchPattern
+                        && !isEmptyFileHash) {
                     allFiles.add(file);
                     fileHashToLogFile.put(fileHash, file);
+                    System.out.println(file.getName());
                 }
             }
         }

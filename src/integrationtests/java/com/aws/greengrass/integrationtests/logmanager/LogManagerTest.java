@@ -180,8 +180,8 @@ class LogManagerTest extends BaseITCase {
             assertEquals("/aws/greengrass/UserComponent/" + AWS_REGION + "/UserComponentA",
                     request.logGroupName());
             assertNotNull(request.logEvents());
-            assertEquals(50, request.logEvents().size());
-            assertEquals(51200, request.logEvents().stream().mapToLong(value -> value.message().length())
+            assertEquals(DEFAULT_LOG_LINE_IN_FILE*6, request.logEvents().size());
+            assertEquals(DEFAULT_FILE_SIZE*6, request.logEvents().stream().mapToLong(value -> value.message().length())
                     .sum());
         }
         File folder = tempDirectoryPath.toFile();
@@ -228,8 +228,8 @@ class LogManagerTest extends BaseITCase {
             assertEquals("/aws/greengrass/UserComponent/" + AWS_REGION + "/UserComponentB",
                     request.logGroupName());
             assertNotNull(request.logEvents());
-            assertEquals(50, request.logEvents().size());
-            assertEquals(51200, request.logEvents().stream().mapToLong(value -> value.message().length())
+            assertEquals(DEFAULT_LOG_LINE_IN_FILE*6, request.logEvents().size());
+            assertEquals(DEFAULT_FILE_SIZE*6, request.logEvents().stream().mapToLong(value -> value.message().length())
                     .sum());
         }
         File folder = tempDirectoryPath.toFile();
@@ -276,9 +276,9 @@ class LogManagerTest extends BaseITCase {
             assertEquals("/aws/greengrass/GreengrassSystemComponent/" + AWS_REGION + "/System",
                     request.logGroupName());
             assertNotNull(request.logEvents());
-            assertTrue(request.logEvents().size() >= 50);
+            assertTrue(request.logEvents().size() >= DEFAULT_LOG_LINE_IN_FILE*6);
             assertTrue(request.logEvents().stream().mapToLong(value -> value.message().length()).sum()
-                    >= 51200);
+                    >= DEFAULT_FILE_SIZE*6);
         }
         File folder = tempDirectoryPath.toFile();
         Pattern logFileNamePattern = Pattern.compile(String.format(DEFAULT_FILE_REGEX, fileName));
@@ -337,8 +337,9 @@ class LogManagerTest extends BaseITCase {
             assertEquals(calculateLogStreamName(THING_NAME, LOCAL_DEPLOYMENT_GROUP_NAME), request.logStreamName());
             assertEquals("/aws/greengrass/UserComponent/" + AWS_REGION + "/UserComponentA", request.logGroupName());
             assertNotNull(request.logEvents());
-            assertEquals(50, request.logEvents().size());
-            assertEquals(51200, request.logEvents().stream().mapToLong(value -> value.message().length()).sum());
+            assertEquals(DEFAULT_LOG_LINE_IN_FILE*6, request.logEvents().size());
+            assertEquals(DEFAULT_FILE_SIZE*6,
+                    request.logEvents().stream().mapToLong(value -> value.message().length()).sum());
         }
         File folder = tempDirectoryPath.toFile();
         Pattern logFileNamePattern = Pattern.compile("^integTestRandomLogFiles.log\\w*");
@@ -361,7 +362,7 @@ class LogManagerTest extends BaseITCase {
             throws Exception {
         when(cloudWatchLogsClient.putLogEvents(any(PutLogEventsRequest.class)))
                 .thenReturn(PutLogEventsResponse.builder().nextSequenceToken("nextToken").build());
-        logManagerService.ACTIVE_LOG_FILE_FEATURE_ENABLED_FLAG.set(true);
+        //logManagerService.ACTIVE_LOG_FILE_FEATURE_ENABLED_FLAG.set(true);
         tempDirectoryPath = Files.createTempDirectory(tempRootDir, "IntegrationTestsTemporaryLogFiles");
 
         for (int i = 0; i < 5; i++) {
@@ -400,7 +401,7 @@ class LogManagerTest extends BaseITCase {
             }
         }
         assertEquals(1, allFiles.size());
-        logManagerService.ACTIVE_LOG_FILE_FEATURE_ENABLED_FLAG.set(false);
+        //logManagerService.ACTIVE_LOG_FILE_FEATURE_ENABLED_FLAG.set(false);
     }
 
     //TODO: this test is only for getting some certain level of knowledge of current change uploading active log file
@@ -410,7 +411,7 @@ class LogManagerTest extends BaseITCase {
             ExtensionContext ec) throws Exception {
         when(cloudWatchLogsClient.putLogEvents(any(PutLogEventsRequest.class)))
                 .thenReturn(PutLogEventsResponse.builder().nextSequenceToken("nextToken").build());
-        logManagerService.ACTIVE_LOG_FILE_FEATURE_ENABLED_FLAG.set(true);
+        //logManagerService.ACTIVE_LOG_FILE_FEATURE_ENABLED_FLAG.set(true);
         LogManager.getRootLogConfiguration().setStoreDirectory(tempRootDir);
         tempDirectoryPath = LogManager.getRootLogConfiguration().getStoreDirectory().resolve("logs");
         String fileName = LogManager.getRootLogConfiguration().getFileName();
@@ -451,6 +452,6 @@ class LogManagerTest extends BaseITCase {
             }
         }
         assertEquals(1, allFiles.size());
-        logManagerService.ACTIVE_LOG_FILE_FEATURE_ENABLED_FLAG.set(false);
+        //logManagerService.ACTIVE_LOG_FILE_FEATURE_ENABLED_FLAG.set(false);
     }
 }

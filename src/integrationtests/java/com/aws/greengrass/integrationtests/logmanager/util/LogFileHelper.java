@@ -60,6 +60,7 @@ public final class LogFileHelper {
             throws IOException {
         Path filePath = tempDirectoryPath.resolve(fileName + ".log");
         if (!Files.exists(filePath)) {
+            System.out.println(fileName + " does not exist");
             Files.createFile(filePath);
         }
         File file = filePath.toFile();

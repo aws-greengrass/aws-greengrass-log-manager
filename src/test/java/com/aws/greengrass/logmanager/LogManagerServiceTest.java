@@ -26,7 +26,6 @@ import com.aws.greengrass.testcommons.testutilities.GGExtension;
 import com.aws.greengrass.testcommons.testutilities.GGServiceTestUtil;
 import com.aws.greengrass.util.Coerce;
 import com.fasterxml.jackson.databind.exc.MismatchedInputException;
-import lombok.extern.java.Log;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.hamcrest.collection.IsEmptyCollection;
 import org.hamcrest.core.IsNot;
@@ -856,10 +855,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         Map<String, CloudWatchAttemptLogInformation> logStreamsToLogInformationMap = new HashMap<>();
         LogFile file1 = new LogFile(directoryPath.resolve(fileNames.get(0)).toUri());
         LogFile file2 = new LogFile(directoryPath.resolve(fileNames.get(1)).toUri());
-        //TODO
-        //System.out.println(file1.getName());
-        //System.out.println(file2.getName());
-        //System.out.println("test create logFileGroup");
+
         Pattern pattern = Pattern.compile("^log2.txt\\w*");
         LogFileGroup logFileGroup = LogFileGroup.create(pattern, file1.getParentFile().toURI(), instant);
         Map<String, CloudWatchAttemptLogFileInformation> attemptLogFileInformationMap1 = new HashMap<>();

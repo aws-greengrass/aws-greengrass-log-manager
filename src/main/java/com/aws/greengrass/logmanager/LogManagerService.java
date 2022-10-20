@@ -101,6 +101,7 @@ public class LogManagerService extends PluginService {
     public static final String DELETE_LOG_FILES_AFTER_UPLOAD_CONFIG_TOPIC_NAME = "deleteLogFileAfterCloudUpload";
     public static final String UPLOAD_TO_CW_CONFIG_TOPIC_NAME = "uploadToCloudWatch";
     public static final String MULTILINE_PATTERN_CONFIG_TOPIC_NAME = "multiLineStartPattern";
+    public static final String USER_COMPONENT_UPLOAD_TO_CW_CONFIG_TOPIC_NAME = "userComponentUploadToCloudWatch";
     public static final int DEFAULT_PERIODIC_UPDATE_INTERVAL_SEC = 300;
     private final Object spaceManagementLock = new Object();
     // TODO: this is the flag to marking the code that used for the feature development, in order to maintain PR
@@ -250,8 +251,10 @@ public class LogManagerService extends PluginService {
         logger.atInfo().kv("componentName", componentLogConfiguration.getName())
                 .log("Process LogManager configuration for Greengrass user component");
         setCommonComponentConfiguration(componentConfigMap, componentLogConfiguration);
-        newComponentLogConfigurations.put(componentLogConfiguration.getName(), componentLogConfiguration);
-        loadStateFromConfiguration(componentLogConfiguration.getName());
+        if (componentLogConfiguration.isUploadToCloudWatch()) {
+            newComponentLogConfigurations.put(componentLogConfiguration.getName(), componentLogConfiguration);
+            loadStateFromConfiguration(componentLogConfiguration.getName());
+        }
     }
 
     @SuppressWarnings("PMD.ConfusingTernary")
@@ -282,6 +285,9 @@ public class LogManagerService extends PluginService {
                         componentLogConfiguration.setMultiLineStartPattern(Pattern
                                 .compile(multiLineStartPatternString));
                     }
+                    break;
+                case USER_COMPONENT_UPLOAD_TO_CW_CONFIG_TOPIC_NAME:
+                    componentLogConfiguration.setUploadToCloudWatch(Coerce.toBoolean(val));
                     break;
                 default:
                     break;
@@ -409,7 +415,7 @@ public class LogManagerService extends PluginService {
                     CurrentProcessingFileInformation.builder().build();
             currentProcessingComponentTopics.iterator().forEachRemaining(node ->
                     currentProcessingFileInformation.updateFromTopic((Topic) node));
-            // Only store the processing information when the fileHashis not empty or null.
+            // Only store the processing information when the fileHash is not empty or null.
             if (Utils.isNotEmpty(currentProcessingFileInformation.getFileHash())) {
                 componentCurrentProcessingLogFile.put(componentName, currentProcessingFileInformation);
             }
@@ -452,7 +458,6 @@ public class LogManagerService extends PluginService {
                                     currentProcessingLogFilePerComponent, attemptLogInformation, fileHash,
                                     cloudWatchAttemptLogFileInformation));
         });
-        System.out.println("delete start");
         completedLogFilePerComponent.forEach((componentName, completedFiles) -> {
             completedFiles.forEach(file -> {
                 if (!lastComponentUploadedLogFileInstantMap.containsKey(componentName)
@@ -594,9 +599,7 @@ public class LogManagerService extends PluginService {
                 Instant lastUploadedLogFileTimeMs =
                         lastComponentUploadedLogFileInstantMap.getOrDefault(componentName,
                                 Instant.EPOCH);
-
                 try {
-                    System.out.println("scan logFileGroup for " + componentName);
                     LogFileGroup logFileGroup =
                             LogFileGroup.create(componentLogConfiguration.getFileNameRegex(),
                                     componentLogConfiguration.getDirectoryPath().toUri(), lastUploadedLogFileTimeMs);
@@ -616,7 +619,6 @@ public class LogManagerService extends PluginService {
                     logFileGroup.forEach(file -> {
                         long startPosition = 0;
                         String fileHash = file.hashString();
-                        System.out.println("file " + file.getName() + " fileHash: " + fileHash);
                         // The file must contain enough lines for digest hash, otherwise fileHash is empty string
                         if (!HASH_VALUE_OF_EMPTY_STRING.equals(fileHash)) {
                             // If the file was partially read in the previous run, then get the starting position for
@@ -624,12 +626,10 @@ public class LogManagerService extends PluginService {
                             if (componentCurrentProcessingLogFile.containsKey(componentName)) {
                                 CurrentProcessingFileInformation processingFileInformation =
                                         componentCurrentProcessingLogFile.get(componentName);
-                                if (processingFileInformation.fileHash.equals(fileHash)
-                                        && processingFileInformation.lastModifiedTime == file.lastModified()) {
+                                if (processingFileInformation.fileHash.equals(fileHash)) {
                                     startPosition = processingFileInformation.startPosition;
                                 }
                             }
-                            System.out.println("scan: " + file.getName() + " with size " + startPosition);
 
                             //TODO: setting this flag is only to develop incrementally without having to changed all
                             // tests yet, so that we can avoid a massive PR. This will be removed in the end.
@@ -637,7 +637,6 @@ public class LogManagerService extends PluginService {
                                 if (file.fileEquals(logFileGroup.getActiveFile().get())
                                         && startPosition == file.length()) {
                                     isActiveFileCompleted.set(true);
-                                    System.out.println("current active file: " + logFileGroup.getActiveFile().get().getName());
                                 }
                             }
 

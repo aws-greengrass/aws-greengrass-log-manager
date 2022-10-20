@@ -13,7 +13,6 @@ import com.aws.greengrass.logmanager.model.CloudWatchAttemptLogInformation;
 import com.aws.greengrass.logmanager.model.ComponentLogFileInformation;
 import com.aws.greengrass.logmanager.model.ComponentType;
 import com.aws.greengrass.logmanager.model.LogFile;
-import com.aws.greengrass.logmanager.model.LogFileGroup;
 import com.aws.greengrass.logmanager.model.LogFileInformation;
 import com.aws.greengrass.testcommons.testutilities.GGExtension;
 import com.aws.greengrass.testcommons.testutilities.GGServiceTestUtil;
@@ -59,7 +58,6 @@ import java.util.regex.Pattern;
 import static com.aws.greengrass.deployment.DeviceConfiguration.DEVICE_PARAM_AWS_REGION;
 import static com.aws.greengrass.deployment.DeviceConfiguration.DEVICE_PARAM_THING_NAME;
 import static com.aws.greengrass.logmanager.CloudWatchAttemptLogsProcessor.DEFAULT_LOG_GROUP_NAME;
-import static com.aws.greengrass.logmanager.util.TestUtils.createLogFileWithSize;
 import static com.aws.greengrass.testcommons.testutilities.ExceptionLogProtector.ignoreExceptionOfType;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.hasSize;
@@ -88,7 +86,6 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
     static Path directoryPath;
 
     private CloudWatchAttemptLogsProcessor logsProcessor;
-    private final static Instant mockInstant = Instant.EPOCH;
 
     @BeforeEach
     public void startup() {

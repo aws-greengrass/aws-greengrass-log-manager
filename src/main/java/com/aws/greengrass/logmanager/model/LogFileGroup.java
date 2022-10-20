@@ -59,16 +59,13 @@ public final class LogFileGroup {
                         lastUpdated.isBefore(Instant.ofEpochMilli(file.lastModified()));
                 boolean isNameMatchPattern = filePattern.matcher(file.getName()).find();
                 boolean isEmptyFileHash = Utils.isEmpty(fileHash);
-                System.out.println("before: " + file.getName() + " | empty hash: " + isEmptyFileHash + " | name "
-                        + "match: "
-                        + isNameMatchPattern + " | modify:" + isModifiedAfterLastUpdatedFile);
+
                 if (file.isFile()
                         && isModifiedAfterLastUpdatedFile
                         && isNameMatchPattern
                         && !isEmptyFileHash) {
                     allFiles.add(file);
                     fileHashToLogFile.put(fileHash, file);
-                    System.out.println(file.getName());
                 }
             }
         }

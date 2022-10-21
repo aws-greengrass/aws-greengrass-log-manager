@@ -122,6 +122,8 @@ public class LogManagerService extends PluginService {
     @Getter
     private int periodicUpdateIntervalSec;
     private Future<?> spaceManagementThread;
+    // public only for integ tests
+    public final AtomicBoolean isActiveFileCompleted = new AtomicBoolean(false);
 
     /**
      * Constructor.
@@ -593,7 +595,6 @@ public class LogManagerService extends PluginService {
             }
             AtomicReference<Optional<ComponentLogFileInformation>> componentLogFileInformation =
                     new AtomicReference<>(Optional.empty());
-            AtomicBoolean isActiveFileCompleted = new AtomicBoolean(false);
             // Get the latest known configurations because the componentLogConfigurations can change if a new
             // configuration is received from the customer.
             for (ComponentLogConfiguration componentLogConfiguration : componentLogConfigurations.values()) {

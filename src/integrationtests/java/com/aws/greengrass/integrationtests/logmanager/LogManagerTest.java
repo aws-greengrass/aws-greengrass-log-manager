@@ -29,7 +29,9 @@ import org.junit.jupiter.api.extension.ExtensionContext;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
 import org.mockito.Mock;
+import org.mockito.invocation.InvocationOnMock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.stubbing.Answer;
 import org.slf4j.event.Level;
 import software.amazon.awssdk.crt.CrtRuntimeException;
 import software.amazon.awssdk.services.cloudwatchlogs.CloudWatchLogsClient;
@@ -79,6 +81,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -482,23 +485,40 @@ class LogManagerTest extends BaseITCase {
         int testFileNumber = 4;
         for (int i = 0; i < testFileNumber; i++) {
             String randomName1 = UUID.randomUUID().toString();
-            String randomName2 = UUID.randomUUID().toString();
             LogFile logFile = createTempFileAndWriteDataAndReturnFile(tempDirectoryPath,
-                    randomName1 + "UserComponentB.", randomName2);
+                    randomName1 + "UserComponentB.");
             logFiles.add(logFile);
         }
 
         setupKernel(tempDirectoryPath, "randomlyNamedFilesWithoutComponentsConfig.yaml");
+
+        final CountDownLatch latch1 = new CountDownLatch(1);
+        doReturn(new Answer<Object>()
+                 {
+                     @Override
+                     public Object answer(InvocationOnMock invocation)
+                     {
+                         latch1.countDown();
+                         return null;
+                     }
+                 }
+        ).when(logManagerService).isActiveFileCompleted.equals(true);
+
+        try {
+            assertTrue(latch1.await(15, TimeUnit.SECONDS));
+        } catch (InterruptedException e) {
+            // do nothing
+        }
+
         //TODO: this lazy sleeping inherits from existing tests, but should be replaced by some better mechanism in
         // future refactoring
-        TimeUnit.SECONDS.sleep(15);
+        //TimeUnit.SECONDS.sleep(15);
 
         // randomly rename file and see if uploader trying to process more file.
         for (LogFile logFile : logFiles) {
-            String randomName3 = UUID.randomUUID().toString();
-            String randomName4 = UUID.randomUUID().toString();
+            String randomName2 = UUID.randomUUID().toString();
             LogFile renameFile = new LogFile(Files.createTempFile(tempDirectoryPath,
-                    randomName3 + "UserComponentB.", randomName4).toUri());
+                    randomName2 + "UserComponentB.", "").toUri());
             String tempFileHash = logFile.hashString();
             logFile.renameTo(renameFile);
             assertEquals(renameFile.hashString(), tempFileHash);
@@ -506,7 +526,25 @@ class LogManagerTest extends BaseITCase {
         }
         //TODO: this lazy sleeping inherits from existing tests, but should be replaced by some better mechanism in
         // future refactoring
-        TimeUnit.SECONDS.sleep(15);
+        //TimeUnit.SECONDS.sleep(15);
+
+        final CountDownLatch latch2 = new CountDownLatch(1);
+        doReturn(new Answer<Object>()
+                 {
+                     @Override
+                     public Object answer(InvocationOnMock invocation)
+                     {
+                         latch2.countDown();
+                         return null;
+                     }
+                 }
+        ).when(logManagerService).isActiveFileCompleted.equals(true);
+
+        try {
+            assertTrue(latch2.await(15, TimeUnit.SECONDS));
+        } catch (InterruptedException e) {
+            // do nothing
+        }
 
         // Even the file are all renamed, the cloudWatchClient should only try to upload events once, and the total
         // size should be contents of 4 files.
@@ -557,25 +595,41 @@ class LogManagerTest extends BaseITCase {
         int testFileNumber = 4;
         for (int i = 0; i < testFileNumber; i++) {
             String randomName1 = UUID.randomUUID().toString();
-            String randomName2 = UUID.randomUUID().toString();
             LogFile logFile = createTempFileAndWriteDataAndReturnFile(tempDirectoryPath,
-                    randomName1 + "UserComponentB.", randomName2);
+                    randomName1 + "UserComponentB.");
             logFiles.add(logFile);
         }
 
         setupKernel(tempDirectoryPath, "randomlyNamedFilesWithoutComponentsConfig.yaml");
         //TODO: this lazy sleeping inherits from existing tests, but should be replaced by some better mechanism in
         // future refactoring.
-        TimeUnit.SECONDS.sleep(15);
+        //TimeUnit.SECONDS.sleep(15);
+
+        final CountDownLatch latch1 = new CountDownLatch(1);
+        doReturn(new Answer<Object>()
+                 {
+                     @Override
+                     public Object answer(InvocationOnMock invocation)
+                     {
+                         latch1.countDown();
+                         return null;
+                     }
+                 }
+        ).when(logManagerService).isActiveFileCompleted.equals(true);
+
+        try {
+            assertTrue(latch1.await(15, TimeUnit.SECONDS));
+        } catch (InterruptedException e) {
+            // do nothing
+        }
 
         // randomly rename file and see if uploader trying to process more file.
         logFiles.sort(Comparator.comparingLong(LogFile::lastModified));
         for (int i = 0; i < logFiles.size(); i++) {
             LogFile logFile = logFiles.get(i);
-            String randomName3 = UUID.randomUUID().toString();
-            String randomName4 = UUID.randomUUID().toString();
+            String randomName2 = UUID.randomUUID().toString();
             LogFile renameFile = new LogFile(Files.createTempFile(tempDirectoryPath,
-                    randomName3 + "UserComponentB.", randomName4).toUri());
+                    randomName2 + "UserComponentB.", "").toUri());
             String tempFileHash = logFile.hashString();
             logFile.renameTo(renameFile);
             // add more data into the active file.
@@ -592,7 +646,24 @@ class LogManagerTest extends BaseITCase {
         }
         //TODO: this lazy sleeping inherits from existing tests, but should be replaced by some better mechanism in
         // future refactoring.
-        TimeUnit.SECONDS.sleep(15);
+        //TimeUnit.SECONDS.sleep(15);
+        final CountDownLatch latch2 = new CountDownLatch(1);
+        doReturn(new Answer<Object>()
+                 {
+                     @Override
+                     public Object answer(InvocationOnMock invocation)
+                     {
+                         latch2.countDown();
+                         return null;
+                     }
+                 }
+        ).when(logManagerService).isActiveFileCompleted.equals(true);
+
+        try {
+            assertTrue(latch2.await(15, TimeUnit.SECONDS));
+        } catch (InterruptedException e) {
+            // do nothing
+        }
 
         // All files are renamed, and only the active file adds 10250 bytes contents, so we shall expect two tries
         // for putLogEvents, and one is for uploading 4 files content, another is for only upload 10250 bytes.

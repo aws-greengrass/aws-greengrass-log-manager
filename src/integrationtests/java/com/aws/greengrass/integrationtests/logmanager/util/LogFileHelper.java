@@ -71,9 +71,9 @@ public final class LogFileHelper {
         }
     }
 
-    public static LogFile createTempFileAndWriteDataAndReturnFile(Path tempDirectoryPath, String fileNamePrefix,
-                                                                  String fileNameSuffix) throws IOException {
-        Path filePath = Files.createTempFile(tempDirectoryPath, fileNamePrefix, fileNameSuffix);
+    public static LogFile createTempFileAndWriteDataAndReturnFile(Path tempDirectoryPath, String fileNamePrefix)
+            throws IOException {
+        Path filePath = Files.createTempFile(tempDirectoryPath, fileNamePrefix, "");
         File file = filePath.toFile();
         List<String> randomMessages = generateRandomMessages();
         for (String messageBytes : randomMessages) {

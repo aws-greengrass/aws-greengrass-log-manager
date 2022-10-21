@@ -16,6 +16,7 @@ import com.aws.greengrass.logging.impl.config.LogConfig;
 import com.aws.greengrass.logging.impl.config.LogStore;
 import com.aws.greengrass.logging.impl.config.model.LogConfigUpdate;
 import com.aws.greengrass.logmanager.LogManagerService;
+import com.aws.greengrass.logmanager.model.LogFile;
 import com.aws.greengrass.testcommons.testutilities.GGExtension;
 import com.aws.greengrass.util.exceptions.TLSAuthException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -46,11 +47,13 @@ import java.nio.file.Paths;
 import java.text.SimpleDateFormat;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.TimeZone;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -59,14 +62,18 @@ import java.util.regex.Pattern;
 import static com.aws.greengrass.deployment.converter.DeploymentDocumentConverter.LOCAL_DEPLOYMENT_GROUP_NAME;
 import static com.aws.greengrass.integrationtests.logmanager.util.LogFileHelper.DEFAULT_FILE_SIZE;
 import static com.aws.greengrass.integrationtests.logmanager.util.LogFileHelper.DEFAULT_LOG_LINE_IN_FILE;
+import static com.aws.greengrass.integrationtests.logmanager.util.LogFileHelper.addDataToFile;
 import static com.aws.greengrass.integrationtests.logmanager.util.LogFileHelper.createFileAndWriteData;
 import static com.aws.greengrass.integrationtests.logmanager.util.LogFileHelper.createTempFileAndWriteData;
+import static com.aws.greengrass.integrationtests.logmanager.util.LogFileHelper.createTempFileAndWriteDataAndReturnFile;
+import static com.aws.greengrass.integrationtests.logmanager.util.LogFileHelper.generateRandomMessages;
 import static com.aws.greengrass.logging.impl.config.LogConfig.newLogConfigFromRootConfig;
 import static com.aws.greengrass.logmanager.CloudWatchAttemptLogsProcessor.DEFAULT_LOG_STREAM_NAME;
 import static com.aws.greengrass.logmanager.LogManagerService.DEFAULT_FILE_REGEX;
 import static com.aws.greengrass.testcommons.testutilities.ExceptionLogProtector.ignoreExceptionOfType;
 import static com.aws.greengrass.testcommons.testutilities.ExceptionLogProtector.ignoreExceptionWithMessage;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -453,4 +460,166 @@ class LogManagerTest extends BaseITCase {
         assertEquals(1, allFiles.size());
         logManagerService.ACTIVE_LOG_FILE_FEATURE_ENABLED_FLAG.set(false);
     }
+
+    @Test
+    void GIVEN_files_randomly_named_WHEN_all_files_renamed_randomly_THEN_all_files_only_send_once()
+            throws Exception {
+        when(cloudWatchLogsClient.putLogEvents(any(PutLogEventsRequest.class))).thenReturn(
+                PutLogEventsResponse.builder().nextSequenceToken("nextToken").build());
+
+        tempDirectoryPath = Files.createDirectory(tempRootDir.resolve("logs"));
+        LogConfig.getRootLogConfig().setLevel(Level.TRACE);
+        LogConfig.getRootLogConfig().setStore(LogStore.FILE);
+        LogManager.getLogConfigurations().putIfAbsent("UserComponentB",
+                newLogConfigFromRootConfig(LogConfigUpdate.builder().fileName("UserComponentB.log").build()));
+
+        List<LogFile> logFiles = new ArrayList<>();
+        int testFileNumber = 4;
+        for (int i = 0; i < testFileNumber; i++) {
+            String randomName1 = UUID.randomUUID().toString();
+            String randomName2 = UUID.randomUUID().toString();
+            LogFile logFile = createTempFileAndWriteDataAndReturnFile(tempDirectoryPath,
+                    randomName1 + "UserComponentB.", randomName2);
+            logFiles.add(logFile);
+        }
+
+        setupKernel(tempDirectoryPath, "randomlyNamedFilesWithoutComponentsConfig.yaml");
+        //TODO: this lazy sleeping inherits from existing tests, but should be replaced by some better mechanism in
+        // future refactoring
+        TimeUnit.SECONDS.sleep(15);
+
+        // randomly rename file and see if uploader trying to process more file.
+        for (LogFile logFile : logFiles) {
+            String randomName3 = UUID.randomUUID().toString();
+            String randomName4 = UUID.randomUUID().toString();
+            LogFile renameFile = new LogFile(Files.createTempFile(tempDirectoryPath,
+                    randomName3 + "UserComponentB.", randomName4).toUri());
+            String tempFileHash = logFile.hashString();
+            logFile.renameTo(renameFile);
+            assertEquals(renameFile.hashString(), tempFileHash);
+            assertFalse(logFile.exists());
+        }
+        //TODO: this lazy sleeping inherits from existing tests, but should be replaced by some better mechanism in
+        // future refactoring
+        TimeUnit.SECONDS.sleep(15);
+
+        // Even the file are all renamed, the cloudWatchClient should only try to upload events once, and the total
+        // size should be contents of 4 files.
+        verify(cloudWatchLogsClient, times(1)).putLogEvents(captor.capture());
+
+        List<PutLogEventsRequest> putLogEventsRequests = captor.getAllValues();
+        assertEquals(1, putLogEventsRequests.size());
+        for (PutLogEventsRequest request : putLogEventsRequests) {
+            assertEquals(calculateLogStreamName(THING_NAME, LOCAL_DEPLOYMENT_GROUP_NAME), request.logStreamName());
+            assertEquals("/aws/greengrass/UserComponent/" + AWS_REGION + "/UserComponentB", request.logGroupName());
+            assertNotNull(request.logEvents());
+            assertEquals(DEFAULT_LOG_LINE_IN_FILE * testFileNumber, request.logEvents().size());
+            assertEquals(DEFAULT_FILE_SIZE * testFileNumber,
+                    request.logEvents().stream().mapToLong(value -> value.message().length()).sum());
+        }
+        // confirm no file is deleted
+        File folder = tempDirectoryPath.toFile();
+        Pattern logFileNamePattern = Pattern.compile("\\w*UserComponentB\\w*.\\w*");
+        List<File> allFiles = new ArrayList<>();
+        File[] files = folder.listFiles();
+        if (files != null) {
+            for (File file : files) {
+                if (file.isFile() && logFileNamePattern.matcher(file.getName()).find() && file.length() > 0) {
+                    allFiles.add(file);
+                }
+            }
+        }
+        assertEquals(testFileNumber, allFiles.size());
+    }
+
+    @Test
+    void GIVEN_files_randomly_named_WHEN_all_files_renamed_randomly_and_new_data_in_active_file_THEN_all_files_only_send_once()
+            throws Exception {
+        when(cloudWatchLogsClient.putLogEvents(any(PutLogEventsRequest.class))).thenReturn(
+                PutLogEventsResponse.builder().nextSequenceToken("nextToken").build());
+
+        tempDirectoryPath = Files.createDirectory(tempRootDir.resolve("logs"));
+        LogConfig.getRootLogConfig().setLevel(Level.TRACE);
+        LogConfig.getRootLogConfig().setStore(LogStore.FILE);
+        LogManager.getLogConfigurations().putIfAbsent("UserComponentB",
+                newLogConfigFromRootConfig(LogConfigUpdate.builder().fileName("UserComponentB.log").build()));
+
+        List<LogFile> logFiles = new ArrayList<>();
+        int testFileNumber = 4;
+        for (int i = 0; i < testFileNumber; i++) {
+            String randomName1 = UUID.randomUUID().toString();
+            String randomName2 = UUID.randomUUID().toString();
+            LogFile logFile = createTempFileAndWriteDataAndReturnFile(tempDirectoryPath,
+                    randomName1 + "UserComponentB.", randomName2);
+            logFiles.add(logFile);
+        }
+
+        setupKernel(tempDirectoryPath, "randomlyNamedFilesWithoutComponentsConfig.yaml");
+        //TODO: this lazy sleeping inherits from existing tests, but should be replaced by some better mechanism in
+        // future refactoring.
+        TimeUnit.SECONDS.sleep(15);
+
+        // randomly rename file and see if uploader trying to process more file.
+        logFiles.sort(Comparator.comparingLong(LogFile::lastModified));
+        for (int i = 0; i < logFiles.size(); i++) {
+            LogFile logFile = logFiles.get(i);
+            String randomName3 = UUID.randomUUID().toString();
+            String randomName4 = UUID.randomUUID().toString();
+            LogFile renameFile = new LogFile(Files.createTempFile(tempDirectoryPath,
+                    randomName3 + "UserComponentB.", randomName4).toUri());
+            String tempFileHash = logFile.hashString();
+            logFile.renameTo(renameFile);
+            // add more data into the active file.
+            if (i == logFiles.size() - 1) {
+                //generate 10250 bytes
+                List<String> randomMessages = generateRandomMessages();
+                for (String messageBytes : randomMessages) {
+                    addDataToFile(messageBytes, renameFile.toPath());
+                }
+            }
+
+            assertEquals(renameFile.hashString(), tempFileHash);
+            assertFalse(logFile.exists());
+        }
+        //TODO: this lazy sleeping inherits from existing tests, but should be replaced by some better mechanism in
+        // future refactoring.
+        TimeUnit.SECONDS.sleep(15);
+
+        // All files are renamed, and only the active file adds 10250 bytes contents, so we shall expect two tries
+        // for putLogEvents, and one is for uploading 4 files content, another is for only upload 10250 bytes.
+        verify(cloudWatchLogsClient, times(2)).putLogEvents(captor.capture());
+
+        List<PutLogEventsRequest> putLogEventsRequests = captor.getAllValues();
+        assertEquals(2, putLogEventsRequests.size());
+        for (int i=0; i < 2; i++) {
+            PutLogEventsRequest request = putLogEventsRequests.get(i);
+            assertEquals(calculateLogStreamName(THING_NAME, LOCAL_DEPLOYMENT_GROUP_NAME), request.logStreamName());
+            assertEquals("/aws/greengrass/UserComponent/" + AWS_REGION + "/UserComponentB", request.logGroupName());
+            assertNotNull(request.logEvents());
+            if (i == 1) {
+                assertEquals(DEFAULT_LOG_LINE_IN_FILE, request.logEvents().size());
+                assertEquals(DEFAULT_FILE_SIZE,
+                        request.logEvents().stream().mapToLong(value -> value.message().length()).sum());
+            }
+            if (i == 0) {
+                assertEquals(DEFAULT_LOG_LINE_IN_FILE * testFileNumber, request.logEvents().size());
+                assertEquals(DEFAULT_FILE_SIZE * testFileNumber,
+                        request.logEvents().stream().mapToLong(value -> value.message().length()).sum());
+            }
+        }
+        // confirm no file is deleted
+        File folder = tempDirectoryPath.toFile();
+        Pattern logFileNamePattern = Pattern.compile("\\w*UserComponentB\\w*.\\w*");
+        List<File> allFiles = new ArrayList<>();
+        File[] files = folder.listFiles();
+        if (files != null) {
+            for (File file : files) {
+                if (file.isFile() && logFileNamePattern.matcher(file.getName()).find() && file.length() > 0) {
+                    allFiles.add(file);
+                }
+            }
+        }
+        assertEquals(testFileNumber, allFiles.size());
+    }
+
 }

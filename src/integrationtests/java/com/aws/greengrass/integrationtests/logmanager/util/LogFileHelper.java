@@ -5,6 +5,8 @@
 
 package com.aws.greengrass.integrationtests.logmanager.util;
 
+import com.aws.greengrass.logmanager.model.LogFile;
+
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.IOException;
@@ -67,5 +69,16 @@ public final class LogFileHelper {
         for (String messageBytes : randomMessages) {
             addDataToFile(messageBytes, file.toPath());
         }
+    }
+
+    public static LogFile createTempFileAndWriteDataAndReturnFile(Path tempDirectoryPath, String fileNamePrefix,
+                                                                  String fileNameSuffix) throws IOException {
+        Path filePath = Files.createTempFile(tempDirectoryPath, fileNamePrefix, fileNameSuffix);
+        File file = filePath.toFile();
+        List<String> randomMessages = generateRandomMessages();
+        for (String messageBytes : randomMessages) {
+            addDataToFile(messageBytes, file.toPath());
+        }
+        return LogFile.of(file);
     }
 }

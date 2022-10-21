@@ -25,6 +25,5 @@ public class ComponentLogConfiguration {
     private Level minimumLogLevel = Level.INFO;
     private Long diskSpaceLimit;
     private boolean deleteLogFileAfterCloudUpload;
-    private boolean uploadToCloudWatch;
     private ComponentType componentType;
 }

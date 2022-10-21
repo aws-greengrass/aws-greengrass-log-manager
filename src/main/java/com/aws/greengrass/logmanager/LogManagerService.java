@@ -101,12 +101,8 @@ public class LogManagerService extends PluginService {
     public static final String DELETE_LOG_FILES_AFTER_UPLOAD_CONFIG_TOPIC_NAME = "deleteLogFileAfterCloudUpload";
     public static final String UPLOAD_TO_CW_CONFIG_TOPIC_NAME = "uploadToCloudWatch";
     public static final String MULTILINE_PATTERN_CONFIG_TOPIC_NAME = "multiLineStartPattern";
-    public static final String USER_COMPONENT_UPLOAD_TO_CW_CONFIG_TOPIC_NAME = "userComponentUploadToCloudWatch";
     public static final int DEFAULT_PERIODIC_UPDATE_INTERVAL_SEC = 300;
     private final Object spaceManagementLock = new Object();
-    // TODO: this is the flag to marking the code that used for the feature development, in order to maintain PR
-    //  small and we can modify tests in the following PR.
-    public static final AtomicBoolean ACTIVE_LOG_FILE_FEATURE_ENABLED_FLAG = new AtomicBoolean(true);
 
     // public only for integ tests
     public final Map<String, Instant> lastComponentUploadedLogFileInstantMap =
@@ -251,10 +247,9 @@ public class LogManagerService extends PluginService {
         logger.atInfo().kv("componentName", componentLogConfiguration.getName())
                 .log("Process LogManager configuration for Greengrass user component");
         setCommonComponentConfiguration(componentConfigMap, componentLogConfiguration);
-        if (componentLogConfiguration.isUploadToCloudWatch()) {
-            newComponentLogConfigurations.put(componentLogConfiguration.getName(), componentLogConfiguration);
-            loadStateFromConfiguration(componentLogConfiguration.getName());
-        }
+        newComponentLogConfigurations.put(componentLogConfiguration.getName(), componentLogConfiguration);
+        loadStateFromConfiguration(componentLogConfiguration.getName());
+
     }
 
     @SuppressWarnings("PMD.ConfusingTernary")
@@ -285,9 +280,6 @@ public class LogManagerService extends PluginService {
                         componentLogConfiguration.setMultiLineStartPattern(Pattern
                                 .compile(multiLineStartPatternString));
                     }
-                    break;
-                case USER_COMPONENT_UPLOAD_TO_CW_CONFIG_TOPIC_NAME:
-                    componentLogConfiguration.setUploadToCloudWatch(Coerce.toBoolean(val));
                     break;
                 default:
                     break;

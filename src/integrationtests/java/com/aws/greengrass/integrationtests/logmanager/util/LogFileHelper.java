@@ -58,7 +58,7 @@ public final class LogFileHelper {
         }
     }
 
-    public static void createFileAndWriteData(Path tempDirectoryPath, String fileName)
+    public static LogFile createFileAndWriteData(Path tempDirectoryPath, String fileName)
             throws IOException {
         Path filePath = tempDirectoryPath.resolve(fileName + ".log");
         if (!Files.exists(filePath)) {
@@ -69,16 +69,7 @@ public final class LogFileHelper {
         for (String messageBytes : randomMessages) {
             addDataToFile(messageBytes, file.toPath());
         }
-    }
-
-    public static LogFile createTempFileAndWriteDataAndReturnFile(Path tempDirectoryPath, String fileNamePrefix)
-            throws IOException {
-        Path filePath = Files.createTempFile(tempDirectoryPath, fileNamePrefix, "");
-        File file = filePath.toFile();
-        List<String> randomMessages = generateRandomMessages();
-        for (String messageBytes : randomMessages) {
-            addDataToFile(messageBytes, file.toPath());
-        }
         return LogFile.of(file);
     }
+
 }

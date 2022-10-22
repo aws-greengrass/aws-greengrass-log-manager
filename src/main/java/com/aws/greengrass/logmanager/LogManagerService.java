@@ -24,6 +24,7 @@ import com.aws.greengrass.logmanager.model.ComponentType;
 import com.aws.greengrass.logmanager.model.LogFile;
 import com.aws.greengrass.logmanager.model.LogFileGroup;
 import com.aws.greengrass.logmanager.model.LogFileInformation;
+import com.aws.greengrass.logmanager.util.ActiveFileCompletedListener;
 import com.aws.greengrass.util.Coerce;
 import com.aws.greengrass.util.Utils;
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -70,6 +71,7 @@ import javax.inject.Inject;
 import static com.aws.greengrass.componentmanager.KernelConfigResolver.CONFIGURATION_CONFIG_KEY;
 import static com.aws.greengrass.logmanager.LogManagerService.LOGS_UPLOADER_SERVICE_TOPICS;
 import static com.aws.greengrass.logmanager.model.LogFile.HASH_VALUE_OF_EMPTY_STRING;
+import static com.aws.greengrass.logmanager.util.ActiveFileCompletedListener.ActiveFileStatusType.ACTIVE_FILE_COMPLETED;
 
 
 @ImplementsService(name = LOGS_UPLOADER_SERVICE_TOPICS, version = "2.0.0")
@@ -123,7 +125,8 @@ public class LogManagerService extends PluginService {
     private int periodicUpdateIntervalSec;
     private Future<?> spaceManagementThread;
     // public only for integ tests
-    public final AtomicBoolean isActiveFileCompleted = new AtomicBoolean(false);
+    public final ActiveFileCompletedListener activeFileCompletedListener = new ActiveFileCompletedListener();
+
 
     /**
      * Constructor.
@@ -151,6 +154,7 @@ public class LogManagerService extends PluginService {
         });
 
         this.uploader.registerAttemptStatus(LOGS_UPLOADER_SERVICE_TOPICS, this::handleCloudWatchAttemptStatus);
+        activeFileCompletedListener.registerlistener(this::handleActiveFileStatus);
     }
 
     private void handlePeriodicUploadIntervalSecConfig(Topics topics) {
@@ -595,6 +599,7 @@ public class LogManagerService extends PluginService {
             }
             AtomicReference<Optional<ComponentLogFileInformation>> componentLogFileInformation =
                     new AtomicReference<>(Optional.empty());
+            AtomicBoolean isActiveFileCompleted = new AtomicBoolean(false);
             // Get the latest known configurations because the componentLogConfigurations can change if a new
             // configuration is received from the customer.
             for (ComponentLogConfiguration componentLogConfiguration : componentLogConfigurations.values()) {
@@ -646,6 +651,7 @@ public class LogManagerService extends PluginService {
                                 if (file.fileEquals(logFileGroup.getActiveFile().get())
                                         && startPosition == file.length()) {
                                     isActiveFileCompleted.set(true);
+                                    activeFileCompletedListener.dispacthStatus(ACTIVE_FILE_COMPLETED);
                                 }
                             }
 
@@ -821,6 +827,10 @@ public class LogManagerService extends PluginService {
                 bytesDeleted += fileSize;
             }
         }
+    }
+
+    public void handleActiveFileStatus(ActiveFileCompletedListener.ActiveFileStatusType activeFileStatus) {
+        // do nothing. This method is created for test
     }
 
     @Override

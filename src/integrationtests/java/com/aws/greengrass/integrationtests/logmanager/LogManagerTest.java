@@ -17,6 +17,7 @@ import com.aws.greengrass.logging.impl.config.LogStore;
 import com.aws.greengrass.logging.impl.config.model.LogConfigUpdate;
 import com.aws.greengrass.logmanager.LogManagerService;
 import com.aws.greengrass.logmanager.model.LogFile;
+import com.aws.greengrass.logmanager.model.LogFileGroup;
 import com.aws.greengrass.testcommons.testutilities.GGExtension;
 import com.aws.greengrass.util.exceptions.TLSAuthException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -47,6 +48,7 @@ import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.text.SimpleDateFormat;
+import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -67,12 +69,12 @@ import static com.aws.greengrass.integrationtests.logmanager.util.LogFileHelper.
 import static com.aws.greengrass.integrationtests.logmanager.util.LogFileHelper.addDataToFile;
 import static com.aws.greengrass.integrationtests.logmanager.util.LogFileHelper.createFileAndWriteData;
 import static com.aws.greengrass.integrationtests.logmanager.util.LogFileHelper.createTempFileAndWriteData;
-import static com.aws.greengrass.integrationtests.logmanager.util.LogFileHelper.createTempFileAndWriteDataAndReturnFile;
 import static com.aws.greengrass.integrationtests.logmanager.util.LogFileHelper.generateRandomMessages;
 import static com.aws.greengrass.logging.impl.config.LogConfig.newLogConfigFromRootConfig;
 import static com.aws.greengrass.logmanager.CloudWatchAttemptLogsProcessor.DEFAULT_LOG_STREAM_NAME;
 import static com.aws.greengrass.logmanager.LogManagerService.ACTIVE_LOG_FILE_FEATURE_ENABLED_FLAG;
 import static com.aws.greengrass.logmanager.LogManagerService.DEFAULT_FILE_REGEX;
+import static com.aws.greengrass.logmanager.util.ActiveFileCompletedListener.ActiveFileStatusType.ACTIVE_FILE_COMPLETED;
 import static com.aws.greengrass.testcommons.testutilities.ExceptionLogProtector.ignoreExceptionOfType;
 import static com.aws.greengrass.testcommons.testutilities.ExceptionLogProtector.ignoreExceptionWithMessage;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -475,7 +477,8 @@ class LogManagerTest extends BaseITCase {
         when(cloudWatchLogsClient.putLogEvents(any(PutLogEventsRequest.class))).thenReturn(
                 PutLogEventsResponse.builder().nextSequenceToken("nextToken").build());
 
-        tempDirectoryPath = Files.createDirectory(tempRootDir.resolve("logs"));
+        tempDirectoryPath = Files.createDirectory(tempRootDir);
+        Instant mockInstant = Instant.EPOCH;
         LogConfig.getRootLogConfig().setLevel(Level.TRACE);
         LogConfig.getRootLogConfig().setStore(LogStore.FILE);
         LogManager.getLogConfigurations().putIfAbsent("UserComponentB",
@@ -485,34 +488,13 @@ class LogManagerTest extends BaseITCase {
         int testFileNumber = 4;
         for (int i = 0; i < testFileNumber; i++) {
             String randomName1 = UUID.randomUUID().toString();
-            LogFile logFile = createTempFileAndWriteDataAndReturnFile(tempDirectoryPath,
+            LogFile logFile = createFileAndWriteData(tempDirectoryPath,
                     randomName1 + "UserComponentB.");
             logFiles.add(logFile);
         }
 
         setupKernel(tempDirectoryPath, "randomlyNamedFilesWithoutComponentsConfig.yaml");
-
-        final CountDownLatch latch1 = new CountDownLatch(1);
-        doReturn(new Answer<Object>()
-                 {
-                     @Override
-                     public Object answer(InvocationOnMock invocation)
-                     {
-                         latch1.countDown();
-                         return null;
-                     }
-                 }
-        ).when(logManagerService).isActiveFileCompleted.equals(true);
-
-        try {
-            assertTrue(latch1.await(15, TimeUnit.SECONDS));
-        } catch (InterruptedException e) {
-            // do nothing
-        }
-
-        //TODO: this lazy sleeping inherits from existing tests, but should be replaced by some better mechanism in
-        // future refactoring
-        //TimeUnit.SECONDS.sleep(15);
+        assertTrue(isActiveFileProcessedOrTimeout(logManagerService));
 
         // randomly rename file and see if uploader trying to process more file.
         for (LogFile logFile : logFiles) {
@@ -524,27 +506,7 @@ class LogManagerTest extends BaseITCase {
             assertEquals(renameFile.hashString(), tempFileHash);
             assertFalse(logFile.exists());
         }
-        //TODO: this lazy sleeping inherits from existing tests, but should be replaced by some better mechanism in
-        // future refactoring
-        //TimeUnit.SECONDS.sleep(15);
-
-        final CountDownLatch latch2 = new CountDownLatch(1);
-        doReturn(new Answer<Object>()
-                 {
-                     @Override
-                     public Object answer(InvocationOnMock invocation)
-                     {
-                         latch2.countDown();
-                         return null;
-                     }
-                 }
-        ).when(logManagerService).isActiveFileCompleted.equals(true);
-
-        try {
-            assertTrue(latch2.await(15, TimeUnit.SECONDS));
-        } catch (InterruptedException e) {
-            // do nothing
-        }
+        assertTrue(isActiveFileProcessedOrTimeout(logManagerService));
 
         // Even the file are all renamed, the cloudWatchClient should only try to upload events once, and the total
         // size should be contents of 4 files.
@@ -561,18 +523,9 @@ class LogManagerTest extends BaseITCase {
                     request.logEvents().stream().mapToLong(value -> value.message().length()).sum());
         }
         // confirm no file is deleted
-        File folder = tempDirectoryPath.toFile();
         Pattern logFileNamePattern = Pattern.compile("\\w*UserComponentB\\w*.\\w*");
-        List<File> allFiles = new ArrayList<>();
-        File[] files = folder.listFiles();
-        if (files != null) {
-            for (File file : files) {
-                if (file.isFile() && logFileNamePattern.matcher(file.getName()).find() && file.length() > 0) {
-                    allFiles.add(file);
-                }
-            }
-        }
-        assertEquals(testFileNumber, allFiles.size());
+        LogFileGroup logFileGroup = LogFileGroup.create(logFileNamePattern, tempDirectoryPath.toUri(), mockInstant);
+        assertEquals(testFileNumber, logFileGroup.getLogFiles().size());
     }
 
     @Test
@@ -585,7 +538,8 @@ class LogManagerTest extends BaseITCase {
         when(cloudWatchLogsClient.putLogEvents(any(PutLogEventsRequest.class))).thenReturn(
                 PutLogEventsResponse.builder().nextSequenceToken("nextToken").build());
 
-        tempDirectoryPath = Files.createDirectory(tempRootDir.resolve("logs"));
+        tempDirectoryPath = Files.createDirectory(tempRootDir);
+        Instant mockInstant = Instant.EPOCH;
         LogConfig.getRootLogConfig().setLevel(Level.TRACE);
         LogConfig.getRootLogConfig().setStore(LogStore.FILE);
         LogManager.getLogConfigurations().putIfAbsent("UserComponentB",
@@ -595,33 +549,13 @@ class LogManagerTest extends BaseITCase {
         int testFileNumber = 4;
         for (int i = 0; i < testFileNumber; i++) {
             String randomName1 = UUID.randomUUID().toString();
-            LogFile logFile = createTempFileAndWriteDataAndReturnFile(tempDirectoryPath,
+            LogFile logFile = createFileAndWriteData(tempDirectoryPath,
                     randomName1 + "UserComponentB.");
             logFiles.add(logFile);
         }
 
         setupKernel(tempDirectoryPath, "randomlyNamedFilesWithoutComponentsConfig.yaml");
-        //TODO: this lazy sleeping inherits from existing tests, but should be replaced by some better mechanism in
-        // future refactoring.
-        //TimeUnit.SECONDS.sleep(15);
-
-        final CountDownLatch latch1 = new CountDownLatch(1);
-        doReturn(new Answer<Object>()
-                 {
-                     @Override
-                     public Object answer(InvocationOnMock invocation)
-                     {
-                         latch1.countDown();
-                         return null;
-                     }
-                 }
-        ).when(logManagerService).isActiveFileCompleted.equals(true);
-
-        try {
-            assertTrue(latch1.await(15, TimeUnit.SECONDS));
-        } catch (InterruptedException e) {
-            // do nothing
-        }
+        assertTrue(isActiveFileProcessedOrTimeout(logManagerService));
 
         // randomly rename file and see if uploader trying to process more file.
         logFiles.sort(Comparator.comparingLong(LogFile::lastModified));
@@ -644,26 +578,8 @@ class LogManagerTest extends BaseITCase {
             assertEquals(renameFile.hashString(), tempFileHash);
             assertFalse(logFile.exists());
         }
-        //TODO: this lazy sleeping inherits from existing tests, but should be replaced by some better mechanism in
-        // future refactoring.
-        //TimeUnit.SECONDS.sleep(15);
-        final CountDownLatch latch2 = new CountDownLatch(1);
-        doReturn(new Answer<Object>()
-                 {
-                     @Override
-                     public Object answer(InvocationOnMock invocation)
-                     {
-                         latch2.countDown();
-                         return null;
-                     }
-                 }
-        ).when(logManagerService).isActiveFileCompleted.equals(true);
 
-        try {
-            assertTrue(latch2.await(15, TimeUnit.SECONDS));
-        } catch (InterruptedException e) {
-            // do nothing
-        }
+        assertTrue(isActiveFileProcessedOrTimeout(logManagerService));
 
         // All files are renamed, and only the active file adds 10250 bytes contents, so we shall expect two tries
         // for putLogEvents, and one is for uploading 4 files content, another is for only upload 10250 bytes.
@@ -688,18 +604,24 @@ class LogManagerTest extends BaseITCase {
             }
         }
         // confirm no file is deleted
-        File folder = tempDirectoryPath.toFile();
         Pattern logFileNamePattern = Pattern.compile("\\w*UserComponentB\\w*.\\w*");
-        List<File> allFiles = new ArrayList<>();
-        File[] files = folder.listFiles();
-        if (files != null) {
-            for (File file : files) {
-                if (file.isFile() && logFileNamePattern.matcher(file.getName()).find() && file.length() > 0) {
-                    allFiles.add(file);
-                }
-            }
-        }
-        assertEquals(testFileNumber, allFiles.size());
+        LogFileGroup logFileGroup = LogFileGroup.create(logFileNamePattern, tempDirectoryPath.toUri(), mockInstant);
+        assertEquals(testFileNumber, logFileGroup.getLogFiles().size());
     }
 
+    boolean isActiveFileProcessedOrTimeout(LogManagerService logManagerService) throws InterruptedException {
+        final CountDownLatch latch = new CountDownLatch(1);
+        doReturn(new Answer<Object>()
+                 {
+                     @Override
+                     public Object answer(InvocationOnMock invocation)
+                     {
+                         latch.countDown();
+                         return null;
+                     }
+                 }
+        ).when(logManagerService).handleActiveFileStatus(ACTIVE_FILE_COMPLETED);
+
+        return latch.await(15, TimeUnit.SECONDS);
+    }
 }

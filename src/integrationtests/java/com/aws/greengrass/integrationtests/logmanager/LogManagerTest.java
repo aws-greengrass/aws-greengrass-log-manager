@@ -16,6 +16,7 @@ import com.aws.greengrass.logging.impl.config.LogConfig;
 import com.aws.greengrass.logging.impl.config.LogStore;
 import com.aws.greengrass.logging.impl.config.model.LogConfigUpdate;
 import com.aws.greengrass.logmanager.LogManagerService;
+import com.aws.greengrass.logmanager.model.EventStatusType;
 import com.aws.greengrass.logmanager.model.LogFile;
 import com.aws.greengrass.logmanager.model.LogFileGroup;
 import com.aws.greengrass.testcommons.testutilities.GGExtension;
@@ -30,9 +31,7 @@ import org.junit.jupiter.api.extension.ExtensionContext;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
 import org.mockito.Mock;
-import org.mockito.invocation.InvocationOnMock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.mockito.stubbing.Answer;
 import org.slf4j.event.Level;
 import software.amazon.awssdk.crt.CrtRuntimeException;
 import software.amazon.awssdk.services.cloudwatchlogs.CloudWatchLogsClient;
@@ -74,7 +73,6 @@ import static com.aws.greengrass.logging.impl.config.LogConfig.newLogConfigFromR
 import static com.aws.greengrass.logmanager.CloudWatchAttemptLogsProcessor.DEFAULT_LOG_STREAM_NAME;
 import static com.aws.greengrass.logmanager.LogManagerService.ACTIVE_LOG_FILE_FEATURE_ENABLED_FLAG;
 import static com.aws.greengrass.logmanager.LogManagerService.DEFAULT_FILE_REGEX;
-import static com.aws.greengrass.logmanager.util.ActiveFileCompletedListener.ActiveFileStatusType.ACTIVE_FILE_COMPLETED;
 import static com.aws.greengrass.testcommons.testutilities.ExceptionLogProtector.ignoreExceptionOfType;
 import static com.aws.greengrass.testcommons.testutilities.ExceptionLogProtector.ignoreExceptionWithMessage;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -83,7 +81,6 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.atLeastOnce;
-import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -494,19 +491,15 @@ class LogManagerTest extends BaseITCase {
         }
 
         setupKernel(tempDirectoryPath, "randomlyNamedFilesWithoutComponentsConfig.yaml");
-        assertTrue(isActiveFileProcessedOrTimeout(logManagerService));
+        Runnable waitForActiveFileToBeProcessed = subscribeToActiveFileProcessed(logManagerService);
+        waitForActiveFileToBeProcessed.run();
 
         // randomly rename file and see if uploader trying to process more file.
-        for (LogFile logFile : logFiles) {
-            String randomName2 = UUID.randomUUID().toString();
-            LogFile renameFile = new LogFile(Files.createTempFile(tempDirectoryPath,
-                    randomName2 + "UserComponentB.", "").toUri());
-            String tempFileHash = logFile.hashString();
-            logFile.renameTo(renameFile);
-            assertEquals(renameFile.hashString(), tempFileHash);
-            assertFalse(logFile.exists());
-        }
-        assertTrue(isActiveFileProcessedOrTimeout(logManagerService));
+        rotateAndRandomRenameLogFiles(logFiles);
+
+        // wait for service detect the Active file is processed again.
+        Runnable waitForActiveFileToBeProcessed1 = subscribeToActiveFileProcessed(logManagerService);
+        waitForActiveFileToBeProcessed1.run();
 
         // Even the file are all renamed, the cloudWatchClient should only try to upload events once, and the total
         // size should be contents of 4 files.
@@ -555,31 +548,22 @@ class LogManagerTest extends BaseITCase {
         }
 
         setupKernel(tempDirectoryPath, "randomlyNamedFilesWithoutComponentsConfig.yaml");
-        assertTrue(isActiveFileProcessedOrTimeout(logManagerService));
+        Runnable waitForActiveFileToBeProcessed = subscribeToActiveFileProcessed(logManagerService);
+        waitForActiveFileToBeProcessed.run();
 
         // randomly rename file and see if uploader trying to process more file.
+        rotateAndRandomRenameLogFiles(logFiles);
+        // write extra data to the active file
         logFiles.sort(Comparator.comparingLong(LogFile::lastModified));
-        for (int i = 0; i < logFiles.size(); i++) {
-            LogFile logFile = logFiles.get(i);
-            String randomName2 = UUID.randomUUID().toString();
-            LogFile renameFile = new LogFile(Files.createTempFile(tempDirectoryPath,
-                    randomName2 + "UserComponentB.", "").toUri());
-            String tempFileHash = logFile.hashString();
-            logFile.renameTo(renameFile);
-            // add more data into the active file.
-            if (i == logFiles.size() - 1) {
-                //generate 10250 bytes
-                List<String> randomMessages = generateRandomMessages();
-                for (String messageBytes : randomMessages) {
-                    addDataToFile(messageBytes, renameFile.toPath());
-                }
-            }
-
-            assertEquals(renameFile.hashString(), tempFileHash);
-            assertFalse(logFile.exists());
+        LogFile activeFile = logFiles.get(logFiles.size() - 1);
+        List<String> randomMessages = generateRandomMessages();
+        for (String messageBytes : randomMessages) {
+            addDataToFile(messageBytes, activeFile.toPath());
         }
 
-        assertTrue(isActiveFileProcessedOrTimeout(logManagerService));
+        Runnable waitForActiveFileToBeProcessed1 = subscribeToActiveFileProcessed(logManagerService);
+        waitForActiveFileToBeProcessed1.run();
+
 
         // All files are renamed, and only the active file adds 10250 bytes contents, so we shall expect two tries
         // for putLogEvents, and one is for uploading 4 files content, another is for only upload 10250 bytes.
@@ -609,19 +593,33 @@ class LogManagerTest extends BaseITCase {
         assertEquals(testFileNumber, logFileGroup.getLogFiles().size());
     }
 
-    boolean isActiveFileProcessedOrTimeout(LogManagerService logManagerService) throws InterruptedException {
-        final CountDownLatch latch = new CountDownLatch(1);
-        doReturn(new Answer<Object>()
-                 {
-                     @Override
-                     public Object answer(InvocationOnMock invocation)
-                     {
-                         latch.countDown();
-                         return null;
-                     }
-                 }
-        ).when(logManagerService).handleActiveFileStatus(ACTIVE_FILE_COMPLETED);
+    private Runnable subscribeToActiveFileProcessed(LogManagerService service) throws InterruptedException {
+        CountDownLatch latch = new CountDownLatch(1);
+        Runnable deregister = service.registerEventStatusListener((EventStatusType event) -> {
+            if (event == EventStatusType.LOG_GROUP_PROCESSED) {
+                latch.countDown();
+            }
+        });
 
-        return latch.await(15, TimeUnit.SECONDS);
+        return () -> {
+            try {
+                latch.await(15, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                //do nothing
+            }
+            deregister.run();
+        };
+    }
+
+    private void rotateAndRandomRenameLogFiles(List<LogFile> logFiles) throws IOException {
+        for (LogFile logFile : logFiles) {
+            String randomName2 = UUID.randomUUID().toString();
+            LogFile renameFile = new LogFile(Files.createTempFile(tempDirectoryPath,
+                    randomName2 + "UserComponentB.", "").toUri());
+            String tempFileHash = logFile.hashString();
+            logFile.renameTo(renameFile);
+            assertEquals(renameFile.hashString(), tempFileHash);
+            assertFalse(logFile.exists());
+        }
     }
 }

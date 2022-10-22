@@ -21,10 +21,10 @@ import com.aws.greengrass.logmanager.model.CloudWatchAttemptLogInformation;
 import com.aws.greengrass.logmanager.model.ComponentLogConfiguration;
 import com.aws.greengrass.logmanager.model.ComponentLogFileInformation;
 import com.aws.greengrass.logmanager.model.ComponentType;
+import com.aws.greengrass.logmanager.model.EventStatusType;
 import com.aws.greengrass.logmanager.model.LogFile;
 import com.aws.greengrass.logmanager.model.LogFileGroup;
 import com.aws.greengrass.logmanager.model.LogFileInformation;
-import com.aws.greengrass.logmanager.util.ActiveFileCompletedListener;
 import com.aws.greengrass.util.Coerce;
 import com.aws.greengrass.util.Utils;
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -63,6 +63,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -71,7 +72,6 @@ import javax.inject.Inject;
 import static com.aws.greengrass.componentmanager.KernelConfigResolver.CONFIGURATION_CONFIG_KEY;
 import static com.aws.greengrass.logmanager.LogManagerService.LOGS_UPLOADER_SERVICE_TOPICS;
 import static com.aws.greengrass.logmanager.model.LogFile.HASH_VALUE_OF_EMPTY_STRING;
-import static com.aws.greengrass.logmanager.util.ActiveFileCompletedListener.ActiveFileStatusType.ACTIVE_FILE_COMPLETED;
 
 
 @ImplementsService(name = LOGS_UPLOADER_SERVICE_TOPICS, version = "2.0.0")
@@ -124,8 +124,7 @@ public class LogManagerService extends PluginService {
     @Getter
     private int periodicUpdateIntervalSec;
     private Future<?> spaceManagementThread;
-    // public only for integ tests
-    public final ActiveFileCompletedListener activeFileCompletedListener = new ActiveFileCompletedListener();
+    private final List<Consumer<EventStatusType>> serviceStatusListeners = new ArrayList<>();
 
 
     /**
@@ -154,7 +153,6 @@ public class LogManagerService extends PluginService {
         });
 
         this.uploader.registerAttemptStatus(LOGS_UPLOADER_SERVICE_TOPICS, this::handleCloudWatchAttemptStatus);
-        activeFileCompletedListener.registerlistener(this::handleActiveFileStatus);
     }
 
     private void handlePeriodicUploadIntervalSecConfig(Topics topics) {
@@ -651,7 +649,7 @@ public class LogManagerService extends PluginService {
                                 if (file.fileEquals(logFileGroup.getActiveFile().get())
                                         && startPosition == file.length()) {
                                     isActiveFileCompleted.set(true);
-                                    activeFileCompletedListener.dispacthStatus(ACTIVE_FILE_COMPLETED);
+                                    emitEventStatus(EventStatusType.LOG_GROUP_PROCESSED);
                                 }
                             }
 
@@ -682,6 +680,19 @@ public class LogManagerService extends PluginService {
         }
     }
 
+    /**
+     * This method is used for tests monitoring the event status in the service.
+     * @param callback the method of emitting the status.
+     * @return a Runnable for tests.
+     */
+    public Runnable registerEventStatusListener(Consumer<EventStatusType> callback) {
+        serviceStatusListeners.add(callback);
+        return () -> serviceStatusListeners.remove(callback);
+    }
+
+    private void emitEventStatus(EventStatusType eventStatus) {
+        serviceStatusListeners.forEach(callback -> callback.accept(eventStatus));
+    }
 
 
     @Override
@@ -827,10 +838,6 @@ public class LogManagerService extends PluginService {
                 bytesDeleted += fileSize;
             }
         }
-    }
-
-    public void handleActiveFileStatus(ActiveFileCompletedListener.ActiveFileStatusType activeFileStatus) {
-        // do nothing. This method is created for test
     }
 
     @Override

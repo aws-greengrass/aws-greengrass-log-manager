@@ -641,6 +641,7 @@ public class LogManagerService extends PluginService {
 
                             //TODO: setting this flag is only to develop incrementally without having to changed all
                             // tests yet, so that we can avoid a massive PR. This will be removed in the end.
+                            // test for git build failure
                             if (ACTIVE_LOG_FILE_FEATURE_ENABLED_FLAG.get()) {
                                 if (file.fileEquals(logFileGroup.getActiveFile().get())
                                         && startPosition == file.length()) {

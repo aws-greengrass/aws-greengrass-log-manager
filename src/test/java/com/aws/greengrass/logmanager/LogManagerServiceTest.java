@@ -100,6 +100,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
@@ -585,10 +586,10 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         Topics runtimeConfig = mock(Topics.class);
         when(config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC))
                 .thenReturn(runtimeConfig);
-        when(runtimeConfig.lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION, "TestComponent2"))
-                .thenReturn(componentTopics3);
-        when(runtimeConfig.lookupTopics(PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP, "TestComponent"))
-                .thenReturn(componentTopics2);
+        doReturn(componentTopics3)
+                .when(runtimeConfig.lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION, "TestComponent2"));
+        doReturn(componentTopics2).when(runtimeConfig.lookupTopics(PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP,
+                "TestComponent"));
 
         CloudWatchAttempt attempt = new CloudWatchAttempt();
         Map<String, CloudWatchAttemptLogInformation> logStreamsToLogInformationMap = new HashMap<>();

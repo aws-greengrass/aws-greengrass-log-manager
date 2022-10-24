@@ -7,25 +7,32 @@ package com.aws.greengrass.integrationtests.logmanager;
 
 import com.aws.greengrass.dependency.State;
 import com.aws.greengrass.deployment.DeviceConfiguration;
+import com.aws.greengrass.deployment.exceptions.AWSIotException;
 import com.aws.greengrass.deployment.exceptions.DeviceConfigurationException;
 import com.aws.greengrass.integrationtests.BaseITCase;
 import com.aws.greengrass.integrationtests.util.ConfigPlatformResolver;
 import com.aws.greengrass.lifecyclemanager.Kernel;
 import com.aws.greengrass.logmanager.LogManagerService;
+import com.aws.greengrass.util.exceptions.TLSAuthException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
-import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtensionContext;
 import org.slf4j.event.Level;
+import software.amazon.awssdk.core.exception.SdkClientException;
+import software.amazon.awssdk.crt.CrtRuntimeException;
 
 import java.io.IOException;
+import java.lang.reflect.InvocationTargetException;
 import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Duration;
+import java.time.format.DateTimeParseException;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -44,6 +51,7 @@ import static com.aws.greengrass.logmanager.LogManagerService.MULTILINE_PATTERN_
 import static com.aws.greengrass.logmanager.LogManagerService.SYSTEM_LOGS_COMPONENT_NAME;
 import static com.aws.greengrass.logmanager.LogManagerService.SYSTEM_LOGS_CONFIG_TOPIC_NAME;
 import static com.aws.greengrass.logmanager.LogManagerService.UPLOAD_TO_CW_CONFIG_TOPIC_NAME;
+import static com.aws.greengrass.testcommons.testutilities.ExceptionLogProtector.ignoreExceptionOfType;
 import static com.github.grantwest.eventually.EventuallyLambdaMatcher.eventuallyEval;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.equalTo;
@@ -61,7 +69,6 @@ class LogManagerConfigTest extends BaseITCase {
     private static final String componentName = "UserComponentA";
     private static final Level minimumLogLevelDefault = Level.INFO;
 
-    @BeforeAll
     static void setupKernel() throws InterruptedException,
             URISyntaxException, IOException, DeviceConfigurationException {
 
@@ -95,27 +102,42 @@ class LogManagerConfigTest extends BaseITCase {
         assertTrue(logManagerRunning.await(10, TimeUnit.SECONDS));
     }
 
-    @AfterAll
-    static void afterAll() {
+    @BeforeEach
+    void beforeEach(ExtensionContext context)
+            throws DeviceConfigurationException, URISyntaxException, IOException, InterruptedException {
+        ignoreExceptionOfType(context, TLSAuthException.class);
+        ignoreExceptionOfType(context, InterruptedException.class);
+        ignoreExceptionOfType(context, DateTimeParseException.class);
+        ignoreExceptionOfType(context, CrtRuntimeException.class);
+        ignoreExceptionOfType(context, InvocationTargetException.class);
+        ignoreExceptionOfType(context, AWSIotException.class);
+        ignoreExceptionOfType(context, SdkClientException.class);
+        setupKernel();
+    }
+
+    @AfterEach
+    void afterEach() {
         kernel.shutdown();
     }
 
     @Test
-    void GIVEN_periodicUploadIntervalSec_config_WHEN_value_is_reset_and_replaced_THEN_correct_values_are_used() {
-            assertThat(()-> logManagerService.getPeriodicUpdateIntervalSec(), eventuallyEval(is(60),
-                    Duration.ofSeconds(30)));
+    void GIVEN_periodicUploadIntervalSec_config_WHEN_value_is_reset_and_replaced_THEN_correct_values_are_used()
+            throws InterruptedException {
+        assertThat(()-> logManagerService.getPeriodicUpdateIntervalSec(), eventuallyEval(is(60),
+                Duration.ofSeconds(30)));
 
-            logManagerService.getConfig().find(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC).remove();
-            assertThat(()-> logManagerService.getPeriodicUpdateIntervalSec(),
-                    eventuallyEval(is(LogManagerService.DEFAULT_PERIODIC_UPDATE_INTERVAL_SEC), Duration.ofSeconds(30)));
+        logManagerService.getConfig().find(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC).remove();
+        assertThat(()-> logManagerService.getPeriodicUpdateIntervalSec(),
+                eventuallyEval(is(LogManagerService.DEFAULT_PERIODIC_UPDATE_INTERVAL_SEC), Duration.ofSeconds(30)));
 
-            logManagerService.getConfig().lookup(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC).withValue(600);
-            assertThat(()-> logManagerService.getPeriodicUpdateIntervalSec(), eventuallyEval(is(600),
-                    Duration.ofSeconds(30)));
+        logManagerService.getConfig().lookup(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC).withValue(600);
+        assertThat(()-> logManagerService.getPeriodicUpdateIntervalSec(), eventuallyEval(is(600),
+                Duration.ofSeconds(30)));
     }
 
     @Test
-    void GIVEN_uploadToCloudWatch_config_WHEN_value_is_reset_and_replaced_THEN_correct_values_are_used() {
+    void GIVEN_uploadToCloudWatch_config_WHEN_value_is_reset_and_replaced_THEN_correct_values_are_used()
+            throws InterruptedException {
         // uploadToCloudWatch=true in recipe, so system configs expected in componentLogConfigurations map
         assertTrue(logManagerService.getComponentLogConfigurations().containsKey(SYSTEM_LOGS_COMPONENT_NAME));
 
@@ -131,7 +153,8 @@ class LogManagerConfigTest extends BaseITCase {
     }
 
     @Test
-    void GIVEN_system_minimumLogLevel_config_WHEN_value_is_reset_and_replaced_THEN_correct_values_are_used() {
+    void GIVEN_system_minimumLogLevel_config_WHEN_value_is_reset_and_replaced_THEN_correct_values_are_used()
+            throws InterruptedException {
         assertThat(()-> logManagerService.getComponentLogConfigurations().get(SYSTEM_LOGS_COMPONENT_NAME).getMinimumLogLevel(),
                 eventuallyEval(is(Level.TRACE), Duration.ofSeconds(30)));
 
@@ -147,7 +170,8 @@ class LogManagerConfigTest extends BaseITCase {
     }
 
     @Test
-    void GIVEN_system_deleteLogFileAfterCloudUpload_config_WHEN_value_is_reset_and_replaced_THEN_correct_values_are_used() {
+    void GIVEN_system_deleteLogFileAfterCloudUpload_config_WHEN_value_is_reset_and_replaced_THEN_correct_values_are_used()
+            throws InterruptedException {
         assertThat(()-> logManagerService.getComponentLogConfigurations().get(SYSTEM_LOGS_COMPONENT_NAME).isDeleteLogFileAfterCloudUpload(),
                 eventuallyEval(is(true), Duration.ofSeconds(30)));
 
@@ -163,7 +187,8 @@ class LogManagerConfigTest extends BaseITCase {
     }
 
     @Test
-    void GIVEN_system_diskSpaceLimit_and_diskSpaceLimitUnit_config_WHEN_values_are_reset_and_replaced_THEN_correct_values_are_used(){
+    void GIVEN_system_diskSpaceLimit_and_diskSpaceLimitUnit_config_WHEN_values_are_reset_and_replaced_THEN_correct_values_are_used()
+            throws InterruptedException {
         // diskSpaceLimit=25 and diskSpaceLimitUnit=MB in config file, so expected value is 26214400 bytes
         assertThat(()-> logManagerService.getComponentLogConfigurations().get(SYSTEM_LOGS_COMPONENT_NAME).getDiskSpaceLimit(),
                 eventuallyEval(is(26214400L), Duration.ofSeconds(30)));
@@ -194,7 +219,8 @@ class LogManagerConfigTest extends BaseITCase {
     }
 
     @Test
-    void GIVEN_component_fileNameRegex_config_WHEN_value_is_reset_and_replaced_THEN_correct_values_are_used() {
+    void GIVEN_component_fileNameRegex_config_WHEN_value_is_reset_and_replaced_THEN_correct_values_are_used()
+            throws InterruptedException {
         String fileNameRegexDefault = "^\\QUserComponentA\\E\\w*.log";
         String fileNameRegexNew = "RandomLogFileName\\w*.log";
 
@@ -213,7 +239,8 @@ class LogManagerConfigTest extends BaseITCase {
     }
 
     @Test
-    void GIVEN_component_directoryPath_config_WHEN_value_is_reset_and_replaced_THEN_correct_values_are_used() throws IOException{
+    void GIVEN_component_directoryPath_config_WHEN_value_is_reset_and_replaced_THEN_correct_values_are_used()
+            throws IOException, InterruptedException {
         Path logFileDirectoryPathDefault = tempRootDir.resolve("logs");
         Path logFileDirectoryPathNew = tempRootDir.resolve("newLogDir");
         Files.createDirectory(logFileDirectoryPathNew);
@@ -234,7 +261,8 @@ class LogManagerConfigTest extends BaseITCase {
     }
 
     @Test
-    void GIVEN_component_minimumLogLevel_config_WHEN_value_is_reset_and_replaced_THEN_correct_values_are_used() {
+    void GIVEN_component_minimumLogLevel_config_WHEN_value_is_reset_and_replaced_THEN_correct_values_are_used()
+            throws InterruptedException {
         assertThat(()-> logManagerService.getComponentLogConfigurations().get(componentName).getMinimumLogLevel(),
                 eventuallyEval(is(Level.TRACE), Duration.ofSeconds(30)));
 
@@ -250,7 +278,8 @@ class LogManagerConfigTest extends BaseITCase {
     }
 
     @Test
-    void GIVEN_component_deleteLogFileAfterCloudUpload_config_WHEN_value_is_reset_and_replaced_THEN_correct_values_are_used() {
+    void GIVEN_component_deleteLogFileAfterCloudUpload_config_WHEN_value_is_reset_and_replaced_THEN_correct_values_are_used()
+            throws InterruptedException {
         boolean deleteLogFileAfterCloudUploadDefault = false;
         assertThat(()-> logManagerService.getComponentLogConfigurations().get(componentName).isDeleteLogFileAfterCloudUpload(),
                 eventuallyEval(is(true), Duration.ofSeconds(30)));
@@ -267,7 +296,8 @@ class LogManagerConfigTest extends BaseITCase {
     }
 
     @Test
-    void GIVEN_component_diskSpaceLimit_anddiskSpaceLimitUnit_config_WHEN_values_are_reset_and_replaced_THEN_correct_values_are_used() {
+    void GIVEN_component_diskSpaceLimit_anddiskSpaceLimitUnit_config_WHEN_values_are_reset_and_replaced_THEN_correct_values_are_used()
+            throws InterruptedException {
         // diskSpaceLimit=10 diskSpaceLimitUnit=GB in config file, so expected value is 10737418240 bytes
         assertThat(() -> logManagerService.getComponentLogConfigurations().get(componentName).getDiskSpaceLimit(),
                 eventuallyEval(is(10737418240L), Duration.ofSeconds(30)));
@@ -299,7 +329,8 @@ class LogManagerConfigTest extends BaseITCase {
     }
 
     @Test
-    void GIVEN_component_multiLineStartPattern_config_WHEN_value_is_reset_and_replaced_THEN_correct_values_are_used() {
+    void GIVEN_component_multiLineStartPattern_config_WHEN_value_is_reset_and_replaced_THEN_correct_values_are_used()
+            throws InterruptedException {
         String multiLineStartPatternNew = "[0-9].*";
 
         assertThat(()-> logManagerService.getComponentLogConfigurations().get(componentName).getMultiLineStartPattern().pattern(),

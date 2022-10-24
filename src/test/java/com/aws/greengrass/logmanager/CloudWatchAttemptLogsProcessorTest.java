@@ -99,7 +99,6 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
     void GIVEN_one_system_component_one_file_less_than_max_WHEN_merge_THEN_reads_entire_file(ExtensionContext ec)
             throws URISyntaxException, IOException, InvalidLogGroupException {
         ignoreExceptionOfType(ec, DateTimeParseException.class);
-        //LogFile logFile1 = createLogFileWithSize(getClass().getResource("testlogs2.log").toURI(), 1061);
         File file1 = new File(getClass().getResource("testlogs2.log").toURI());
         LogFile logFile1 = LogFile.of(file1);
         String fileHash = logFile1.hashString();

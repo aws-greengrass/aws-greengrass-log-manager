@@ -231,7 +231,6 @@ public class CloudWatchAttemptLogsProcessor {
                                    long lastModified,
                                    LogFileGroup logFileGroup) {
         String dataStr = data.toString();
-        //System.out.println(dataStr);
         int dataSize = dataStr.getBytes(StandardCharsets.UTF_8).length;
         CloudWatchAttemptLogInformation attemptLogInformation;
         Optional<GreengrassLogMessage> logMessage = tryGetStructuredLogMessage(dataStr);

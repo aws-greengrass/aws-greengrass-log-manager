@@ -39,7 +39,6 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
-import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardWatchEventKinds;
@@ -81,6 +80,8 @@ public class LogManagerService extends PluginService {
     public static final String LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC = "periodicUploadIntervalSec";
     public static final String LOGS_UPLOADER_CONFIGURATION_TOPIC = "logsUploaderConfiguration";
     public static final String SYSTEM_LOGS_COMPONENT_NAME = "System";
+    //This is a deprecated value in the new version, but keep it here to avoid upgrade-downgrade issues.
+    public static final String PERSISTED_CURRENT_PROCESSING_FILE_NAME = "currentProcessingFileName";
     public static final String PERSISTED_CURRENT_PROCESSING_FILE_HASH = "currentProcessingFileHash";
     public static final String PERSISTED_CURRENT_PROCESSING_FILE_START_POSITION = "currentProcessingFileStartPosition";
     public static final String PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION =
@@ -595,6 +596,7 @@ public class LogManagerService extends PluginService {
                 Instant lastUploadedLogFileTimeMs =
                         lastComponentUploadedLogFileInstantMap.getOrDefault(componentName,
                                 Instant.EPOCH);
+
                 try {
                     LogFileGroup logFileGroup =
                             LogFileGroup.create(componentLogConfiguration.getFileNameRegex(),
@@ -602,7 +604,6 @@ public class LogManagerService extends PluginService {
                     if (logFileGroup.isEmpty()) {
                         continue;
                     }
-
                     componentLogFileInformation.set(Optional.of(
                             ComponentLogFileInformation.builder()
                                     .name(componentName)
@@ -827,6 +828,9 @@ public class LogManagerService extends PluginService {
     @Getter
     @Data
     static class CurrentProcessingFileInformation {
+        //This is a deprecated value in the new version, but keep it here to avoid upgrade-downgrade issues.
+        @JsonProperty(PERSISTED_CURRENT_PROCESSING_FILE_NAME)
+        private String fileName;
         @JsonProperty(PERSISTED_CURRENT_PROCESSING_FILE_START_POSITION)
         private long startPosition;
         @JsonProperty(PERSISTED_CURRENT_PROCESSING_FILE_LAST_MODIFIED_TIME)
@@ -836,6 +840,8 @@ public class LogManagerService extends PluginService {
 
         public Map<String, Object> convertToMapOfObjects() {
             Map<String, Object> currentProcessingFileInformationMap = new HashMap<>();
+            //This is a deprecated value in the new version, but keep it here to avoid upgrade-downgrade issues.
+            currentProcessingFileInformationMap.put(PERSISTED_CURRENT_PROCESSING_FILE_NAME, fileName);
             currentProcessingFileInformationMap.put(PERSISTED_CURRENT_PROCESSING_FILE_START_POSITION, startPosition);
             currentProcessingFileInformationMap.put(PERSISTED_CURRENT_PROCESSING_FILE_LAST_MODIFIED_TIME,
                     lastModifiedTime);
@@ -845,6 +851,10 @@ public class LogManagerService extends PluginService {
 
         public void updateFromTopic(Topic topic) {
             switch (topic.getName()) {
+                //This is a deprecated value in the new version, but keep it here to avoid upgrade-downgrade issues.
+                case PERSISTED_CURRENT_PROCESSING_FILE_NAME:
+                    fileName = Coerce.toString(topic);
+                    break;
                 case PERSISTED_CURRENT_PROCESSING_FILE_START_POSITION:
                     startPosition = Coerce.toLong(topic);
                     break;
@@ -852,13 +862,8 @@ public class LogManagerService extends PluginService {
                     lastModifiedTime = Coerce.toLong(topic);
                     break;
                 case PERSISTED_CURRENT_PROCESSING_FILE_HASH:
-                    // This handles the upgrade scenario. ALl stored fileNames are transferred to the fileHash.
-                    String savedString = Coerce.toString(topic);
-                    fileHash = savedString;
-                    if (Files.exists(Paths.get(savedString), LinkOption.NOFOLLOW_LINKS)) {
-                        LogFile file = new LogFile(Paths.get(savedString).toUri());
-                        fileHash = file.hashString();
-                    }
+                    //TODO: the scenario of upgrading from older version needs to be handled in next PR.
+                    fileHash = Coerce.toString(topic);
                     break;
                 default:
                     break;
@@ -868,6 +873,8 @@ public class LogManagerService extends PluginService {
         public static CurrentProcessingFileInformation convertFromMapOfObjects(
                 Map<String, Object> currentProcessingFileInformationMap) {
             return CurrentProcessingFileInformation.builder()
+                    .fileName(Coerce.toString(currentProcessingFileInformationMap
+                            .get(PERSISTED_CURRENT_PROCESSING_FILE_NAME)))
                     .lastModifiedTime(Coerce.toLong(currentProcessingFileInformationMap
                             .get(PERSISTED_CURRENT_PROCESSING_FILE_LAST_MODIFIED_TIME)))
                     .startPosition(Coerce.toLong(currentProcessingFileInformationMap

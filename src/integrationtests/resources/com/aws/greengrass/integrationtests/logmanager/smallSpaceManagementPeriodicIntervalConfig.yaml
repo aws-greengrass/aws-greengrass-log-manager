@@ -10,7 +10,7 @@ services:
             minimumLogLevel: 'INFO'
             diskSpaceLimit: '105'
             diskSpaceLimitUnit: 'KB'
-            deleteLogFileAfterCloudUpload: 'true'
+            deleteLogFileAfterCloudUpload: 'false'
   main:
     lifecycle:
       install: echo All installed

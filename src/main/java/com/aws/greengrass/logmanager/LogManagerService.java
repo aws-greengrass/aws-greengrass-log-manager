@@ -21,6 +21,7 @@ import com.aws.greengrass.logmanager.model.CloudWatchAttemptLogInformation;
 import com.aws.greengrass.logmanager.model.ComponentLogConfiguration;
 import com.aws.greengrass.logmanager.model.ComponentLogFileInformation;
 import com.aws.greengrass.logmanager.model.ComponentType;
+import com.aws.greengrass.logmanager.model.EventType;
 import com.aws.greengrass.logmanager.model.LogFile;
 import com.aws.greengrass.logmanager.model.LogFileGroup;
 import com.aws.greengrass.logmanager.model.LogFileInformation;
@@ -38,6 +39,7 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardWatchEventKinds;
@@ -62,6 +64,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -103,6 +106,7 @@ public class LogManagerService extends PluginService {
     public static final String MULTILINE_PATTERN_CONFIG_TOPIC_NAME = "multiLineStartPattern";
     public static final int DEFAULT_PERIODIC_UPDATE_INTERVAL_SEC = 300;
     private final Object spaceManagementLock = new Object();
+    private final List<Consumer<EventType>> serviceStatusListeners = new ArrayList<>();
 
     // public only for integ tests
     public final Map<String, Instant> lastComponentUploadedLogFileInstantMap =
@@ -511,7 +515,7 @@ public class LogManagerService extends PluginService {
         try {
             LogFileGroup logFileGroup = attemptLogInformation.getLogFileGroup().syncDirectory();
             if (!logFileGroup.getFile(fileHash).isPresent()) {
-                logger.atDebug().log("The fileHash does not exist in directory");
+                logger.atTrace().log("The fileHash does not exist in directory");
                 return;
             }
             LogFile file = logFileGroup.getFile(fileHash).get();
@@ -653,7 +657,14 @@ public class LogManagerService extends PluginService {
         }
     }
 
+    public Runnable registerEventStatusListener(Consumer<EventType> callback) {
+        serviceStatusListeners.add(callback);
+        return () -> serviceStatusListeners.remove(callback);
+    }
 
+    private void emitEventStatus(EventType eventStatus) {
+        serviceStatusListeners.forEach(callback -> callback.accept(eventStatus));
+    }
 
     @Override
     public void startup() throws InterruptedException {
@@ -836,7 +847,13 @@ public class LogManagerService extends PluginService {
                     lastModifiedTime = Coerce.toLong(topic);
                     break;
                 case PERSISTED_CURRENT_PROCESSING_FILE_HASH:
-                    fileHash = Coerce.toString(topic);
+                    // This handles the upgrade scenario. ALl stored fileNames are transferred to the fileHash.
+                    String savedString = Coerce.toString(topic);
+                    fileHash = savedString;
+                    if (Files.exists(Paths.get(savedString), LinkOption.NOFOLLOW_LINKS)) {
+                        LogFile file = new LogFile(Paths.get(savedString).toUri());
+                        fileHash = file.hashString();
+                    }
                     break;
                 default:
                     break;

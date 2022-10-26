@@ -21,7 +21,6 @@ import com.aws.greengrass.logmanager.model.CloudWatchAttemptLogInformation;
 import com.aws.greengrass.logmanager.model.ComponentLogConfiguration;
 import com.aws.greengrass.logmanager.model.ComponentLogFileInformation;
 import com.aws.greengrass.logmanager.model.ComponentType;
-import com.aws.greengrass.logmanager.model.EventType;
 import com.aws.greengrass.logmanager.model.LogFile;
 import com.aws.greengrass.logmanager.model.LogFileGroup;
 import com.aws.greengrass.logmanager.model.LogFileInformation;
@@ -63,7 +62,6 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.Consumer;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -107,7 +105,7 @@ public class LogManagerService extends PluginService {
     public static final String MULTILINE_PATTERN_CONFIG_TOPIC_NAME = "multiLineStartPattern";
     public static final int DEFAULT_PERIODIC_UPDATE_INTERVAL_SEC = 300;
     private final Object spaceManagementLock = new Object();
-    private final List<Consumer<EventType>> serviceStatusListeners = new ArrayList<>();
+    //private final List<Consumer<EventType>> serviceStatusListeners = new ArrayList<>();
 
     // public only for integ tests
     public final Map<String, Instant> lastComponentUploadedLogFileInstantMap =
@@ -632,7 +630,6 @@ public class LogManagerService extends PluginService {
                             if (file.fileEquals(logFileGroup.getActiveFile().get())
                                     && startPosition == file.length()) {
                                 isActiveFileCompleted.set(true);
-                                emitEventStatus(EventType.LOG_GROUP_PROCESSED);
                             }
 
 
@@ -661,15 +658,6 @@ public class LogManagerService extends PluginService {
                 isCurrentlyUploading.set(false);
             }
         }
-    }
-
-    public Runnable registerEventStatusListener(Consumer<EventType> callback) {
-        serviceStatusListeners.add(callback);
-        return () -> serviceStatusListeners.remove(callback);
-    }
-
-    private void emitEventStatus(EventType eventStatus) {
-        serviceStatusListeners.forEach(callback -> callback.accept(eventStatus));
     }
 
     @Override

@@ -16,7 +16,6 @@ import com.aws.greengrass.logging.impl.config.LogConfig;
 import com.aws.greengrass.logging.impl.config.LogStore;
 import com.aws.greengrass.logging.impl.config.model.LogConfigUpdate;
 import com.aws.greengrass.logmanager.LogManagerService;
-import com.aws.greengrass.logmanager.model.EventType;
 import com.aws.greengrass.logmanager.model.LogFileGroup;
 import com.aws.greengrass.testcommons.testutilities.GGExtension;
 import com.aws.greengrass.util.exceptions.TLSAuthException;
@@ -171,8 +170,7 @@ class LogManagerTest extends BaseITCase {
 
         setupKernel(tempDirectoryPath, "smallPeriodicIntervalUserComponentConfig.yaml");
 
-        Runnable waitForActiveFileToBeProcessed = subscribeToActiveFileProcessed(logManagerService, 30);
-        waitForActiveFileToBeProcessed.run();
+        TimeUnit.SECONDS.sleep(30);
         verify(cloudWatchLogsClient, atLeastOnce()).putLogEvents(captor.capture());
 
         List<PutLogEventsRequest> putLogEventsRequests = captor.getAllValues();
@@ -209,8 +207,7 @@ class LogManagerTest extends BaseITCase {
 
         setupKernel(tempDirectoryPath, "smallPeriodicIntervalOnlyReqUserComponentConfig.yaml");
 
-        Runnable waitForActiveFileToBeProcessed = subscribeToActiveFileProcessed(logManagerService, 30);
-        waitForActiveFileToBeProcessed.run();
+        TimeUnit.SECONDS.sleep(30);
         verify(cloudWatchLogsClient, atLeastOnce()).putLogEvents(captor.capture());
 
         List<PutLogEventsRequest> putLogEventsRequests = captor.getAllValues();
@@ -244,8 +241,7 @@ class LogManagerTest extends BaseITCase {
         createTempFileAndWriteData(tempDirectoryPath, fileName + ".log", "");
 
         setupKernel(tempRootDir, "smallPeriodicIntervalSystemComponentConfig.yaml");
-        Runnable waitForActiveFileToBeProcessed = subscribeToActiveFileProcessed(logManagerService, 30);
-        waitForActiveFileToBeProcessed.run();
+        TimeUnit.SECONDS.sleep(30);
 
         verify(cloudWatchLogsClient, atLeastOnce()).putLogEvents(captor.capture());
 
@@ -311,23 +307,5 @@ class LogManagerTest extends BaseITCase {
         Pattern logFileNamePattern = Pattern.compile("^integTestRandomLogFiles.log\\w*");
         LogFileGroup logFileGroup = LogFileGroup.create(logFileNamePattern, tempDirectoryPath.toUri(), mockInstant);
         assertEquals(1, logFileGroup.getLogFiles().size());
-    }
-
-    private Runnable subscribeToActiveFileProcessed(LogManagerService service, int waitTime) throws InterruptedException {
-        CountDownLatch latch = new CountDownLatch(1);
-        Runnable deregister = service.registerEventStatusListener((EventType event) -> {
-            if (event == EventType.LOG_GROUP_PROCESSED) {
-                latch.countDown();
-            }
-        });
-
-        return () -> {
-            try {
-                latch.await(waitTime, TimeUnit.SECONDS);
-            } catch (InterruptedException e) {
-                //do nothing
-            }
-            deregister.run();
-        };
     }
 }

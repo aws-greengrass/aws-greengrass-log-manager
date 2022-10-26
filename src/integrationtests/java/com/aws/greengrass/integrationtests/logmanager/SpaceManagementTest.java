@@ -134,6 +134,7 @@ class SpaceManagementTest extends BaseITCase {
         try (AutoCloseable l = createCloseableLogListener(listener)) {
             for (int i = 0; i < 15; i++) {
                 createTempFileAndWriteData(tempDirectoryPath, "integTestRandomLogFiles.log_", "");
+                TimeUnit.SECONDS.sleep(1);
             }
             assertTrue(cdl.await(60, TimeUnit.SECONDS), "5 files deleted");
         }

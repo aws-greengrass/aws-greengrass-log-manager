@@ -11,6 +11,12 @@ services:
             diskSpaceLimit: '105'
             diskSpaceLimitUnit: 'KB'
             deleteLogFileAfterCloudUpload: 'false'
+        systemLogsConfiguration:
+          uploadToCloudWatch: 'true'
+          minimumLogLevel: 'TRACE'
+          diskSpaceLimit: '25'
+          diskSpaceLimitUnit: 'MB'
+          deleteLogFileAfterCloudUpload: 'false'
   main:
     lifecycle:
       install: echo All installed

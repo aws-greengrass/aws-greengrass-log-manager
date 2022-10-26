@@ -102,13 +102,15 @@ class LogManagerTest extends BaseITCase {
 
     private String calculateLogStreamName(String thingName, String group) {
         synchronized (DATE_FORMATTER) {
-            return DEFAULT_LOG_STREAM_NAME.replace("{thingName}", thingName).replace("{ggFleetId}", group)
+            return DEFAULT_LOG_STREAM_NAME
+                    .replace("{thingName}", thingName)
+                    .replace("{ggFleetId}", group)
                     .replace("{date}", DATE_FORMATTER.format(new Date()));
         }
     }
 
-    void setupKernel(Path storeDirectory, String configFileName)
-            throws InterruptedException, URISyntaxException, IOException, DeviceConfigurationException {
+    void setupKernel(Path storeDirectory, String configFileName) throws InterruptedException,
+            URISyntaxException, IOException, DeviceConfigurationException {
 
         System.setProperty("root", tempRootDir.toAbsolutePath().toString());
         CountDownLatch logManagerRunning = new CountDownLatch(1);
@@ -118,21 +120,22 @@ class LogManagerTest extends BaseITCase {
 
         Path testRecipePath = Paths.get(LogManagerTest.class.getResource(configFileName).toURI());
         String content = new String(Files.readAllBytes(testRecipePath), StandardCharsets.UTF_8);
-        content = content.replaceAll("\\{\\{logFileDirectoryPath}}", storeDirectory.toAbsolutePath().toString());
+        content = content.replaceAll("\\{\\{logFileDirectoryPath}}",
+                storeDirectory.toAbsolutePath().toString());
 
         Map<String, Object> objectMap = YAML_OBJECT_MAPPER.readValue(content, Map.class);
         kernel.parseArgs();
         kernel.getConfig().mergeMap(System.currentTimeMillis(), ConfigPlatformResolver.resolvePlatformMap(objectMap));
 
         kernel.getContext().addGlobalStateChangeListener((service, oldState, newState) -> {
-            if (service.getName().equals(LogManagerService.LOGS_UPLOADER_SERVICE_TOPICS) && newState.equals(State.RUNNING)) {
+            if (service.getName().equals(LogManagerService.LOGS_UPLOADER_SERVICE_TOPICS)
+                    && newState.equals(State.RUNNING)) {
                 logManagerRunning.countDown();
                 logManagerService = (LogManagerService) service;
             }
         });
-        deviceConfiguration = new DeviceConfiguration(kernel, "ThingName", "xxxxxx-ats.iot.us-east-1.amazonaws.com",
-                "xxxxxx.credentials.iot.us-east-1.amazonaws.com", "privKeyFilePath", "certFilePath", "caFilePath",
-                "us-east-1", "roleAliasName");
+        deviceConfiguration = new DeviceConfiguration(kernel, "ThingName", "xxxxxx-ats.iot.us-east-1.amazonaws.com", "xxxxxx.credentials.iot.us-east-1.amazonaws.com", "privKeyFilePath",
+                "certFilePath", "caFilePath", "us-east-1", "roleAliasName");
 
         kernel.getContext().put(DeviceConfiguration.class, deviceConfiguration);
         // set required instances from context
@@ -159,8 +162,8 @@ class LogManagerTest extends BaseITCase {
     @Test
     void GIVEN_user_component_config_with_small_periodic_interval_WHEN_interval_elapses_THEN_logs_are_uploaded_to_cloud()
             throws Exception {
-        when(cloudWatchLogsClient.putLogEvents(any(PutLogEventsRequest.class))).thenReturn(
-                PutLogEventsResponse.builder().nextSequenceToken("nextToken").build());
+        when(cloudWatchLogsClient.putLogEvents(any(PutLogEventsRequest.class)))
+                .thenReturn(PutLogEventsResponse.builder().nextSequenceToken("nextToken").build());
 
         tempDirectoryPath = Files.createTempDirectory(tempRootDir, "IntegrationTestsTemporaryLogFiles");
 
@@ -193,8 +196,8 @@ class LogManagerTest extends BaseITCase {
     @Test
     void GIVEN_user_component_config_with_small_periodic_interval_and_only_required_config_WHEN_interval_elapses_THEN_logs_are_uploaded_to_cloud()
             throws Exception {
-        when(cloudWatchLogsClient.putLogEvents(any(PutLogEventsRequest.class))).thenReturn(
-                PutLogEventsResponse.builder().nextSequenceToken("nextToken").build());
+        when(cloudWatchLogsClient.putLogEvents(any(PutLogEventsRequest.class)))
+                .thenReturn(PutLogEventsResponse.builder().nextSequenceToken("nextToken").build());
 
         tempDirectoryPath = Files.createDirectory(tempRootDir.resolve("logs"));
         LogConfig.getRootLogConfig().setLevel(Level.TRACE);
@@ -230,8 +233,8 @@ class LogManagerTest extends BaseITCase {
     @Test
     void GIVEN_system_config_with_small_periodic_interval_WHEN_interval_elapses_THEN_logs_are_uploaded_to_cloud(
             ExtensionContext ec) throws Exception {
-        when(cloudWatchLogsClient.putLogEvents(any(PutLogEventsRequest.class))).thenReturn(
-                PutLogEventsResponse.builder().nextSequenceToken("nextToken").build());
+        when(cloudWatchLogsClient.putLogEvents(any(PutLogEventsRequest.class)))
+                .thenReturn(PutLogEventsResponse.builder().nextSequenceToken("nextToken").build());
 
         ignoreExceptionOfType(ec, NoSuchFileException.class);
         LogManager.getRootLogConfiguration().setStoreDirectory(tempRootDir);
@@ -269,7 +272,8 @@ class LogManagerTest extends BaseITCase {
             throws Exception {
         ignoreExceptionWithMessage(context, "Forcing error to trigger restart");
 
-        when(cloudWatchLogsClient.putLogEvents(any(PutLogEventsRequest.class))).thenThrow(new RuntimeException("Forcing error to trigger restart"))
+        when(cloudWatchLogsClient.putLogEvents(any(PutLogEventsRequest.class)))
+                .thenThrow(new RuntimeException("Forcing error to trigger restart"))
                 .thenReturn(PutLogEventsResponse.builder().nextSequenceToken("nextToken").build());
 
         tempDirectoryPath = Files.createTempDirectory(tempRootDir, "IntegrationTestsTemporaryLogFiles");

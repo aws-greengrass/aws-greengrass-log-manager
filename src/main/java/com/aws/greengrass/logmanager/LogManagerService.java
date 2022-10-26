@@ -80,7 +80,8 @@ public class LogManagerService extends PluginService {
     public static final String LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC = "periodicUploadIntervalSec";
     public static final String LOGS_UPLOADER_CONFIGURATION_TOPIC = "logsUploaderConfiguration";
     public static final String SYSTEM_LOGS_COMPONENT_NAME = "System";
-    //This is a deprecated value in the new version, but keep it here to avoid upgrade-downgrade issues.
+    //This is deprecated value in versions greater than 2.2, but keep it here to avoid
+    // upgrade-downgrade issues.
     public static final String PERSISTED_CURRENT_PROCESSING_FILE_NAME = "currentProcessingFileName";
     public static final String PERSISTED_CURRENT_PROCESSING_FILE_HASH = "currentProcessingFileHash";
     public static final String PERSISTED_CURRENT_PROCESSING_FILE_START_POSITION = "currentProcessingFileStartPosition";
@@ -254,7 +255,6 @@ public class LogManagerService extends PluginService {
         setCommonComponentConfiguration(componentConfigMap, componentLogConfiguration);
         newComponentLogConfigurations.put(componentLogConfiguration.getName(), componentLogConfiguration);
         loadStateFromConfiguration(componentLogConfiguration.getName());
-
     }
 
     @SuppressWarnings("PMD.ConfusingTernary")
@@ -525,6 +525,9 @@ public class LogManagerService extends PluginService {
             if (activeFile.isPresent()) {
                 isActiveFile = activeFile.get().fileEquals(file);
             }
+            //This is deprecated value in versions greater than 2.2, but keep it here to avoid
+            // upgrade-downgrade issues.
+            String fileName = activeFile.get().getAbsolutePath();
             // If we have completely read the file, then we need add it to the completed files list and remove it
             // it (if necessary) for the current processing list.
             String componentName = attemptLogInformation.getComponentName();
@@ -544,8 +547,11 @@ public class LogManagerService extends PluginService {
             } else {
                 // Add the file to the current processing list for the component.
                 // Note: There should always be only 1 file which will be in progress at any given time.
+                //The fileName is deprecated value in versions greater than 2.2, but keep it here to avoid
+                // upgrade-downgrade issues.
                 CurrentProcessingFileInformation processingFileInformation =
                         CurrentProcessingFileInformation.builder()
+                                .fileName(fileName)
                                 .startPosition(cloudWatchAttemptLogFileInformation.getStartPosition()
                                         + cloudWatchAttemptLogFileInformation.getBytesRead())
                                 .lastModifiedTime(cloudWatchAttemptLogFileInformation.getLastModifiedTime())
@@ -824,7 +830,8 @@ public class LogManagerService extends PluginService {
     @Getter
     @Data
     static class CurrentProcessingFileInformation {
-        //This is a deprecated value in the new version, but keep it here to avoid upgrade-downgrade issues.
+        //This is deprecated value in versions greater than 2.2, but keep it here to avoid
+        // upgrade-downgrade issues.
         @JsonProperty(PERSISTED_CURRENT_PROCESSING_FILE_NAME)
         private String fileName;
         @JsonProperty(PERSISTED_CURRENT_PROCESSING_FILE_START_POSITION)
@@ -836,7 +843,8 @@ public class LogManagerService extends PluginService {
 
         public Map<String, Object> convertToMapOfObjects() {
             Map<String, Object> currentProcessingFileInformationMap = new HashMap<>();
-            //This is a deprecated value in the new version, but keep it here to avoid upgrade-downgrade issues.
+            //This is deprecated value in versions greater than 2.2, but keep it here to avoid
+            // upgrade-downgrade issues.
             currentProcessingFileInformationMap.put(PERSISTED_CURRENT_PROCESSING_FILE_NAME, fileName);
             currentProcessingFileInformationMap.put(PERSISTED_CURRENT_PROCESSING_FILE_START_POSITION, startPosition);
             currentProcessingFileInformationMap.put(PERSISTED_CURRENT_PROCESSING_FILE_LAST_MODIFIED_TIME,
@@ -847,7 +855,8 @@ public class LogManagerService extends PluginService {
 
         public void updateFromTopic(Topic topic) {
             switch (topic.getName()) {
-                //This is a deprecated value in the new version, but keep it here to avoid upgrade-downgrade issues.
+                //This is deprecated value in versions greater than 2.2, but keep it here to avoid
+                // upgrade-downgrade issues.
                 case PERSISTED_CURRENT_PROCESSING_FILE_NAME:
                     fileName = Coerce.toString(topic);
                     break;

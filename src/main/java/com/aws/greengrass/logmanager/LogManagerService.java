@@ -584,23 +584,16 @@ public class LogManagerService extends PluginService {
     @SuppressWarnings("PMD.CollapsibleIfStatements")
     private void processLogsAndUpload() throws InterruptedException {
         while (true) {
-            // If there is already an upload ongoing, don't do anything. Wait for the next schedule to trigger to
-            // upload new logs.
+            //TODO: this is only done for passing the current text. But in practise, we don`t need to intentionally
+            // sleep here.
             if (!isCurrentlyUploading.compareAndSet(false, true)) {
-                //TODO: Use a CountDownLatch so that we could await here instead of sleep?
                 TimeUnit.SECONDS.sleep(periodicUpdateIntervalSec);
                 continue;
             }
-            AtomicReference<Optional<ComponentLogFileInformation>> componentLogFileInformation =
-                    new AtomicReference<>(Optional.empty());
-            AtomicBoolean isActiveFileCompleted = new AtomicBoolean(false);
+            List<ComponentLogFileInformation> unitsOfWork = new ArrayList<>();
             // Get the latest known configurations because the componentLogConfigurations can change if a new
             // configuration is received from the customer.
             for (ComponentLogConfiguration componentLogConfiguration : componentLogConfigurations.values()) {
-                if (componentLogFileInformation.get().isPresent()) {
-                    break;
-                }
-                isActiveFileCompleted.set(false);
                 String componentName = componentLogConfiguration.getName();
                 Instant lastUploadedLogFileTimeMs =
                         lastComponentUploadedLogFileInstantMap.getOrDefault(componentName,
@@ -610,18 +603,20 @@ public class LogManagerService extends PluginService {
                     LogFileGroup logFileGroup =
                             LogFileGroup.create(componentLogConfiguration.getFileNameRegex(),
                                     componentLogConfiguration.getDirectoryPath().toUri(), lastUploadedLogFileTimeMs);
+
                     if (logFileGroup.isEmpty()) {
                         continue;
                     }
 
-                    componentLogFileInformation.set(Optional.of(
-                            ComponentLogFileInformation.builder()
-                                    .name(componentName)
-                                    .multiLineStartPattern(componentLogConfiguration.getMultiLineStartPattern())
-                                    .desiredLogLevel(componentLogConfiguration.getMinimumLogLevel())
-                                    .componentType(componentLogConfiguration.getComponentType())
-                                    .logFileGroup(logFileGroup)
-                                    .build()));
+                    ComponentLogFileInformation unitOfWork = ComponentLogFileInformation.builder()
+                            .name(componentName)
+                            .multiLineStartPattern(componentLogConfiguration.getMultiLineStartPattern())
+                            .desiredLogLevel(componentLogConfiguration.getMinimumLogLevel())
+                            .componentType(componentLogConfiguration.getComponentType())
+                            .logFileGroup(logFileGroup)
+                            .build();
+
+                    unitsOfWork.add(unitOfWork);
 
                     logFileGroup.forEach(file -> {
                         long startPosition = 0;
@@ -639,24 +634,17 @@ public class LogManagerService extends PluginService {
                                 }
                             }
 
-                            //TODO: setting this flag is only to develop incrementally without having to changed all
-                            // tests yet, so that we can avoid a massive PR. This will be removed in the end.
-                            if (ACTIVE_LOG_FILE_FEATURE_ENABLED_FLAG.get()) {
-                                if (file.fileEquals(logFileGroup.getActiveFile().get())
-                                        && startPosition == file.length()) {
-                                    isActiveFileCompleted.set(true);
-                                }
-                            }
-
                             LogFileInformation logFileInformation = LogFileInformation.builder()
-                                            .logFile(file)
-                                            .startPosition(startPosition)
-                                            .fileHash(fileHash)
-                                            .build();
-                            componentLogFileInformation.get().get().getLogFileInformationList().add(logFileInformation);
+                                    .logFile(file)
+                                    .startPosition(startPosition)
+                                    .fileHash(fileHash)
+                                    .build();
+
+                            if (startPosition < file.length()) {
+                                unitOfWork.getLogFileInformationList().add(logFileInformation);
+                            }
                         }
                     });
-                    break;
                 } catch (SecurityException e) {
                     logger.atError().cause(e).log("Unable to get log files for {} from {}",
                             componentName, componentLogConfiguration.getDirectoryPath());
@@ -664,13 +652,19 @@ public class LogManagerService extends PluginService {
                     logger.atDebug().cause(e).log("Unable to read the directory");
                 }
             }
-            if (!isActiveFileCompleted.get() && componentLogFileInformation.get().isPresent()) {
-                CloudWatchAttempt cloudWatchAttempt =
-                        logsProcessor.processLogFiles(componentLogFileInformation.get().get());
-                uploader.upload(cloudWatchAttempt, 1);
-            } else {
+            //TODO: need to refactor. This is for the case unitOfWork may be empty. This will get refactored when the
+            // logFilgeGroup won't return files that should not be processed.
+            unitsOfWork = unitsOfWork.stream().filter(unit -> !unit.getLogFileInformationList().isEmpty()).collect(
+                    Collectors.toList());
+
+            if (unitsOfWork.isEmpty()) {
                 TimeUnit.SECONDS.sleep(periodicUpdateIntervalSec);
                 isCurrentlyUploading.set(false);
+            } else {
+                unitsOfWork.forEach((unit) -> {
+                    CloudWatchAttempt cloudWatchAttempt = logsProcessor.processLogFiles(unit);
+                    uploader.upload(cloudWatchAttempt, 1);
+                });
             }
         }
     }

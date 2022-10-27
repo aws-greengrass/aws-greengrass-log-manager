@@ -132,19 +132,8 @@ public class CloudWatchAttemptLogsProcessor {
             LogFile logFile = logFileInformation.getLogFile();
             long startPosition = logFileInformation.getStartPosition();
             String fileHash = logFileInformation.getFileHash();
-            //TODO: this is only for passing the checkstyle check in the current PR. It will be removed since we will
-            // only add the non-empty fileHash into the logFileInformation
-            if (logFile.isEmpty()) {
-                componentLogFileInformation.getLogFileInformationList().remove(0);
-                continue;
-            }
-            //TODO
-            logger.atError().log("=====================================File: " + logFile.getName()
-                    + " start: " + startPosition + " size:" + logFile.length());
-            if (startPosition == logFile.length()) {
-                //TODO
-                logger.atError().log("!!!!!!!!!!!!!!!!!!!!!!! File should not read: " + logFile.getName()
-                        + " start: " + startPosition + " size:" + logFile.length());
+            //This has been handled in the service, but leave here to prevent processor crash
+            if (logFile.isEmpty() || startPosition == logFile.length()) {
                 componentLogFileInformation.getLogFileInformationList().remove(0);
                 continue;
             }

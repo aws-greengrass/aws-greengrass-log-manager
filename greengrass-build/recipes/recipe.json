@@ -1,7 +1,7 @@
 {
     "RecipeFormatVersion": "2020-01-25",
     "ComponentName": "aws.greengrass.LogManager",
-    "ComponentVersion": "2.3.11",
+    "ComponentVersion": "2.3.13",
     "ComponentType": "aws.greengrass.plugin",
     "ComponentDescription": "test for log manager",
     "ComponentPublisher": "Daojing",

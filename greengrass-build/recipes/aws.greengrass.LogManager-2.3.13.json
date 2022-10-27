@@ -1,7 +1,7 @@
 {
     "RecipeFormatVersion": "2020-01-25",
     "ComponentName": "aws.greengrass.LogManager",
-    "ComponentVersion": "2.3.11",
+    "ComponentVersion": "2.3.13",
     "ComponentType": "aws.greengrass.plugin",
     "ComponentDescription": "test for log manager",
     "ComponentPublisher": "Daojing",
@@ -19,7 +19,7 @@
             "Lifecycle": {},
             "Artifacts": [
                 {
-                    "URI": "s3://logmanager-activefile-artifacts-us-west-2-415087618592/aws.greengrass.LogManager/2.3.11/aws.greengrass.LogManager.jar"
+                    "URI": "s3://logmanager-activefile-artifacts-us-west-2-415087618592/aws.greengrass.LogManager/2.3.13/aws.greengrass.LogManager.jar"
                 }
             ]
         }

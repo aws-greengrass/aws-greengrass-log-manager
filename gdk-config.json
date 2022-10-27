@@ -1,0 +1,16 @@
+{
+  "component" :{
+    "aws.greengrass.LogManager": {
+      "author": "Daojing",
+      "version": "2.3.11",
+      "build": {
+        "build_system": "maven"
+      },
+      "publish": {
+        "bucket": "logmanager-activefile-artifacts",
+        "region": "us-west-2"
+      }
+    }
+  },
+  "gdk_version": "1.1.0"
+}

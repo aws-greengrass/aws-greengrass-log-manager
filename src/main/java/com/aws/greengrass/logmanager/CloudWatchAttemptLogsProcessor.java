@@ -138,6 +138,16 @@ public class CloudWatchAttemptLogsProcessor {
                 componentLogFileInformation.getLogFileInformationList().remove(0);
                 continue;
             }
+            //TODO
+            logger.atError().log("=====================================File: " + logFile.getName()
+                    + " start: " + startPosition + " size:" + logFile.length());
+            if (startPosition == logFile.length()) {
+                //TODO
+                logger.atError().log("!!!!!!!!!!!!!!!!!!!!!!! File should not read: " + logFile.getName()
+                        + " start: " + startPosition + " size:" + logFile.length());
+                componentLogFileInformation.getLogFileInformationList().remove(0);
+                continue;
+            }
 
             long lastModified = logFile.lastModified();
 

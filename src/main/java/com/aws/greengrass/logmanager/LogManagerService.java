@@ -125,6 +125,7 @@ public class LogManagerService extends PluginService {
     @Getter
     private int periodicUpdateIntervalSec;
     private Future<?> spaceManagementThread;
+    //private CountDownLatch fileUploading;
 
     /**
      * Constructor.
@@ -231,6 +232,8 @@ public class LogManagerService extends PluginService {
                     .build();
 
             setCommonComponentConfiguration(systemConfigMap, systemConfiguration);
+            //TODO
+            logger.atError().log("~~~~~~~~~~~~~~~~~~~~~~system is added");
             newComponentLogConfigurations.put(systemConfiguration.getName(), systemConfiguration);
             loadStateFromConfiguration(systemConfiguration.getName());
             return o;
@@ -504,6 +507,7 @@ public class LogManagerService extends PluginService {
             lastFileProcessedTimeStamp.withValue(instant.toEpochMilli());
         });
         isCurrentlyUploading.set(false);
+        //fileUploading.countDown();
     }
 
     private void processCloudWatchAttemptLogInformation(Map<String, Set<LogFile>> completedLogFilePerComponent,
@@ -583,13 +587,17 @@ public class LogManagerService extends PluginService {
         while (true) {
             //TODO: this is only done for passing the current text. But in practise, we don`t need to intentionally
             // sleep here.
+            logger.info("!!!!!!!!!!!!!!!!!!!!! current thread: {}", Thread.currentThread().getName());
             if (!isCurrentlyUploading.compareAndSet(false, true)) {
                 TimeUnit.SECONDS.sleep(periodicUpdateIntervalSec);
+                //fileUploading.await(periodicUpdateIntervalSec, TimeUnit.SECONDS);
                 continue;
             }
             List<ComponentLogFileInformation> unitsOfWork = new ArrayList<>();
             // Get the latest known configurations because the componentLogConfigurations can change if a new
             // configuration is received from the customer.
+            //TODO: edge case: since the active file is processing, so the loop will continue disregarding the
+            // intervalSec. It should be handled in next PR.
             for (ComponentLogConfiguration componentLogConfiguration : componentLogConfigurations.values()) {
                 String componentName = componentLogConfiguration.getName();
                 Instant lastUploadedLogFileTimeMs =
@@ -627,6 +635,9 @@ public class LogManagerService extends PluginService {
                                         componentCurrentProcessingLogFile.get(componentName);
                                 if (processingFileInformation.fileHash.equals(fileHash)) {
                                     startPosition = processingFileInformation.startPosition;
+                                    //TODO: next PR. EDGE CASE: When active log is uploaded but rotated, it will be
+                                    // processed as processingFile and get the startPosition, however, it should not
+                                    // be processed since it already read.
                                 }
                             }
 

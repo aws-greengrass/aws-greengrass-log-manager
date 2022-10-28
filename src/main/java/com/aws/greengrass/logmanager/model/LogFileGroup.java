@@ -21,6 +21,7 @@ public final class LogFileGroup {
     @Getter
     private List<LogFile> logFiles;
     private static Map<String, LogFile> fileHashToLogFile;
+    @Getter
     private final Pattern filePattern;
     private final URI directoryURI;
     private final Instant lastUpdated;
@@ -72,17 +73,6 @@ public final class LogFileGroup {
         return new LogFileGroup(allFiles, filePattern, directoryURI, lastUpdated);
     }
 
-    /**
-     * Using the sorted log files to get the active file.
-     * @return the active logFile.
-     */
-    public Optional<LogFile> getActiveFile() {
-        if (logFiles.isEmpty()) {
-            return Optional.empty();
-        }
-        return Optional.of(logFiles.get(logFiles.size() - 1));
-    }
-
     public void forEach(Consumer<LogFile> callback) {
         logFiles.forEach(callback::accept);
     }
@@ -96,11 +86,15 @@ public final class LogFileGroup {
      * @param fileHash the fileHash obtained from uploader.
      * @return the logFile.
      */
-    public Optional<LogFile> getFile(String fileHash) {
+    public LogFile getFile(String fileHash) {
+        return fileHashToLogFile.get(fileHash);
+    }
+
+    public boolean isHashExist(String fileHash) {
         if (!fileHashToLogFile.containsKey(fileHash)) {
-            return Optional.empty();
+            return false;
         }
-        return Optional.of(fileHashToLogFile.get(fileHash));
+        return true;
     }
 
     /**
@@ -115,4 +109,11 @@ public final class LogFileGroup {
         return create(this.filePattern, this.directoryURI, this.lastUpdated);
     }
 
+    public boolean isActiveFile(LogFile file) {
+        if (logFiles.isEmpty()) {
+            return false;
+        }
+        LogFile activeFile = logFiles.get(logFiles.size() - 1);
+        return file.hashString().equals(activeFile.hashString());
+    }
 }

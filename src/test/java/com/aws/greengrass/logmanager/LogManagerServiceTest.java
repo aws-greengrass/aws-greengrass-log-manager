@@ -99,6 +99,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
@@ -309,7 +310,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         assertNotNull(componentLogFileInformation.getLogFileInformationList());
         assertThat(componentLogFileInformation.getLogFileInformationList(), IsNot.not(IsEmptyCollection.empty()));
         assertTrue(componentLogFileInformation.getLogFileInformationList().size() >= 6);
-        verify(mockUploader, times(1)).upload(any(CloudWatchAttempt.class), anyInt());
+        verify(mockUploader, atLeastOnce()).upload(any(CloudWatchAttempt.class), anyInt());
     }
 
     @Test
@@ -362,7 +363,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         assertNotNull(componentLogFileInformation.getLogFileInformationList());
         assertThat(componentLogFileInformation.getLogFileInformationList(), IsNot.not(IsEmptyCollection.empty()));
         assertTrue(componentLogFileInformation.getLogFileInformationList().size() >= 6);
-        verify(mockUploader, times(1)).upload(any(CloudWatchAttempt.class), anyInt());
+        verify(mockUploader, atLeastOnce()).upload(any(CloudWatchAttempt.class), anyInt());
     }
 
     @Test
@@ -413,7 +414,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         assertNotNull(componentLogFileInformation.getLogFileInformationList());
         assertThat(componentLogFileInformation.getLogFileInformationList(), IsNot.not(IsEmptyCollection.empty()));
         assertTrue(componentLogFileInformation.getLogFileInformationList().size() >= 6);
-        verify(mockUploader, times(1)).upload(any(CloudWatchAttempt.class), anyInt());
+        verify(mockUploader, atLeastOnce()).upload(any(CloudWatchAttempt.class), anyInt());
     }
 
     @Test
@@ -465,7 +466,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         assertNotNull(componentLogFileInformation.getLogFileInformationList());
         assertThat(componentLogFileInformation.getLogFileInformationList(), IsNot.not(IsEmptyCollection.empty()));
         assertTrue(componentLogFileInformation.getLogFileInformationList().size() >= 6);
-        verify(mockUploader, times(1)).upload(any(CloudWatchAttempt.class), anyInt());
+        verify(mockUploader, atLeastOnce()).upload(any(CloudWatchAttempt.class), anyInt());
     }
 
     @Test
@@ -525,7 +526,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         assertNotNull(componentLogFileInformation.getLogFileInformationList());
         assertThat(componentLogFileInformation.getLogFileInformationList(), IsNot.not(IsEmptyCollection.empty()));
         assertTrue(componentLogFileInformation.getLogFileInformationList().size() >= 6);
-        verify(mockUploader, times(1)).upload(any(CloudWatchAttempt.class), anyInt());
+        verify(mockUploader, atLeastOnce()).upload(any(CloudWatchAttempt.class), anyInt());
     }
 
     private void startServiceOnAnotherThread() {
@@ -617,7 +618,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         createLogFileWithSize(directoryPath.resolve("testlogs2.log_active").toUri(), 2943);
         LogFileGroup lastProcessedLogFileGroup = LogFileGroup.create(pattern1, lastProcessedFile.getParentFile().toURI(), mockInstant);
         assertEquals(2, lastProcessedLogFileGroup.getLogFiles().size());
-        assertFalse(lastProcessedFile.hashString().equals(lastProcessedLogFileGroup.getActiveFile().get().hashString()));
+        assertFalse(lastProcessedLogFileGroup.isActiveFile(lastProcessedFile));
 
         createLogFileWithSize(directoryPath.resolve("testlogs1.log_processed").toUri(), 1061);
         // Intentionally sleep to differ the creation time of two files
@@ -627,7 +628,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         LogFileGroup processingLogFileGroup = LogFileGroup.create(pattern2, processingFile.getParentFile().toURI(),
                 Instant.ofEpochMilli(processingFile.lastModified() - 1));
         assertEquals(1, processingLogFileGroup.getLogFiles().size());
-        assertTrue(processingFile.hashString().equals(processingLogFileGroup.getActiveFile().get().hashString()));
+        assertTrue(processingLogFileGroup.isActiveFile(processingFile));
 
         Map<String, CloudWatchAttemptLogFileInformation> LastProcessedAttemptLogFileInformationMap = new HashMap<>();
         LastProcessedAttemptLogFileInformationMap.put(lastProcessedFile.hashString(),
@@ -748,7 +749,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
                 assertEquals(0, logFileInformation.getStartPosition());
             }
         });
-        verify(mockUploader, times(1)).upload(any(CloudWatchAttempt.class), anyInt());
+        verify(mockUploader, atLeastOnce()).upload(any(CloudWatchAttempt.class), anyInt());
     }
 
     @Test
@@ -963,7 +964,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         assertTrue(componentLogFileInformation.getLogFileInformationList().size() >= 2);
         componentLogFileInformation.getLogFileInformationList().forEach(logFileInformation ->
                 assertEquals(0, logFileInformation.getStartPosition()));
-        verify(mockUploader, times(1)).upload(any(CloudWatchAttempt.class), anyInt());
+        verify(mockUploader, atLeastOnce()).upload(any(CloudWatchAttempt.class), anyInt());
     }
 
     @Test

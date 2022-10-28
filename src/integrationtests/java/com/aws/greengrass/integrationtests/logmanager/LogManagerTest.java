@@ -320,7 +320,7 @@ class LogManagerTest extends BaseITCase {
     private Runnable subscribeToActiveFileProcessed(LogManagerService service, int waitTime) throws InterruptedException {
         CountDownLatch latch = new CountDownLatch(1);
         Runnable deregister = service.registerEventStatusListener((EventType event) -> {
-            if (event == EventType.LOG_GROUP_PROCESSED) {
+            if (event == EventType.ALL_COMPONENTS_PROCESSED) {
                 latch.countDown();
             }
         });

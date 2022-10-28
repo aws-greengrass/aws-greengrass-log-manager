@@ -44,7 +44,7 @@ public class LogFileGroupTest {
         LogFileGroup logFileGroup = LogFileGroup.create(pattern, file.getParentFile().toURI(), instant);
 
         assertEquals(2, logFileGroup.getLogFiles().size());
-        assertFalse(logFileGroup.getActiveFile().get().fileEquals(file));
-        assertTrue(logFileGroup.getActiveFile().get().fileEquals(file2));
+        assertFalse(logFileGroup.isActiveFile(file));
+        assertTrue(logFileGroup.isActiveFile(file2));
     }
 }

@@ -108,8 +108,4 @@ public class LogFile extends File {
         return Utils.isEmpty(this.hashString());
     }
 
-    public boolean fileEquals(LogFile logFile) {
-        return this.hashString().equals(logFile.hashString());
-    }
-
 }

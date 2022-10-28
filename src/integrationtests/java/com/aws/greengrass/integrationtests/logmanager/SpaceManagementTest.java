@@ -135,6 +135,7 @@ class SpaceManagementTest extends BaseITCase {
             for (int i = 0; i < 15; i++) {
                 createTempFileAndWriteData(tempDirectoryPath, "integTestRandomLogFiles.log_", "");
             }
+            //Todo: we should not be checking for log messages to verify if a log file was deleted.
             assertTrue(cdl.await(60, TimeUnit.SECONDS), "5 files deleted");
         }
 

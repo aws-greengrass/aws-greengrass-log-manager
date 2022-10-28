@@ -24,12 +24,31 @@ jobs:
       - name: Build with Maven
         env:
           AWS_REGION: us-west-2
-        run: mvn -ntp -U -DskipTests clean verify
+        run: mvn -ntp -U clean verify
+      - name: Upload Failed Test Report
+        uses: actions/upload-artifact@v1.0.0
+        if: failure()
+        with:
+          name: Failed Test Report
+          path: target/surefire-reports
+      - name: Upload Coverage
+        uses: actions/upload-artifact@v1.0.0
+        if: always()
+        with:
+          name: Coverage Report
+          path: target/jacoco-report
+      - name: Convert Jacoco unit test report to Cobertura
+        run: python3 .github/scripts/cover2cover.py target/jacoco-report/jacoco.xml src/main/java > target/jacoco-report/cobertura.xml
+      - name: Convert Jacoco integ test report to Cobertura
+        run: python3 .github/scripts/cover2cover.py target/jacoco-report/jacoco-it/jacoco.xml src/main/java > target/jacoco-report/cobertura-it.xml
       - name: Save PR number
         run: |
           mkdir -p ./pr/jacoco-report
           echo ${{ github.event.number }} > ./pr/NR
           echo ${{ github.event.pull_request.head.sha }} > ./pr/SHA
+
+          cp target/jacoco-report/cobertura.xml ./pr/jacoco-report/cobertura.xml
+          cp target/jacoco-report/cobertura-it.xml ./pr/jacoco-report/cobertura-it.xml
         if: github.event_name == 'pull_request'
       - name: Upload files
         uses: actions/upload-artifact@v2

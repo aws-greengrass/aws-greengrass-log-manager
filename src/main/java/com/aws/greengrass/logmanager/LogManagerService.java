@@ -55,7 +55,6 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -80,7 +79,7 @@ public class LogManagerService extends PluginService {
     public static final String LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC = "periodicUploadIntervalSec";
     public static final String LOGS_UPLOADER_CONFIGURATION_TOPIC = "logsUploaderConfiguration";
     public static final String SYSTEM_LOGS_COMPONENT_NAME = "System";
-    //This is deprecated value in versions greater than 2.2, but keep it here to avoid
+    // @deprecated This is deprecated value in versions greater than 2.2, but keep it here to avoid
     // upgrade-downgrade issues.
     public static final String PERSISTED_CURRENT_PROCESSING_FILE_NAME = "currentProcessingFileName";
     public static final String PERSISTED_CURRENT_PROCESSING_FILE_HASH = "currentProcessingFileHash";
@@ -515,23 +514,19 @@ public class LogManagerService extends PluginService {
                                                                 cloudWatchAttemptLogFileInformation) {
         try {
             LogFileGroup logFileGroup = attemptLogInformation.getLogFileGroup().syncDirectory();
-            if (!logFileGroup.getFile(fileHash).isPresent()) {
-                logger.atTrace().log("The fileHash does not exist in directory");
+            if (!logFileGroup.isHashExist(fileHash)) {
+                logger.atTrace().kv("fileHash", fileHash).log("component",
+                        logFileGroup.getFilePattern(), "File not found in directory");
                 return;
             }
-            LogFile file = logFileGroup.getFile(fileHash).get();
-            Optional<LogFile> activeFile = logFileGroup.getActiveFile();
-            boolean isActiveFile = false;
-            if (activeFile.isPresent()) {
-                isActiveFile = activeFile.get().fileEquals(file);
-            }
-            //This is deprecated value in versions greater than 2.2, but keep it here to avoid
+            LogFile file = logFileGroup.getFile(fileHash);
+            // @deprecated  This is deprecated value in versions greater than 2.2, but keep it here to avoid
             // upgrade-downgrade issues.
-            String fileName = activeFile.get().getAbsolutePath();
+            String fileName = file.getAbsolutePath();
             // If we have completely read the file, then we need add it to the completed files list and remove it
             // it (if necessary) for the current processing list.
             String componentName = attemptLogInformation.getComponentName();
-            if (!isActiveFile && file.length() == cloudWatchAttemptLogFileInformation.getBytesRead()
+            if (!logFileGroup.isActiveFile(file) && file.length() == cloudWatchAttemptLogFileInformation.getBytesRead()
                     + cloudWatchAttemptLogFileInformation.getStartPosition()) {
                 Set<LogFile> completedFiles = completedLogFilePerComponent.getOrDefault(componentName,
                         new HashSet<>());
@@ -547,7 +542,7 @@ public class LogManagerService extends PluginService {
             } else {
                 // Add the file to the current processing list for the component.
                 // Note: There should always be only 1 file which will be in progress at any given time.
-                //The fileName is deprecated value in versions greater than 2.2, but keep it here to avoid
+                // @deprecated The fileName is deprecated value in versions greater than 2.2, but keep it here to avoid
                 // upgrade-downgrade issues.
                 CurrentProcessingFileInformation processingFileInformation =
                         CurrentProcessingFileInformation.builder()
@@ -561,8 +556,7 @@ public class LogManagerService extends PluginService {
                         processingFileInformation);
             }
         } catch (InvalidLogGroupException e) {
-            logger.atDebug().cause(e).log();
-            return;
+            logger.atDebug().cause(e).log("Invalid log group");
         }
     }
 
@@ -653,16 +647,14 @@ public class LogManagerService extends PluginService {
             unitsOfWork = unitsOfWork.stream().filter(unit -> !unit.getLogFileInformationList().isEmpty()).collect(
                     Collectors.toList());
 
-            if (unitsOfWork.isEmpty()) {
-                isCurrentlyUploading.set(false);
-            } else {
-                unitsOfWork.forEach((unit) -> {
-                    CloudWatchAttempt cloudWatchAttempt = logsProcessor.processLogFiles(unit);
-                    uploader.upload(cloudWatchAttempt, 1);
-                });
-                emitEventStatus(EventType.LOG_GROUP_PROCESSED);
-            }
+            unitsOfWork.forEach((unit) -> {
+                CloudWatchAttempt cloudWatchAttempt = logsProcessor.processLogFiles(unit);
+                uploader.upload(cloudWatchAttempt, 1);
+            });
+            emitEventStatus(EventType.ALL_COMPONENTS_PROCESSED);
+            isCurrentlyUploading.set(false);
             // after handle one cycle, we sleep for interval to avoid seamless scanning and processing next cycle.
+            // TODO, do not use lazy sleep. Use scheduler to unblock the thread.
             TimeUnit.SECONDS.sleep(periodicUpdateIntervalSec);
         }
     }
@@ -845,7 +837,7 @@ public class LogManagerService extends PluginService {
 
         public Map<String, Object> convertToMapOfObjects() {
             Map<String, Object> currentProcessingFileInformationMap = new HashMap<>();
-            //This is deprecated value in versions greater than 2.2, but keep it here to avoid
+            // @deprecated  This is deprecated value in versions greater than 2.2, but keep it here to avoid
             // upgrade-downgrade issues.
             currentProcessingFileInformationMap.put(PERSISTED_CURRENT_PROCESSING_FILE_NAME, fileName);
             currentProcessingFileInformationMap.put(PERSISTED_CURRENT_PROCESSING_FILE_START_POSITION, startPosition);
@@ -857,7 +849,7 @@ public class LogManagerService extends PluginService {
 
         public void updateFromTopic(Topic topic) {
             switch (topic.getName()) {
-                //This is deprecated value in versions greater than 2.2, but keep it here to avoid
+                //  @deprecated  This is deprecated value in versions greater than 2.2, but keep it here to avoid
                 // upgrade-downgrade issues.
                 case PERSISTED_CURRENT_PROCESSING_FILE_NAME:
                     fileName = Coerce.toString(topic);

@@ -11,7 +11,6 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 import java.util.regex.Pattern;
@@ -90,11 +89,13 @@ public final class LogFileGroup {
         return fileHashToLogFile.get(fileHash);
     }
 
+    /**
+     * Validate if the hash exists in the current logFileGroup.
+     * @param fileHash the hash of the file.
+     * @return boolean.
+     */
     public boolean isHashExist(String fileHash) {
-        if (!fileHashToLogFile.containsKey(fileHash)) {
-            return false;
-        }
-        return true;
+        return fileHashToLogFile.containsKey(fileHash);
     }
 
     /**
@@ -109,6 +110,11 @@ public final class LogFileGroup {
         return create(this.filePattern, this.directoryURI, this.lastUpdated);
     }
 
+    /**
+     * Validate if the logFile is the active of one logFileGroup.
+     * @param file the target file.
+     * @return boolean.
+     */
     public boolean isActiveFile(LogFile file) {
         if (logFiles.isEmpty()) {
             return false;

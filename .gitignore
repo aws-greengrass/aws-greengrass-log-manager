@@ -10,7 +10,3 @@ coverage
 *.iml
 bin
 greengrass*.log
-gdk-config.json
-aws.greengrass.LogManager-2.3.13.json
-greengrass-build/recipes/recipe.json
-recipe.json

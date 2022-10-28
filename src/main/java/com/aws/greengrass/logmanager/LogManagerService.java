@@ -651,8 +651,8 @@ public class LogManagerService extends PluginService {
                 CloudWatchAttempt cloudWatchAttempt = logsProcessor.processLogFiles(unit);
                 uploader.upload(cloudWatchAttempt, 1);
             });
-            emitEventStatus(EventType.ALL_COMPONENTS_PROCESSED);
             isCurrentlyUploading.set(false);
+            emitEventStatus(EventType.ALL_COMPONENTS_PROCESSED);
             // after handle one cycle, we sleep for interval to avoid seamless scanning and processing next cycle.
             // TODO, do not use lazy sleep. Use scheduler to unblock the thread.
             TimeUnit.SECONDS.sleep(periodicUpdateIntervalSec);

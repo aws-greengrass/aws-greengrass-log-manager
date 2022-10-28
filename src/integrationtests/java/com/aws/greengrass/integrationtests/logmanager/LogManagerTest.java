@@ -24,7 +24,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.extension.ExtensionContext;
@@ -159,7 +158,7 @@ class LogManagerTest extends BaseITCase {
     void afterEach() {
         kernel.shutdown();
     }
-    @Disabled("fix it - it is flaky")
+
     @Test
     void GIVEN_user_component_config_with_small_periodic_interval_WHEN_interval_elapses_THEN_logs_are_uploaded_to_cloud()
             throws Exception {
@@ -193,7 +192,7 @@ class LogManagerTest extends BaseITCase {
         LogFileGroup logFileGroup = LogFileGroup.create(logFileNamePattern, tempDirectoryPath.toUri(), mockInstant);
         assertEquals(1, logFileGroup.getLogFiles().size());
     }
-    @Disabled("fix it - it is flaky")
+
     @Test
     void GIVEN_user_component_config_with_small_periodic_interval_and_only_required_config_WHEN_interval_elapses_THEN_logs_are_uploaded_to_cloud()
             throws Exception {
@@ -230,7 +229,7 @@ class LogManagerTest extends BaseITCase {
         LogFileGroup logFileGroup = LogFileGroup.create(logFileNamePattern, tempDirectoryPath.toUri(), mockInstant);
         assertEquals(1, logFileGroup.getLogFiles().size());
     }
-    @Disabled("fix it - it is flaky")
+
     @Test
     void GIVEN_system_config_with_small_periodic_interval_WHEN_interval_elapses_THEN_logs_are_uploaded_to_cloud(
             ExtensionContext ec) throws Exception {
@@ -320,7 +319,7 @@ class LogManagerTest extends BaseITCase {
 
     private Runnable subscribeToActiveFileProcessed(LogManagerService service, int waitTime) throws InterruptedException {
         CountDownLatch latch = new CountDownLatch(1);
-        Runnable deregister = service.registerEventStatusListener((EventType event) -> {
+        service.registerEventStatusListener((EventType event) -> {
             if (event == EventType.ALL_COMPONENTS_PROCESSED) {
                 latch.countDown();
             }
@@ -332,7 +331,6 @@ class LogManagerTest extends BaseITCase {
             } catch (InterruptedException e) {
                 //do nothing
             }
-            deregister.run();
         };
     }
 }

@@ -659,9 +659,8 @@ public class LogManagerService extends PluginService {
         }
     }
 
-    public Runnable registerEventStatusListener(Consumer<EventType> callback) {
+    public void registerEventStatusListener(Consumer<EventType> callback) {
         serviceStatusListeners.add(callback);
-        return () -> serviceStatusListeners.remove(callback);
     }
 
     private void emitEventStatus(EventType eventStatus) {

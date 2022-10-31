@@ -526,7 +526,7 @@ public class LogManagerService extends PluginService {
             // If we have completely read the file, then we need add it to the completed files list and remove it
             // it (if necessary) for the current processing list.
             String componentName = attemptLogInformation.getComponentName();
-            if (!logFileGroup.isActiveFile(file) && file.length() == cloudWatchAttemptLogFileInformation.getBytesRead()
+            if (!logFileGroup.isActiveFile(file) && file.length() <= cloudWatchAttemptLogFileInformation.getBytesRead()
                     + cloudWatchAttemptLogFileInformation.getStartPosition()) {
                 Set<LogFile> completedFiles = completedLogFilePerComponent.getOrDefault(componentName,
                         new HashSet<>());
@@ -860,8 +860,15 @@ public class LogManagerService extends PluginService {
                     lastModifiedTime = Coerce.toLong(topic);
                     break;
                 case PERSISTED_CURRENT_PROCESSING_FILE_HASH:
-                    //TODO: the scenario of upgrading from older version needs to be handled in next PR.
+                    // If upgrade from older version, then the fileHash does not exist but fileName exists, then
+                    // transfer from fileName to fileHash.
+                    String savedName = Coerce.toString(PERSISTED_CURRENT_PROCESSING_FILE_NAME);
+                    String savedHash = Coerce.toString(topic);
                     fileHash = Coerce.toString(topic);
+                    if (savedHash.isEmpty() && !savedName.isEmpty()) {
+                        LogFile savedFile = new LogFile(Paths.get(savedName).toUri());
+                        fileHash = savedFile.hashString();
+                    }
                     break;
                 default:
                     break;

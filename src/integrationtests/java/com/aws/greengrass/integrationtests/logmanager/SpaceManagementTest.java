@@ -13,6 +13,7 @@ import com.aws.greengrass.lifecyclemanager.Kernel;
 import com.aws.greengrass.logging.impl.GreengrassLogMessage;
 import com.aws.greengrass.logging.impl.LogManager;
 import com.aws.greengrass.logmanager.LogManagerService;
+import com.aws.greengrass.logmanager.model.LogFileGroup;
 import com.aws.greengrass.testcommons.testutilities.GGExtension;
 import com.aws.greengrass.util.exceptions.TLSAuthException;
 import org.junit.jupiter.api.AfterEach;
@@ -28,7 +29,6 @@ import software.amazon.awssdk.services.cloudwatchlogs.CloudWatchLogsClient;
 import software.amazon.awssdk.services.cloudwatchlogs.model.PutLogEventsRequest;
 import software.amazon.awssdk.services.cloudwatchlogs.model.PutLogEventsResponse;
 
-import java.io.File;
 import java.io.IOException;
 import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
@@ -39,8 +39,6 @@ import java.nio.file.Paths;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.time.temporal.ChronoUnit;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
@@ -60,6 +58,7 @@ class SpaceManagementTest extends BaseITCase {
     private static DeviceConfiguration deviceConfiguration;
     private LogManagerService logManagerService;
     private Path tempDirectoryPath;
+    private static final Instant mockInstant = Instant.EPOCH;
 
     @Mock
     private CloudWatchLogsClient cloudWatchLogsClient;
@@ -122,7 +121,6 @@ class SpaceManagementTest extends BaseITCase {
     void GIVEN_user_component_config_with_space_management_WHEN_space_exceeds_THEN_excess_log_files_are_deleted()
             throws Exception {
         tempDirectoryPath = Files.createDirectory(tempRootDir.resolve("IntegrationTestsTemporaryLogFiles"));
-        createTempFileAndWriteData(tempDirectoryPath, "integTestRandomLogFiles.log_", "");
 
         setupKernel(tempDirectoryPath);
         TimeUnit.SECONDS.sleep(10);
@@ -134,26 +132,15 @@ class SpaceManagementTest extends BaseITCase {
             }
         };
         try (AutoCloseable l = createCloseableLogListener(listener)) {
-            for (int i = 0; i < 14; i++) {
+            for (int i = 0; i < 15; i++) {
                 createTempFileAndWriteData(tempDirectoryPath, "integTestRandomLogFiles.log_", "");
             }
+            //Todo: we should not be checking for log messages to verify if a log file was deleted.
             assertTrue(cdl.await(60, TimeUnit.SECONDS), "5 files deleted");
         }
 
-        File folder = tempDirectoryPath.toFile();
         Pattern logFileNamePattern = Pattern.compile("^integTestRandomLogFiles.log\\w*");
-        List<File> allFiles = new ArrayList<>();
-        File[] files = folder.listFiles();
-        if (files != null) {
-            for (File file : files) {
-                if (file.isFile()
-                        && logFileNamePattern.matcher(file.getName()).find()
-                        && file.length() > 0) {
-                    allFiles.add(file);
-                }
-            }
-        }
-
-        assertEquals(10, allFiles.size());
+        LogFileGroup logFileGroup = LogFileGroup.create(logFileNamePattern, tempDirectoryPath.toUri(), mockInstant);
+        assertEquals(10, logFileGroup.getLogFiles().size());
     }
 }

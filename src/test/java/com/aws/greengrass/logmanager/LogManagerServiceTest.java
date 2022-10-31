@@ -99,10 +99,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -125,6 +125,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
     static Path directoryPath;
     private LogManagerService logsUploaderService;
     private final ExecutorService executor = Executors.newCachedThreadPool();
+    private final Instant mockInstant = Instant.EPOCH;
 
     @BeforeAll
     static void setupBefore() throws IOException, InterruptedException {
@@ -307,8 +308,8 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         assertEquals(Level.INFO, componentLogFileInformation.getDesiredLogLevel());
         assertNotNull(componentLogFileInformation.getLogFileInformationList());
         assertThat(componentLogFileInformation.getLogFileInformationList(), IsNot.not(IsEmptyCollection.empty()));
-        assertTrue(componentLogFileInformation.getLogFileInformationList().size() >= 5);
-        verify(mockUploader, times(1)).upload(any(CloudWatchAttempt.class), anyInt());
+        assertTrue(componentLogFileInformation.getLogFileInformationList().size() >= 6);
+        verify(mockUploader, atLeastOnce()).upload(any(CloudWatchAttempt.class), anyInt());
     }
 
     @Test
@@ -360,8 +361,8 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         assertEquals(Level.DEBUG, componentLogFileInformation.getDesiredLogLevel());
         assertNotNull(componentLogFileInformation.getLogFileInformationList());
         assertThat(componentLogFileInformation.getLogFileInformationList(), IsNot.not(IsEmptyCollection.empty()));
-        assertTrue(componentLogFileInformation.getLogFileInformationList().size() >= 5);
-        verify(mockUploader, times(1)).upload(any(CloudWatchAttempt.class), anyInt());
+        assertTrue(componentLogFileInformation.getLogFileInformationList().size() >= 6);
+        verify(mockUploader, atLeastOnce()).upload(any(CloudWatchAttempt.class), anyInt());
     }
 
     @Test
@@ -411,8 +412,8 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         assertEquals(Level.DEBUG, componentLogFileInformation.getDesiredLogLevel());
         assertNotNull(componentLogFileInformation.getLogFileInformationList());
         assertThat(componentLogFileInformation.getLogFileInformationList(), IsNot.not(IsEmptyCollection.empty()));
-        assertTrue(componentLogFileInformation.getLogFileInformationList().size() >= 5);
-        verify(mockUploader, times(1)).upload(any(CloudWatchAttempt.class), anyInt());
+        assertTrue(componentLogFileInformation.getLogFileInformationList().size() >= 6);
+        verify(mockUploader, atLeastOnce()).upload(any(CloudWatchAttempt.class), anyInt());
     }
 
     @Test
@@ -463,8 +464,8 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         assertEquals(Level.DEBUG, componentLogFileInformation.getDesiredLogLevel());
         assertNotNull(componentLogFileInformation.getLogFileInformationList());
         assertThat(componentLogFileInformation.getLogFileInformationList(), IsNot.not(IsEmptyCollection.empty()));
-        assertTrue(componentLogFileInformation.getLogFileInformationList().size() >= 5);
-        verify(mockUploader, times(1)).upload(any(CloudWatchAttempt.class), anyInt());
+        assertTrue(componentLogFileInformation.getLogFileInformationList().size() >= 6);
+        verify(mockUploader, atLeastOnce()).upload(any(CloudWatchAttempt.class), anyInt());
     }
 
     @Test
@@ -523,8 +524,8 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         assertEquals(Level.DEBUG, componentLogFileInformation.getDesiredLogLevel());
         assertNotNull(componentLogFileInformation.getLogFileInformationList());
         assertThat(componentLogFileInformation.getLogFileInformationList(), IsNot.not(IsEmptyCollection.empty()));
-        assertTrue(componentLogFileInformation.getLogFileInformationList().size() >= 5);
-        verify(mockUploader, times(1)).upload(any(CloudWatchAttempt.class), anyInt());
+        assertTrue(componentLogFileInformation.getLogFileInformationList().size() >= 6);
+        verify(mockUploader, atLeastOnce()).upload(any(CloudWatchAttempt.class), anyInt());
     }
 
     private void startServiceOnAnotherThread() {
@@ -540,7 +541,6 @@ class LogManagerServiceTest extends GGServiceTestUtil {
     void GIVEN_null_config_WHEN_config_is_processed_THEN_no_component_config_is_added(
             ExtensionContext context1) {
         ignoreExceptionOfType(context1, MismatchedInputException.class);
-
         Topics configTopics = Topics.of(context, CONFIGURATION_CONFIG_KEY, null);
         when(config.lookupTopics(CONFIGURATION_CONFIG_KEY)).thenReturn(configTopics);
         Topic periodicUpdateIntervalMsTopic = Topic.of(context, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC, "3");
@@ -558,9 +558,8 @@ class LogManagerServiceTest extends GGServiceTestUtil {
 
     @Test
     void GIVEN_cloud_watch_attempt_handler_WHEN_attempt_completes_THEN_successfully_updates_states_for_each_component()
-            throws URISyntaxException, IOException, InvalidLogGroupException {
+            throws URISyntaxException, IOException, InvalidLogGroupException, InterruptedException {
         mockDefaultPersistedState();
-        logsUploaderService.ACTIVE_LOG_FILE_FEATURE_ENABLED_FLAG.set(true);
         Topic periodicUpdateIntervalMsTopic = Topic.of(context, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC, "1000");
         when(config.lookup(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC))
                 .thenReturn(periodicUpdateIntervalMsTopic);
@@ -575,46 +574,72 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         when(config.lookupTopics(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC))
                 .thenReturn(logsUploaderConfigTopics);
 
-        Topics componentTopics2 = mock(Topics.class);
-        Topic lastFileProcessedTimeStampTopics = mock(Topic.class);
-        when(componentTopics2.createLeafChild(any())).thenReturn(lastFileProcessedTimeStampTopics);
-        when(lastFileProcessedTimeStampTopics.withValue(numberObjectCaptor.capture()))
-                .thenReturn(lastFileProcessedTimeStampTopics);
+        Topics component1ProcessedTopics = mock(Topics.class);
+        Topic component1LastFileProcessedTimeStampTopics = mock(Topic.class);
+        when(component1ProcessedTopics.createLeafChild(any())).thenReturn(component1LastFileProcessedTimeStampTopics);
+        when(component1LastFileProcessedTimeStampTopics.withValue(numberObjectCaptor.capture()))
+                .thenReturn(component1LastFileProcessedTimeStampTopics);
 
-        Topics componentTopics3 = mock(Topics.class);
-        doNothing().when(componentTopics3).updateFromMap(updateFromMapCaptor.capture(), any());
+        Topics component2ProcessedTopics = mock(Topics.class);
+        Topic component2lastFileProcessedTimeStampTopics = mock(Topic.class);
+        lenient().when(component2ProcessedTopics.createLeafChild(any())).thenReturn(component2lastFileProcessedTimeStampTopics);
+        lenient().when(component2lastFileProcessedTimeStampTopics.withValue(anyInt())).thenReturn(component2lastFileProcessedTimeStampTopics);
+
+        Topics component2ProcessingTopics = mock(Topics.class);
+        doNothing().when(component2ProcessingTopics).updateFromMap(updateFromMapCaptor.capture(), any());
+
+        Topics component1ProcessingTopics = mock(Topics.class);
+        lenient().doNothing().when(component1ProcessingTopics).updateFromMap(any(), any());
+
+
         Topics runtimeConfig = mock(Topics.class);
         when(config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC))
                 .thenReturn(runtimeConfig);
-        when(runtimeConfig.lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION, "TestComponent2"))
-                .thenReturn(componentTopics3);
-        when(runtimeConfig.lookupTopics(PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP, "TestComponent"))
-                .thenReturn(componentTopics2);
+
+        lenient().when(runtimeConfig.lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION,
+                        "TestComponent2")).thenReturn(component2ProcessingTopics);
+        lenient().when(runtimeConfig.lookupTopics(PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP, "TestComponent"))
+                .thenReturn(component1ProcessedTopics);
+
+        lenient().when(runtimeConfig.lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION,
+                "TestComponent")).thenReturn(component1ProcessingTopics);
+        lenient().when(runtimeConfig.lookupTopics(PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP, "TestComponent2"))
+                .thenReturn(component2ProcessedTopics);
+
 
         CloudWatchAttempt attempt = new CloudWatchAttempt();
         Map<String, CloudWatchAttemptLogInformation> logStreamsToLogInformationMap = new HashMap<>();
 
         LogFile lastProcessedFile = createLogFileWithSize(directoryPath.resolve("testlogs2.log").toUri(), 2943);
         Pattern pattern1 = Pattern.compile("^testlogs2.log\\w*$");
-        Instant instant1 = Instant.EPOCH;
         // Create another file intentionally, so that the lastProcessedFile will be processed.
+        TimeUnit.SECONDS.sleep(5);
         createLogFileWithSize(directoryPath.resolve("testlogs2.log_active").toUri(), 2943);
-        LogFileGroup LastProcessedLogFileGroup = LogFileGroup.create(pattern1, lastProcessedFile.getParentFile().toURI(), instant1);
+        LogFileGroup lastProcessedLogFileGroup = LogFileGroup.create(pattern1, lastProcessedFile.getParentFile().toURI(), mockInstant);
+        assertEquals(2, lastProcessedLogFileGroup.getLogFiles().size());
+        assertFalse(lastProcessedLogFileGroup.isActiveFile(lastProcessedFile));
 
+        createLogFileWithSize(directoryPath.resolve("testlogs1.log_processed").toUri(), 1061);
+        // Intentionally sleep to differ the creation time of two files
+        TimeUnit.SECONDS.sleep(5);
         LogFile processingFile = createLogFileWithSize(directoryPath.resolve("testlogs1.log").toUri(), 1061);
         Pattern pattern2 = Pattern.compile("^testlogs1.log$");
-        Instant instant2 = Instant.EPOCH;
-        LogFileGroup processingLogFileGroup = LogFileGroup.create(pattern2, processingFile.getParentFile().toURI(), instant2);
+        LogFileGroup processingLogFileGroup = LogFileGroup.create(pattern2, processingFile.getParentFile().toURI(),
+                Instant.ofEpochMilli(processingFile.lastModified() - 1));
+        assertEquals(1, processingLogFileGroup.getLogFiles().size());
+        assertTrue(processingLogFileGroup.isActiveFile(processingFile));
 
         Map<String, CloudWatchAttemptLogFileInformation> LastProcessedAttemptLogFileInformationMap = new HashMap<>();
-        LastProcessedAttemptLogFileInformationMap.put(lastProcessedFile.getAbsolutePath(), CloudWatchAttemptLogFileInformation.builder()
+        LastProcessedAttemptLogFileInformationMap.put(lastProcessedFile.hashString(),
+                CloudWatchAttemptLogFileInformation.builder()
                 .startPosition(0)
                 .bytesRead(2943)
                 .lastModifiedTime(lastProcessedFile.lastModified())
                 .fileHash(lastProcessedFile.hashString())
                 .build());
+
         Map<String, CloudWatchAttemptLogFileInformation> processingAttemptLogFileInformationMap2 = new HashMap<>();
-        processingAttemptLogFileInformationMap2.put(processingFile.getAbsolutePath(), CloudWatchAttemptLogFileInformation.builder()
+        processingAttemptLogFileInformationMap2.put(processingFile.hashString(), CloudWatchAttemptLogFileInformation.builder()
                 .startPosition(0)
                 .bytesRead(1061)
                 .lastModifiedTime(processingFile.lastModified())
@@ -624,7 +649,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         CloudWatchAttemptLogInformation attemptLogInformation1 = CloudWatchAttemptLogInformation.builder()
                 .componentName("TestComponent")
                 .attemptLogFileInformationMap(LastProcessedAttemptLogFileInformationMap)
-                .logFileGroup(LastProcessedLogFileGroup)
+                .logFileGroup(lastProcessedLogFileGroup)
                 .build();
         CloudWatchAttemptLogInformation attemptLogInformation2 = CloudWatchAttemptLogInformation.builder()
                 .componentName("TestComponent2")
@@ -636,10 +661,12 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         attempt.setLogStreamsToLogEventsMap(logStreamsToLogInformationMap);
         attempt.setLogStreamUploadedSet(new HashSet<>(Arrays.asList("testStream", "testStream2")));
         doNothing().when(mockUploader).registerAttemptStatus(anyString(), callbackCaptor.capture());
-
+        CloudWatchAttempt attempt1 = new CloudWatchAttempt();
+        ComponentLogFileInformation info1 = ComponentLogFileInformation.builder().build();
+        lenient().doReturn(attempt1).when(mockMerger).processLogFiles(info1);
+        lenient().doNothing().when(mockUploader).upload(attempt1, 1);
         logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor);
         startServiceOnAnotherThread();
-
         callbackCaptor.getValue().accept(attempt);
 
         assertThat(updateFromMapCaptor.getAllValues(), IsNot.not(IsEmptyCollection.empty()));
@@ -652,7 +679,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         LogManagerService.CurrentProcessingFileInformation currentProcessingFileInformation =
                 LogManagerService.CurrentProcessingFileInformation
                         .convertFromMapOfObjects(partiallyReadComponentLogFileInformation.get(0));
-        assertEquals(processingFile.getAbsolutePath(), currentProcessingFileInformation.getFileName());
+        assertEquals(processingFile.hashString(), currentProcessingFileInformation.getFileHash());
         assertEquals(1061, currentProcessingFileInformation.getStartPosition());
         assertEquals(processingFile.lastModified(), currentProcessingFileInformation.getLastModifiedTime());
 
@@ -663,9 +690,9 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         assertNotNull(logsUploaderService.componentCurrentProcessingLogFile);
         assertThat(logsUploaderService.componentCurrentProcessingLogFile.entrySet(), IsNot.not(IsEmptyCollection.empty()));
         assertTrue(logsUploaderService.componentCurrentProcessingLogFile.containsKey("TestComponent2"));
-        assertEquals(processingFile.getAbsolutePath(), logsUploaderService.componentCurrentProcessingLogFile.get("TestComponent2").getFileName());
+        assertEquals(processingFile.hashString(), logsUploaderService.componentCurrentProcessingLogFile.get(
+                "TestComponent2").getFileHash());
         assertEquals(1061, logsUploaderService.componentCurrentProcessingLogFile.get("TestComponent2").getStartPosition());
-        logsUploaderService.ACTIVE_LOG_FILE_FEATURE_ENABLED_FLAG.set(false);
     }
 
     @Test
@@ -690,13 +717,14 @@ class LogManagerServiceTest extends GGServiceTestUtil {
                 .thenReturn(logsUploaderConfigTopics);
 
         logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor);
-        File file = new File(directoryPath.resolve("greengrass_test_2.log").toUri());
-        File currentProcessingFile = new File(directoryPath.resolve("greengrass_test_3.log").toUri());
+        // These two files are existed, and the active file is greengrass.log
+        LogFile file = new LogFile(directoryPath.resolve("greengrass_test_2.log").toUri());
+        LogFile currentProcessingFile = new LogFile(directoryPath.resolve("greengrass_test_3.log").toUri());
         logsUploaderService.lastComponentUploadedLogFileInstantMap.put(SYSTEM_LOGS_COMPONENT_NAME,
                 Instant.ofEpochMilli(file.lastModified()));
         logsUploaderService.componentCurrentProcessingLogFile.put(SYSTEM_LOGS_COMPONENT_NAME,
                 LogManagerService.CurrentProcessingFileInformation.builder()
-                        .fileName(currentProcessingFile.getAbsolutePath())
+                        .fileHash(currentProcessingFile.hashString())
                         .lastModifiedTime(currentProcessingFile.lastModified())
                         .startPosition(2)
                         .build());
@@ -720,7 +748,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
                 assertEquals(0, logFileInformation.getStartPosition());
             }
         });
-        verify(mockUploader, times(1)).upload(any(CloudWatchAttempt.class), anyInt());
+        verify(mockUploader, atLeastOnce()).upload(any(CloudWatchAttempt.class), anyInt());
     }
 
     @Test
@@ -784,7 +812,8 @@ class LogManagerServiceTest extends GGServiceTestUtil {
 
     @Test
     void GIVEN_user_component_logs_delete_file_after_upload_set_WHEN_upload_logs_THEN_deletes_uploaded_log_files(
-            ExtensionContext ec) throws InterruptedException, IOException, UnsupportedInputTypeException {
+            ExtensionContext ec)
+            throws InterruptedException, IOException, UnsupportedInputTypeException, InvalidLogGroupException {
         ignoreExceptionOfType(ec, NoSuchFileException.class);
         mockDefaultPersistedState();
         Topic periodicUpdateIntervalMsTopic = Topic.of(context, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC, "3");
@@ -813,10 +842,12 @@ class LogManagerServiceTest extends GGServiceTestUtil {
                 .thenReturn(logsUploaderConfigTopics);
 
         List<String> fileNames = new ArrayList<>();
+        Instant instant = Instant.EPOCH;
         for (int i = 0; i < 5; i++) {
             Path fileNamePath = directoryPath.resolve("log2.txt_" + UUID.randomUUID().toString());
             fileNames.add(fileNamePath.toAbsolutePath().toString());
             File file1 = new File(fileNamePath.toUri());
+
             if (Files.notExists(file1.toPath())) {
                 assertTrue(file1.createNewFile());
             }
@@ -829,25 +860,32 @@ class LogManagerServiceTest extends GGServiceTestUtil {
             }
             TimeUnit.SECONDS.sleep(1);
         }
+
         CloudWatchAttempt attempt = new CloudWatchAttempt();
         Map<String, CloudWatchAttemptLogInformation> logStreamsToLogInformationMap = new HashMap<>();
-        File file1 = new File(directoryPath.resolve(fileNames.get(0)).toUri());
-        File file2 = new File(directoryPath.resolve(fileNames.get(1)).toUri());
+        LogFile file1 = new LogFile(directoryPath.resolve(fileNames.get(0)).toUri());
+        LogFile file2 = new LogFile(directoryPath.resolve(fileNames.get(1)).toUri());
+
+        Pattern pattern = Pattern.compile("^log2.txt\\w*");
+        LogFileGroup logFileGroup = LogFileGroup.create(pattern, file1.getParentFile().toURI(), instant);
         Map<String, CloudWatchAttemptLogFileInformation> attemptLogFileInformationMap1 = new HashMap<>();
-        attemptLogFileInformationMap1.put(file1.getAbsolutePath(), CloudWatchAttemptLogFileInformation.builder()
+        attemptLogFileInformationMap1.put(file1.hashString(), CloudWatchAttemptLogFileInformation.builder()
                 .startPosition(0)
                 .bytesRead(file1.length())
                 .lastModifiedTime(file1.lastModified())
+                .fileHash(file1.hashString())
                 .build());
-        attemptLogFileInformationMap1.put(file2.getAbsolutePath(), CloudWatchAttemptLogFileInformation.builder()
+        attemptLogFileInformationMap1.put(file2.hashString(), CloudWatchAttemptLogFileInformation.builder()
                 .startPosition(0)
                 .bytesRead(file2.length())
                 .lastModifiedTime(file2.lastModified())
+                .fileHash(file2.hashString())
                 .build());
 
         CloudWatchAttemptLogInformation attemptLogInformation1 = CloudWatchAttemptLogInformation.builder()
                 .componentName("UserComponentA")
                 .attemptLogFileInformationMap(attemptLogFileInformationMap1)
+                .logFileGroup(logFileGroup)
                 .build();
         logStreamsToLogInformationMap.put("testStream", attemptLogInformation1);
         attempt.setLogStreamsToLogEventsMap(logStreamsToLogInformationMap);
@@ -901,13 +939,13 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor);
         startServiceOnAnotherThread();
 
-        File file = new File(directoryPath.resolve("greengrass.log_test_2").toUri());
-        File currentProcessingFile = new File(directoryPath.resolve("greengrass.log_test-3").toUri());
+        LogFile file = new LogFile(directoryPath.resolve("greengrass.log_test_2").toUri());
+        LogFile currentProcessingFile = new LogFile(directoryPath.resolve("greengrass.log_test-3").toUri());
         logsUploaderService.lastComponentUploadedLogFileInstantMap.put(SYSTEM_LOGS_COMPONENT_NAME,
                 Instant.ofEpochMilli(file.lastModified()));
         logsUploaderService.componentCurrentProcessingLogFile.put(SYSTEM_LOGS_COMPONENT_NAME,
                 LogManagerService.CurrentProcessingFileInformation.builder()
-                        .fileName(currentProcessingFile.getAbsolutePath())
+                        .fileHash(currentProcessingFile.hashString())
                         .lastModifiedTime(currentProcessingFile.lastModified() - 1000)
                         .startPosition(2)
                         .build());
@@ -925,7 +963,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         assertTrue(componentLogFileInformation.getLogFileInformationList().size() >= 2);
         componentLogFileInformation.getLogFileInformationList().forEach(logFileInformation ->
                 assertEquals(0, logFileInformation.getStartPosition()));
-        verify(mockUploader, times(1)).upload(any(CloudWatchAttempt.class), anyInt());
+        verify(mockUploader, atLeastOnce()).upload(any(CloudWatchAttempt.class), anyInt());
     }
 
     @Test
@@ -964,13 +1002,13 @@ class LogManagerServiceTest extends GGServiceTestUtil {
                 Topics.of(context, "UserComponentA", allCurrentProcessingComponentTopics1);
         LogManagerService.CurrentProcessingFileInformation currentProcessingFileInformation1 =
                 LogManagerService.CurrentProcessingFileInformation.builder()
-                        .fileName("TestFile")
+                        .fileHash("TestFileHash")
                         .lastModifiedTime(Instant.EPOCH.toEpochMilli())
                         .startPosition(200)
                         .build();
         LogManagerService.CurrentProcessingFileInformation currentProcessingFileInformation2 =
                 LogManagerService.CurrentProcessingFileInformation.builder()
-                        .fileName("TestFile2")
+                        .fileHash("TestFileHash2")
                         .lastModifiedTime(now.toEpochMilli())
                         .startPosition(10000)
                         .build();
@@ -1014,12 +1052,12 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         assertTrue(logsUploaderService.componentCurrentProcessingLogFile.containsKey("UserComponentA"));
         LogManagerService.CurrentProcessingFileInformation systemInfo =
                 logsUploaderService.componentCurrentProcessingLogFile.get(SYSTEM_LOGS_COMPONENT_NAME);
-        assertEquals("TestFile", systemInfo.getFileName());
+        assertEquals("TestFileHash", systemInfo.getFileHash());
         assertEquals(200, systemInfo.getStartPosition());
         assertEquals(Instant.EPOCH.toEpochMilli(), systemInfo.getLastModifiedTime());
         LogManagerService.CurrentProcessingFileInformation userComponentInfo =
                 logsUploaderService.componentCurrentProcessingLogFile.get("UserComponentA");
-        assertEquals("TestFile2", userComponentInfo.getFileName());
+        assertEquals("TestFileHash2", userComponentInfo.getFileHash());
         assertEquals(10000, userComponentInfo.getStartPosition());
         assertEquals(now.toEpochMilli(), userComponentInfo.getLastModifiedTime());
     }

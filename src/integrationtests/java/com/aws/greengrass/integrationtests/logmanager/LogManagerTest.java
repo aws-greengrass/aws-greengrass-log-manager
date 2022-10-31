@@ -16,6 +16,8 @@ import com.aws.greengrass.logging.impl.config.LogConfig;
 import com.aws.greengrass.logging.impl.config.LogStore;
 import com.aws.greengrass.logging.impl.config.model.LogConfigUpdate;
 import com.aws.greengrass.logmanager.LogManagerService;
+import com.aws.greengrass.logmanager.model.EventType;
+import com.aws.greengrass.logmanager.model.LogFileGroup;
 import com.aws.greengrass.testcommons.testutilities.GGExtension;
 import com.aws.greengrass.util.exceptions.TLSAuthException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -35,7 +37,6 @@ import software.amazon.awssdk.services.cloudwatchlogs.CloudWatchLogsClient;
 import software.amazon.awssdk.services.cloudwatchlogs.model.PutLogEventsRequest;
 import software.amazon.awssdk.services.cloudwatchlogs.model.PutLogEventsResponse;
 
-import java.io.File;
 import java.io.IOException;
 import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
@@ -44,8 +45,8 @@ import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.text.SimpleDateFormat;
+import java.time.Instant;
 import java.time.format.DateTimeParseException;
-import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
@@ -86,6 +87,8 @@ class LogManagerTest extends BaseITCase {
     private LogManagerService logManagerService;
     private Path tempDirectoryPath;
     private final static ObjectMapper YAML_OBJECT_MAPPER = new ObjectMapper(new YAMLFactory());
+    private static final int testFileNumber = 4;
+    private final Instant mockInstant = Instant.EPOCH;
 
 
     static {
@@ -164,40 +167,30 @@ class LogManagerTest extends BaseITCase {
 
         tempDirectoryPath = Files.createTempDirectory(tempRootDir, "IntegrationTestsTemporaryLogFiles");
 
-        for (int i = 0; i < 5; i++) {
-            createTempFileAndWriteData(tempDirectoryPath, "integTestRandomLogFiles.log_",  "");
+        for (int i = 0; i < testFileNumber - 1; i++) {
+            createTempFileAndWriteData(tempDirectoryPath, "integTestRandomLogFiles.log_", "");
         }
-        createTempFileAndWriteData(tempDirectoryPath, "integTestRandomLogFiles.log",  "");
+        createTempFileAndWriteData(tempDirectoryPath, "integTestRandomLogFiles.log", "");
 
         setupKernel(tempDirectoryPath, "smallPeriodicIntervalUserComponentConfig.yaml");
-        TimeUnit.SECONDS.sleep(30);
+
+        Runnable waitForActiveFileToBeProcessed = subscribeToActiveFileProcessed(logManagerService, 30);
+        waitForActiveFileToBeProcessed.run();
         verify(cloudWatchLogsClient, atLeastOnce()).putLogEvents(captor.capture());
 
         List<PutLogEventsRequest> putLogEventsRequests = captor.getAllValues();
         assertEquals(1, putLogEventsRequests.size());
-        for (PutLogEventsRequest request : putLogEventsRequests) {
-            assertEquals(calculateLogStreamName(THING_NAME, LOCAL_DEPLOYMENT_GROUP_NAME), request.logStreamName());
-            assertEquals("/aws/greengrass/UserComponent/" + AWS_REGION + "/UserComponentA",
-                    request.logGroupName());
-            assertNotNull(request.logEvents());
-            assertEquals(50, request.logEvents().size());
-            assertEquals(51200, request.logEvents().stream().mapToLong(value -> value.message().length())
-                    .sum());
-        }
-        File folder = tempDirectoryPath.toFile();
+        PutLogEventsRequest request = putLogEventsRequests.get(0);
+        assertEquals(calculateLogStreamName(THING_NAME, LOCAL_DEPLOYMENT_GROUP_NAME), request.logStreamName());
+        assertEquals("/aws/greengrass/UserComponent/" + AWS_REGION + "/UserComponentA", request.logGroupName());
+        assertNotNull(request.logEvents());
+        assertEquals(DEFAULT_LOG_LINE_IN_FILE * testFileNumber, request.logEvents().size());
+        assertEquals(DEFAULT_FILE_SIZE * testFileNumber,
+                request.logEvents().stream().mapToLong(value -> value.message().length()).sum());
+
         Pattern logFileNamePattern = Pattern.compile("^integTestRandomLogFiles.log\\w*");
-        List<File> allFiles = new ArrayList<>();
-        File[] files = folder.listFiles();
-        if (files != null) {
-            for (File file : files) {
-                if (file.isFile()
-                        && logFileNamePattern.matcher(file.getName()).find()
-                        && file.length() > 0) {
-                    allFiles.add(file);
-                }
-            }
-        }
-        assertEquals(1, allFiles.size());
+        LogFileGroup logFileGroup = LogFileGroup.create(logFileNamePattern, tempDirectoryPath.toUri(), mockInstant);
+        assertEquals(1, logFileGroup.getLogFiles().size());
     }
 
     @Test
@@ -212,40 +205,29 @@ class LogManagerTest extends BaseITCase {
         LogManager.getLogConfigurations().putIfAbsent("UserComponentB",
                 newLogConfigFromRootConfig(LogConfigUpdate.builder().fileName("UserComponentB.log").build()));
 
-        for (int i = 0; i < 5; i++) {
+        for (int i = 0; i < testFileNumber - 1; i++) {
             createFileAndWriteData(tempDirectoryPath, "UserComponentB_" + i);
         }
         createFileAndWriteData(tempDirectoryPath, "UserComponentB");
 
         setupKernel(tempDirectoryPath, "smallPeriodicIntervalOnlyReqUserComponentConfig.yaml");
-        TimeUnit.SECONDS.sleep(30);
+
+        Runnable waitForActiveFileToBeProcessed = subscribeToActiveFileProcessed(logManagerService, 30);
+        waitForActiveFileToBeProcessed.run();
         verify(cloudWatchLogsClient, atLeastOnce()).putLogEvents(captor.capture());
 
         List<PutLogEventsRequest> putLogEventsRequests = captor.getAllValues();
         assertEquals(1, putLogEventsRequests.size());
-        for (PutLogEventsRequest request : putLogEventsRequests) {
-            assertEquals(calculateLogStreamName(THING_NAME, LOCAL_DEPLOYMENT_GROUP_NAME), request.logStreamName());
-            assertEquals("/aws/greengrass/UserComponent/" + AWS_REGION + "/UserComponentB",
-                    request.logGroupName());
-            assertNotNull(request.logEvents());
-            assertEquals(50, request.logEvents().size());
-            assertEquals(51200, request.logEvents().stream().mapToLong(value -> value.message().length())
-                    .sum());
-        }
-        File folder = tempDirectoryPath.toFile();
+        PutLogEventsRequest request = putLogEventsRequests.get(0);
+        assertEquals(calculateLogStreamName(THING_NAME, LOCAL_DEPLOYMENT_GROUP_NAME), request.logStreamName());
+        assertEquals("/aws/greengrass/UserComponent/" + AWS_REGION + "/UserComponentB", request.logGroupName());
+        assertNotNull(request.logEvents());
+        assertEquals(DEFAULT_LOG_LINE_IN_FILE * testFileNumber, request.logEvents().size());
+        assertEquals(DEFAULT_FILE_SIZE * testFileNumber,
+                request.logEvents().stream().mapToLong(value -> value.message().length()).sum());
         Pattern logFileNamePattern = Pattern.compile("^UserComponentB\\w*.log");
-        List<File> allFiles = new ArrayList<>();
-        File[] files = folder.listFiles();
-        if (files != null) {
-            for (File file : files) {
-                if (file.isFile()
-                        && logFileNamePattern.matcher(file.getName()).find()
-                        && file.length() > 0) {
-                    allFiles.add(file);
-                }
-            }
-        }
-        assertEquals(1, allFiles.size());
+        LogFileGroup logFileGroup = LogFileGroup.create(logFileNamePattern, tempDirectoryPath.toUri(), mockInstant);
+        assertEquals(1, logFileGroup.getLogFiles().size());
     }
 
     @Test
@@ -259,41 +241,30 @@ class LogManagerTest extends BaseITCase {
         tempDirectoryPath = LogManager.getRootLogConfiguration().getStoreDirectory().resolve("logs");
         String fileName = LogManager.getRootLogConfiguration().getFileName();
         Files.createDirectory(tempDirectoryPath);
-        for (int i = 0; i < 5; i++) {
+        for (int i = 0; i < testFileNumber - 1; i++) {
             createTempFileAndWriteData(tempDirectoryPath, fileName, ".log");
         }
         createTempFileAndWriteData(tempDirectoryPath, fileName + ".log", "");
 
         setupKernel(tempRootDir, "smallPeriodicIntervalSystemComponentConfig.yaml");
-        TimeUnit.SECONDS.sleep(30);
+        Runnable waitForActiveFileToBeProcessed = subscribeToActiveFileProcessed(logManagerService, 30);
+        waitForActiveFileToBeProcessed.run();
+
         verify(cloudWatchLogsClient, atLeastOnce()).putLogEvents(captor.capture());
 
         List<PutLogEventsRequest> putLogEventsRequests = captor.getAllValues();
         assertEquals(1, putLogEventsRequests.size());
+        PutLogEventsRequest request = putLogEventsRequests.get(0);
+        assertEquals(calculateLogStreamName(THING_NAME, LOCAL_DEPLOYMENT_GROUP_NAME), request.logStreamName());
+        assertEquals("/aws/greengrass/GreengrassSystemComponent/" + AWS_REGION + "/System", request.logGroupName());
+        assertNotNull(request.logEvents());
+        assertTrue(request.logEvents().size() >= DEFAULT_LOG_LINE_IN_FILE * testFileNumber);
+        assertTrue(request.logEvents().stream().mapToLong(value -> value.message().length()).sum()
+                >= DEFAULT_FILE_SIZE * testFileNumber);
 
-        for (PutLogEventsRequest request : putLogEventsRequests) {
-            assertEquals(calculateLogStreamName(THING_NAME, LOCAL_DEPLOYMENT_GROUP_NAME), request.logStreamName());
-            assertEquals("/aws/greengrass/GreengrassSystemComponent/" + AWS_REGION + "/System",
-                    request.logGroupName());
-            assertNotNull(request.logEvents());
-            assertTrue(request.logEvents().size() >= 50);
-            assertTrue(request.logEvents().stream().mapToLong(value -> value.message().length()).sum()
-                    >= 51200);
-        }
-        File folder = tempDirectoryPath.toFile();
         Pattern logFileNamePattern = Pattern.compile(String.format(DEFAULT_FILE_REGEX, fileName));
-        List<File> allFiles = new ArrayList<>();
-        File[] files = folder.listFiles();
-        if (files != null) {
-            for (File file : files) {
-                if (file.isFile()
-                        && logFileNamePattern.matcher(file.getName()).find()
-                        && file.length() > 0) {
-                    allFiles.add(file);
-                }
-            }
-        }
-        assertEquals(1, allFiles.size());
+        LogFileGroup logFileGroup = LogFileGroup.create(logFileNamePattern, tempDirectoryPath.toUri(), mockInstant);
+        assertEquals(1, logFileGroup.getLogFiles().size());
     }
 
     @Test
@@ -320,7 +291,7 @@ class LogManagerTest extends BaseITCase {
             }
         });
 
-        for (int i = 0; i < 5; i++) {
+        for (int i = 0; i < testFileNumber - 1; i++) {
             createTempFileAndWriteData(tempDirectoryPath, "integTestRandomLogFiles.log_", "");
         }
         createTempFileAndWriteData(tempDirectoryPath, "integTestRandomLogFiles.log", "");
@@ -337,120 +308,29 @@ class LogManagerTest extends BaseITCase {
             assertEquals(calculateLogStreamName(THING_NAME, LOCAL_DEPLOYMENT_GROUP_NAME), request.logStreamName());
             assertEquals("/aws/greengrass/UserComponent/" + AWS_REGION + "/UserComponentA", request.logGroupName());
             assertNotNull(request.logEvents());
-            assertEquals(50, request.logEvents().size());
-            assertEquals(51200, request.logEvents().stream().mapToLong(value -> value.message().length()).sum());
+            assertEquals(DEFAULT_LOG_LINE_IN_FILE * testFileNumber, request.logEvents().size());
+            assertEquals(DEFAULT_FILE_SIZE * testFileNumber,
+                    request.logEvents().stream().mapToLong(value -> value.message().length()).sum());
         }
-        File folder = tempDirectoryPath.toFile();
         Pattern logFileNamePattern = Pattern.compile("^integTestRandomLogFiles.log\\w*");
-        List<File> allFiles = new ArrayList<>();
-        File[] files = folder.listFiles();
-        if (files != null) {
-            for (File file : files) {
-                if (file.isFile() && logFileNamePattern.matcher(file.getName()).find() && file.length() > 0) {
-                    allFiles.add(file);
-                }
-            }
-        }
-        assertEquals(1, allFiles.size());
+        LogFileGroup logFileGroup = LogFileGroup.create(logFileNamePattern, tempDirectoryPath.toUri(), mockInstant);
+        assertEquals(1, logFileGroup.getLogFiles().size());
     }
 
-    //TODO: this test is only for getting some certain level of knowledge of current change uploading active log file
-    // . It will be eventually removed.
-    @Test
-    void GIVEN_user_component_config_with_small_periodic_interval_WHEN_active_logs_included_THEN_logs_are_uploaded_to_cloud()
-            throws Exception {
-        when(cloudWatchLogsClient.putLogEvents(any(PutLogEventsRequest.class)))
-                .thenReturn(PutLogEventsResponse.builder().nextSequenceToken("nextToken").build());
-        logManagerService.ACTIVE_LOG_FILE_FEATURE_ENABLED_FLAG.set(true);
-        tempDirectoryPath = Files.createTempDirectory(tempRootDir, "IntegrationTestsTemporaryLogFiles");
-
-        for (int i = 0; i < 5; i++) {
-            createTempFileAndWriteData(tempDirectoryPath, "integTestRandomLogFiles.log_",  "");
-        }
-        createTempFileAndWriteData(tempDirectoryPath, "integTestRandomLogFiles.log",  "");
-
-        setupKernel(tempDirectoryPath, "smallPeriodicIntervalUserComponentConfig.yaml");
-        //TODO: a better mechanism should be written. The lazy sleep should be replaced by some condition checks.
-        TimeUnit.SECONDS.sleep(30);
-        verify(cloudWatchLogsClient, atLeastOnce()).putLogEvents(captor.capture());
-
-        List<PutLogEventsRequest> putLogEventsRequests = captor.getAllValues();
-        assertEquals(1, putLogEventsRequests.size());
-        for (PutLogEventsRequest request : putLogEventsRequests) {
-            assertEquals(calculateLogStreamName(THING_NAME, LOCAL_DEPLOYMENT_GROUP_NAME), request.logStreamName());
-            assertEquals("/aws/greengrass/UserComponent/" + AWS_REGION + "/UserComponentA",
-                    request.logGroupName());
-            assertNotNull(request.logEvents());
-            assertEquals(DEFAULT_LOG_LINE_IN_FILE * 6, request.logEvents().size());
-            assertEquals(DEFAULT_FILE_SIZE * 6,
-                    request.logEvents().stream().mapToLong(value -> value.message().length())
-                    .sum());
-        }
-        File folder = tempDirectoryPath.toFile();
-        Pattern logFileNamePattern = Pattern.compile("^integTestRandomLogFiles.log\\w*");
-        List<File> allFiles = new ArrayList<>();
-        File[] filesInDirectory = folder.listFiles();
-        if (filesInDirectory != null) {
-            for (File file : filesInDirectory) {
-                if (file.isFile()
-                        && logFileNamePattern.matcher(file.getName()).find()
-                        && file.length() > 0) {
-                    allFiles.add(file);
-                }
+    private Runnable subscribeToActiveFileProcessed(LogManagerService service, int waitTime) throws InterruptedException {
+        CountDownLatch latch = new CountDownLatch(1);
+        service.registerEventStatusListener((EventType event) -> {
+            if (event == EventType.ALL_COMPONENTS_PROCESSED) {
+                latch.countDown();
             }
-        }
-        assertEquals(1, allFiles.size());
-        logManagerService.ACTIVE_LOG_FILE_FEATURE_ENABLED_FLAG.set(false);
-    }
+        });
 
-    //TODO: this test is only for getting some certain level of knowledge of current change uploading active log file
-    // . It will be eventually removed.
-    @Test
-    void GIVEN_system_config_with_small_periodic_interval_WHEN_active_logs_included_THEN_logs_are_uploaded_to_cloud(
-            ExtensionContext ec) throws Exception {
-        when(cloudWatchLogsClient.putLogEvents(any(PutLogEventsRequest.class)))
-                .thenReturn(PutLogEventsResponse.builder().nextSequenceToken("nextToken").build());
-        logManagerService.ACTIVE_LOG_FILE_FEATURE_ENABLED_FLAG.set(true);
-        LogManager.getRootLogConfiguration().setStoreDirectory(tempRootDir);
-        tempDirectoryPath = LogManager.getRootLogConfiguration().getStoreDirectory().resolve("logs");
-        String fileName = LogManager.getRootLogConfiguration().getFileName();
-        Files.createDirectory(tempDirectoryPath);
-        for (int i = 0; i < 5; i++) {
-            createTempFileAndWriteData(tempDirectoryPath, fileName, ".log");
-        }
-        createTempFileAndWriteData(tempDirectoryPath, fileName + ".log", "");
-
-        setupKernel(tempRootDir, "smallPeriodicIntervalSystemComponentConfig.yaml");
-        //TODO: a better mechanism will be written. The lazy sleep should be replaced by some condition checks.
-        TimeUnit.SECONDS.sleep(30);
-        verify(cloudWatchLogsClient, atLeastOnce()).putLogEvents(captor.capture());
-
-        List<PutLogEventsRequest> putLogEventsRequests = captor.getAllValues();
-        assertEquals(1, putLogEventsRequests.size());
-
-        for (PutLogEventsRequest request : putLogEventsRequests) {
-            assertEquals(calculateLogStreamName(THING_NAME, LOCAL_DEPLOYMENT_GROUP_NAME), request.logStreamName());
-            assertEquals("/aws/greengrass/GreengrassSystemComponent/" + AWS_REGION + "/System",
-                    request.logGroupName());
-            assertNotNull(request.logEvents());
-            assertTrue(request.logEvents().size() >= DEFAULT_LOG_LINE_IN_FILE * 6);
-            assertTrue(request.logEvents().stream().mapToLong(value -> value.message().length()).sum()
-                    >= DEFAULT_FILE_SIZE * 6);
-        }
-        File folder = tempDirectoryPath.toFile();
-        Pattern logFileNamePattern = Pattern.compile(String.format(DEFAULT_FILE_REGEX, fileName));
-        List<File> allFiles = new ArrayList<>();
-        File[] filesInDirectory = folder.listFiles();
-        if (filesInDirectory != null) {
-            for (File file : filesInDirectory) {
-                if (file.isFile()
-                        && logFileNamePattern.matcher(file.getName()).find()
-                        && file.length() > 0) {
-                    allFiles.add(file);
-                }
+        return () -> {
+            try {
+                latch.await(waitTime, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                //do nothing
             }
-        }
-        assertEquals(1, allFiles.size());
-        logManagerService.ACTIVE_LOG_FILE_FEATURE_ENABLED_FLAG.set(false);
+        };
     }
 }

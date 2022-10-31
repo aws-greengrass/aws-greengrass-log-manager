@@ -7,6 +7,7 @@ package com.aws.greengrass.logmanager;
 
 import com.aws.greengrass.config.Topic;
 import com.aws.greengrass.deployment.DeviceConfiguration;
+import com.aws.greengrass.logmanager.exceptions.InvalidLogGroupException;
 import com.aws.greengrass.logmanager.model.CloudWatchAttempt;
 import com.aws.greengrass.logmanager.model.CloudWatchAttemptLogInformation;
 import com.aws.greengrass.logmanager.model.ComponentLogFileInformation;
@@ -96,12 +97,13 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
 
     @Test
     void GIVEN_one_system_component_one_file_less_than_max_WHEN_merge_THEN_reads_entire_file(ExtensionContext ec)
-            throws URISyntaxException {
+            throws URISyntaxException, IOException, InvalidLogGroupException {
         ignoreExceptionOfType(ec, DateTimeParseException.class);
         File file1 = new File(getClass().getResource("testlogs2.log").toURI());
         LogFile logFile1 = LogFile.of(file1);
+        String fileHash = logFile1.hashString();
         List<LogFileInformation> logFileInformationSet = new ArrayList<>();
-        logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile1).build());
+        logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile1).fileHash(fileHash).build());
         ComponentLogFileInformation componentLogFileInformation = ComponentLogFileInformation.builder()
                 .name("TestComponent")
                 .desiredLogLevel(Level.INFO)
@@ -121,9 +123,9 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
         CloudWatchAttemptLogInformation logEventsForStream1 = attempt.getLogStreamsToLogEventsMap().get(logStream);
         assertNotNull(logEventsForStream1.getLogEvents());
         assertEquals(13, logEventsForStream1.getLogEvents().size());
-        assertTrue(logEventsForStream1.getAttemptLogFileInformationMap().containsKey(file1.getAbsolutePath()));
-        assertEquals(0, logEventsForStream1.getAttemptLogFileInformationMap().get(file1.getAbsolutePath()).getStartPosition());
-        assertEquals(2943, logEventsForStream1.getAttemptLogFileInformationMap().get(file1.getAbsolutePath()).getBytesRead());
+        assertTrue(logEventsForStream1.getAttemptLogFileInformationMap().containsKey(fileHash));
+        assertEquals(0, logEventsForStream1.getAttemptLogFileInformationMap().get(fileHash).getStartPosition());
+        assertEquals(2943, logEventsForStream1.getAttemptLogFileInformationMap().get(fileHash).getBytesRead());
         assertEquals("TestComponent", logEventsForStream1.getComponentName());
         for (InputLogEvent logEvent: logEventsForStream1.getLogEvents()) {
             Instant logTimestamp = Instant.ofEpochMilli(logEvent.timestamp());
@@ -142,8 +144,9 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
 
         File file1 = new File(getClass().getResource("testlogs2.log").toURI());
         LogFile logFile1 = LogFile.of(file1);
+        String fileHash = logFile1.hashString();
         List<LogFileInformation> logFileInformationSet = new ArrayList<>();
-        logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile1).build());
+        logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile1).fileHash(fileHash).build());
         ComponentLogFileInformation componentLogFileInformation = ComponentLogFileInformation.builder()
                 .name("TestComponent")
                 .desiredLogLevel(Level.INFO)
@@ -163,9 +166,9 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
         CloudWatchAttemptLogInformation logEventsForStream1 = attempt.getLogStreamsToLogEventsMap().get(logStream);
         assertNotNull(logEventsForStream1.getLogEvents());
         assertEquals(13, logEventsForStream1.getLogEvents().size());
-        assertTrue(logEventsForStream1.getAttemptLogFileInformationMap().containsKey(file1.getAbsolutePath()));
-        assertEquals(0, logEventsForStream1.getAttemptLogFileInformationMap().get(file1.getAbsolutePath()).getStartPosition());
-        assertEquals(2943, logEventsForStream1.getAttemptLogFileInformationMap().get(file1.getAbsolutePath()).getBytesRead());
+        assertTrue(logEventsForStream1.getAttemptLogFileInformationMap().containsKey(fileHash));
+        assertEquals(0, logEventsForStream1.getAttemptLogFileInformationMap().get(fileHash).getStartPosition());
+        assertEquals(2943, logEventsForStream1.getAttemptLogFileInformationMap().get(fileHash).getBytesRead());
         assertEquals("TestComponent", logEventsForStream1.getComponentName());
         for (InputLogEvent logEvent: logEventsForStream1.getLogEvents()) {
             Instant logTimestamp = Instant.ofEpochMilli(logEvent.timestamp());
@@ -184,8 +187,9 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
 
         File file1 = new File(getClass().getResource("testlogs2.log").toURI());
         LogFile logFile1 = LogFile.of(file1);
+        String fileHash = logFile1.hashString();
         List<LogFileInformation> logFileInformationSet = new ArrayList<>();
-        logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile1).build());
+        logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile1).fileHash(fileHash).build());
         ComponentLogFileInformation componentLogFileInformation = ComponentLogFileInformation.builder()
                 .name("TestComponent")
                 .desiredLogLevel(Level.INFO)
@@ -205,9 +209,9 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
         CloudWatchAttemptLogInformation logEventsForStream1 = attempt.getLogStreamsToLogEventsMap().get(logStream);
         assertNotNull(logEventsForStream1.getLogEvents());
         assertEquals(13, logEventsForStream1.getLogEvents().size());
-        assertTrue(logEventsForStream1.getAttemptLogFileInformationMap().containsKey(file1.getAbsolutePath()));
-        assertEquals(0, logEventsForStream1.getAttemptLogFileInformationMap().get(file1.getAbsolutePath()).getStartPosition());
-        assertEquals(2943, logEventsForStream1.getAttemptLogFileInformationMap().get(file1.getAbsolutePath()).getBytesRead());
+        assertTrue(logEventsForStream1.getAttemptLogFileInformationMap().containsKey(fileHash));
+        assertEquals(0, logEventsForStream1.getAttemptLogFileInformationMap().get(fileHash).getStartPosition());
+        assertEquals(2943, logEventsForStream1.getAttemptLogFileInformationMap().get(fileHash).getBytesRead());
         assertEquals("TestComponent", logEventsForStream1.getComponentName());
         for (InputLogEvent logEvent: logEventsForStream1.getLogEvents()) {
             Instant logTimestamp = Instant.ofEpochMilli(logEvent.timestamp());
@@ -225,7 +229,6 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
 
         ignoreExceptionOfType(context1, DateTimeParseException.class);
         File file = new File(directoryPath.resolve("greengrass_test.log").toUri());
-        LogFile logFile = LogFile.of(file);
         assertTrue(file.createNewFile());
         assertTrue(file.setReadable(true));
         assertTrue(file.setWritable(true));
@@ -239,10 +242,11 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
                 fileOutputStream.write(generatedString.toString().getBytes(StandardCharsets.UTF_8));
             }
         }
-
+        LogFile logFile = LogFile.of(file);
+        String fileHash = logFile.hashString();
         try {
             List<LogFileInformation> logFileInformationSet = new ArrayList<>();
-            logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile).build());
+            logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile).fileHash(fileHash).build());
             ComponentLogFileInformation componentLogFileInformation = ComponentLogFileInformation.builder()
                     .name("TestComponent")
                     .desiredLogLevel(Level.INFO)
@@ -263,9 +267,9 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
             CloudWatchAttemptLogInformation logEventsForStream1 = attempt.getLogStreamsToLogEventsMap().get(logStream);
             assertNotNull(logEventsForStream1.getLogEvents());
             assertEquals(991, logEventsForStream1.getLogEvents().size());
-            assertTrue(logEventsForStream1.getAttemptLogFileInformationMap().containsKey(file.getAbsolutePath()));
-            assertEquals(0, logEventsForStream1.getAttemptLogFileInformationMap().get(file.getAbsolutePath()).getStartPosition());
-            assertEquals(1016766, logEventsForStream1.getAttemptLogFileInformationMap().get(file.getAbsolutePath()).getBytesRead());
+            assertTrue(logEventsForStream1.getAttemptLogFileInformationMap().containsKey(fileHash));
+            assertEquals(0, logEventsForStream1.getAttemptLogFileInformationMap().get(fileHash).getStartPosition());
+            assertEquals(1016766, logEventsForStream1.getAttemptLogFileInformationMap().get(fileHash).getBytesRead());
             assertEquals("TestComponent", logEventsForStream1.getComponentName());
             LocalDateTime localDateTimeNow = LocalDateTime.now(ZoneOffset.UTC);
             for (InputLogEvent logEvent: logEventsForStream1.getLogEvents()) {
@@ -285,7 +289,6 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
     void GIVEN_one_component_one_file_24h_gap_WHEN_merge_THEN_reads_partial_file()
             throws IOException {
         File file = new File(directoryPath.resolve("greengrass_test.log").toUri());
-        LogFile logFile = LogFile.of(file);
         assertTrue(file.createNewFile());
         assertTrue(file.setReadable(true));
         assertTrue(file.setWritable(true));
@@ -298,10 +301,11 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
             fileOutputStream.write((sdf.format(new Date(now.toEpochMilli())) + "T01:00:00Z ABC3\n").getBytes(StandardCharsets.UTF_8));
             fileOutputStream.write((sdf.format(new Date(now.toEpochMilli())) + "T02:00:00Z ABC4\n").getBytes(StandardCharsets.UTF_8));
         }
-
+        LogFile logFile = LogFile.of(file);
+        String fileHash = logFile.hashString();
         try {
             List<LogFileInformation> logFileInformationSet = new ArrayList<>();
-            logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile).build());
+            logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile).fileHash(fileHash).build());
             ComponentLogFileInformation componentLogFileInformation = ComponentLogFileInformation.builder()
                     .name("TestComponent")
                     .desiredLogLevel(Level.INFO)
@@ -326,7 +330,6 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
     void GIVEN_one_component_WHEN_file_older_than_14_days_THEN_skip_file()
             throws IOException {
         File file = new File(directoryPath.resolve("greengrass_test.log").toUri());
-        LogFile logFile = LogFile.of(file);
         assertTrue(file.createNewFile());
         assertTrue(file.setReadable(true));
         assertTrue(file.setWritable(true));
@@ -339,10 +342,11 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
             fileOutputStream.write("2021-06-09T02:00:00Z ABC4\n".getBytes(StandardCharsets.UTF_8));
             fileOutputStream.write((sdf.format(new Date(now.toEpochMilli())) + "T02:00:00Z ABC5\n").getBytes(StandardCharsets.UTF_8));
         }
-
+        LogFile logFile = LogFile.of(file);
+        String fileHash = logFile.hashString();
         try {
             List<LogFileInformation> logFileInformationSet = new ArrayList<>();
-            logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile).build());
+            logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile).fileHash(fileHash).build());
             ComponentLogFileInformation componentLogFileInformation = ComponentLogFileInformation.builder()
                     .name("TestComponent")
                     .desiredLogLevel(Level.INFO)
@@ -370,13 +374,13 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
             throws URISyntaxException {
         ignoreExceptionOfType(ec, DateTimeParseException.class);
 
-        File file1 = new File(getClass().getResource("testlogs2.log").toURI());
-        LogFile logFile1 = LogFile.of(file1);
-        File file2 = new File(getClass().getResource("testlogs1.log").toURI());
-        LogFile logFile2 = LogFile.of(file2);
+        LogFile logFile1 = new LogFile(getClass().getResource("testlogs2.log").toURI());
+        String fileHash1 = logFile1.hashString();
+        LogFile logFile2 = new LogFile(getClass().getResource("testlogs1.log").toURI());
+        String fileHash2 = logFile2.hashString();
         List<LogFileInformation> logFileInformationSet = new ArrayList<>();
-        logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile1).build());
-        logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile2).build());
+        logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile1).fileHash(fileHash1).build());
+        logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile2).fileHash(fileHash2).build());
         ComponentLogFileInformation componentLogFileInformation = ComponentLogFileInformation.builder()
                 .name("TestComponent")
                 .desiredLogLevel(Level.INFO)
@@ -400,9 +404,9 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
         CloudWatchAttemptLogInformation logEventsForStream2 = attempt.getLogStreamsToLogEventsMap().get(logStream2);
         assertNotNull(logEventsForStream1.getLogEvents());
         assertEquals(13, logEventsForStream1.getLogEvents().size());
-        assertTrue(logEventsForStream1.getAttemptLogFileInformationMap().containsKey(file1.getAbsolutePath()));
-        assertEquals(0, logEventsForStream1.getAttemptLogFileInformationMap().get(file1.getAbsolutePath()).getStartPosition());
-        assertEquals(2943, logEventsForStream1.getAttemptLogFileInformationMap().get(file1.getAbsolutePath()).getBytesRead());
+        assertTrue(logEventsForStream1.getAttemptLogFileInformationMap().containsKey(fileHash1));
+        assertEquals(0, logEventsForStream1.getAttemptLogFileInformationMap().get(fileHash1).getStartPosition());
+        assertEquals(2943, logEventsForStream1.getAttemptLogFileInformationMap().get(fileHash1).getBytesRead());
         assertEquals("TestComponent", logEventsForStream1.getComponentName());
         for (InputLogEvent logEvent: logEventsForStream1.getLogEvents()) {
             Instant logTimestamp = Instant.ofEpochMilli(logEvent.timestamp());
@@ -415,9 +419,9 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
 
         assertNotNull(logEventsForStream2.getLogEvents());
         assertEquals(4, logEventsForStream2.getLogEvents().size());
-        assertTrue(logEventsForStream2.getAttemptLogFileInformationMap().containsKey(file2.getAbsolutePath()));
-        assertEquals(0, logEventsForStream2.getAttemptLogFileInformationMap().get(file2.getAbsolutePath()).getStartPosition());
-        assertEquals(1239, logEventsForStream2.getAttemptLogFileInformationMap().get(file2.getAbsolutePath()).getBytesRead());
+        assertTrue(logEventsForStream2.getAttemptLogFileInformationMap().containsKey(fileHash2));
+        assertEquals(0, logEventsForStream2.getAttemptLogFileInformationMap().get(fileHash2).getStartPosition());
+        assertEquals(1239, logEventsForStream2.getAttemptLogFileInformationMap().get(fileHash2).getBytesRead());
         assertEquals("TestComponent", logEventsForStream2.getComponentName());
     }
 
@@ -426,7 +430,6 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
 
         ignoreExceptionOfType(ec, DateTimeParseException.class);
         File file = new File(directoryPath.resolve("greengrass_test.log").toUri());
-        LogFile logFile = LogFile.of(file);
         assertTrue(file.createNewFile());
         assertTrue(file.setReadable(true));
         assertTrue(file.setWritable(true));
@@ -448,8 +451,10 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
             byte[] fileContentBytes = fileContent.toString().getBytes(StandardCharsets.UTF_8);
             fileOutputStream.write(fileContentBytes);
 
+            LogFile logFile = LogFile.of(file);
+            String fileHash = logFile.hashString();
             List<LogFileInformation> logFileInformationSet = new ArrayList<>();
-            logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile).build());
+            logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile).fileHash(fileHash).build());
             ComponentLogFileInformation componentLogFileInformation =
                     ComponentLogFileInformation.builder().name("TestComponent")
                             .desiredLogLevel(Level.INFO).componentType(ComponentType.GreengrassSystemComponent)
@@ -475,11 +480,11 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
             assertEquals(overSizeLogLine.substring(0, MAX_EVENT_LENGTH), logEvents.get(1).message());
             assertEquals(overSizeLogLine.substring(MAX_EVENT_LENGTH), logEvents.get(2).message());
 
-            assertTrue(logEventsForStream1.getAttemptLogFileInformationMap().containsKey(file.getAbsolutePath()));
-            assertEquals(0, logEventsForStream1.getAttemptLogFileInformationMap().get(file.getAbsolutePath())
+            assertTrue(logEventsForStream1.getAttemptLogFileInformationMap().containsKey(fileHash));
+            assertEquals(0, logEventsForStream1.getAttemptLogFileInformationMap().get(fileHash)
                     .getStartPosition());
             assertEquals(fileContentBytes.length,
-                    logEventsForStream1.getAttemptLogFileInformationMap().get(file.getAbsolutePath()).getBytesRead());
+                    logEventsForStream1.getAttemptLogFileInformationMap().get(fileHash).getBytesRead());
             assertEquals("TestComponent", logEventsForStream1.getComponentName());
 
         } finally {
@@ -493,7 +498,6 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
 
         ignoreExceptionOfType(ec, DateTimeParseException.class);
         File file = new File(directoryPath.resolve("greengrass_test.log").toUri());
-        LogFile logFile = LogFile.of(file);
         assertTrue(file.createNewFile());
         assertTrue(file.setReadable(true));
         assertTrue(file.setWritable(true));
@@ -514,8 +518,10 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
             int expectedBytesRead = 2*4 + 1024*1 + MAX_EVENT_LENGTH*2 + 1 + 1*1024*256;
             fileOutputStream.write(fileContent.toString().getBytes(StandardCharsets.UTF_8));
 
+            LogFile logFile = LogFile.of(file);
+            String fileHash = logFile.hashString();
             List<LogFileInformation> logFileInformationSet = new ArrayList<>();
-            logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile).build());
+            logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile).fileHash(fileHash).build());
             ComponentLogFileInformation componentLogFileInformation =
                     ComponentLogFileInformation.builder().name("TestComponent")
                             .desiredLogLevel(Level.INFO).componentType(ComponentType.GreengrassSystemComponent)
@@ -536,11 +542,11 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
             assertNotNull(logEventsForStream1.getLogEvents());
             // Total log events: 1 (first line) + 2 (second line) + 2 (third line) = 5
             assertEquals(5, logEventsForStream1.getLogEvents().size());
-            assertTrue(logEventsForStream1.getAttemptLogFileInformationMap().containsKey(file.getAbsolutePath()));
-            assertEquals(0, logEventsForStream1.getAttemptLogFileInformationMap().get(file.getAbsolutePath())
+            assertTrue(logEventsForStream1.getAttemptLogFileInformationMap().containsKey(fileHash));
+            assertEquals(0, logEventsForStream1.getAttemptLogFileInformationMap().get(fileHash)
                     .getStartPosition());
             assertEquals(expectedBytesRead,
-                    logEventsForStream1.getAttemptLogFileInformationMap().get(file.getAbsolutePath()).getBytesRead());
+                    logEventsForStream1.getAttemptLogFileInformationMap().get(fileHash).getBytesRead());
             assertEquals("TestComponent", logEventsForStream1.getComponentName());
 
         } finally {
@@ -552,7 +558,6 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
 
         ignoreExceptionOfType(ec, DateTimeParseException.class);
         File file = new File(directoryPath.resolve("greengrass_test.log").toUri());
-        LogFile logFile = LogFile.of(file);
         assertTrue(file.createNewFile());
         assertTrue(file.setReadable(true));
         assertTrue(file.setWritable(true));
@@ -560,9 +565,12 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
             fileOutputStream.write("null\n".getBytes(StandardCharsets.UTF_8));
         }
 
+        LogFile logFile = LogFile.of(file);
+        String fileHash = logFile.hashString();
+
         try {
             List<LogFileInformation> logFileInformationSet = new ArrayList<>();
-            logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile).build());
+            logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile).fileHash(fileHash).build());
             ComponentLogFileInformation componentLogFileInformation = ComponentLogFileInformation.builder()
                     .name("TestComponent")
                     .desiredLogLevel(Level.INFO)
@@ -583,8 +591,8 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
             CloudWatchAttemptLogInformation logEventsForStream1 = attempt.getLogStreamsToLogEventsMap().get(logStream);
             assertNotNull(logEventsForStream1.getLogEvents());
             assertEquals(1, logEventsForStream1.getLogEvents().size());
-            assertTrue(logEventsForStream1.getAttemptLogFileInformationMap().containsKey(file.getAbsolutePath()));
-            assertEquals(0, logEventsForStream1.getAttemptLogFileInformationMap().get(file.getAbsolutePath()).getStartPosition());
+            assertTrue(logEventsForStream1.getAttemptLogFileInformationMap().containsKey(fileHash));
+            assertEquals(0, logEventsForStream1.getAttemptLogFileInformationMap().get(fileHash).getStartPosition());
             assertEquals("TestComponent", logEventsForStream1.getComponentName());
             LocalDateTime localDateTimeNow = LocalDateTime.now(ZoneOffset.UTC);
             for (InputLogEvent logEvent: logEventsForStream1.getLogEvents()) {
@@ -605,7 +613,6 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
 
         ignoreExceptionOfType(ec, DateTimeParseException.class);
         File file = new File(directoryPath.resolve("greengrass_test.log").toUri());
-        LogFile logFile = LogFile.of(file);
         assertTrue(file.createNewFile());
         assertTrue(file.setReadable(true));
         assertTrue(file.setWritable(true));
@@ -620,9 +627,12 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
             fileOutputStream.write(largeLineWithEmptyChunk.toString().getBytes(StandardCharsets.UTF_8));
         }
 
+        LogFile logFile = LogFile.of(file);
+        String fileHash = logFile.hashString();
+
         try {
             List<LogFileInformation> logFileInformationSet = new ArrayList<>();
-            logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile).build());
+            logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile).fileHash(fileHash).build());
             ComponentLogFileInformation componentLogFileInformation = ComponentLogFileInformation.builder()
                     .name("TestComponent")
                     .desiredLogLevel(Level.INFO)
@@ -643,8 +653,8 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
             CloudWatchAttemptLogInformation logEventsForStream1 = attempt.getLogStreamsToLogEventsMap().get(logStream);
             assertNotNull(logEventsForStream1.getLogEvents());
             assertEquals(2, logEventsForStream1.getLogEvents().size());
-            assertTrue(logEventsForStream1.getAttemptLogFileInformationMap().containsKey(file.getAbsolutePath()));
-            assertEquals(0, logEventsForStream1.getAttemptLogFileInformationMap().get(file.getAbsolutePath()).getStartPosition());
+            assertTrue(logEventsForStream1.getAttemptLogFileInformationMap().containsKey(fileHash));
+            assertEquals(0, logEventsForStream1.getAttemptLogFileInformationMap().get(fileHash).getStartPosition());
             assertEquals("TestComponent", logEventsForStream1.getComponentName());
             LocalDateTime localDateTimeNow = LocalDateTime.now(ZoneOffset.UTC);
             for (InputLogEvent logEvent: logEventsForStream1.getLogEvents()) {
@@ -663,7 +673,6 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
     @Test
     void GIVEN_component_multiline_pattern_default_WHEN_logs_start_with_whitespace_THEN_append_to_previous_log() throws IOException{
         File file = new File(directoryPath.resolve("greengrass_test.log").toUri());
-        LogFile logFile = LogFile.of(file);
         assertTrue(file.createNewFile());
         assertTrue(file.setReadable(true));
         assertTrue(file.setWritable(true));
@@ -675,9 +684,11 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
             fileOutputStream.write("    at java.util.concurrent\n".getBytes(StandardCharsets.UTF_8));
             fileOutputStream.write("Caused by: NoAvailableComponentVersionException\n".getBytes(StandardCharsets.UTF_8));
         }
+        LogFile logFile = LogFile.of(file);
+        String fileHash = logFile.hashString();
         try {
             List<LogFileInformation> logFileInformationSet = new ArrayList<>();
-            logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile).build());
+            logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile).fileHash(fileHash).build());
             ComponentLogFileInformation componentLogFileInformation = ComponentLogFileInformation.builder()
                     .name("TestComponent")
                     .desiredLogLevel(Level.INFO)
@@ -705,7 +716,6 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
     @Test
     void GIVEN_component_multiline_pattern_set_WHEN_log_lines_do_not_match_pattern_THEN_append_to_previous_log() throws IOException{
         File file = new File(directoryPath.resolve("greengrass_test.log").toUri());
-        LogFile logFile = LogFile.of(file);
         assertTrue(file.createNewFile());
         assertTrue(file.setReadable(true));
         assertTrue(file.setWritable(true));
@@ -718,9 +728,11 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
             fileOutputStream.write("   at java.util.concurrent\n".getBytes(StandardCharsets.UTF_8));
             fileOutputStream.write("4Caused by: NoAvailableComponentVersionException\n".getBytes(StandardCharsets.UTF_8));
         }
+        LogFile logFile = LogFile.of(file);
+        String fileHash = logFile.hashString();
         try {
             List<LogFileInformation> logFileInformationSet = new ArrayList<>();
-            logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile).build());
+            logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile).fileHash(fileHash).build());
             ComponentLogFileInformation componentLogFileInformation = ComponentLogFileInformation.builder()
                     .name("TestComponent")
                     .desiredLogLevel(Level.INFO)
@@ -757,9 +769,9 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
 
         File file = new File(getClass().getResource("stackoverflow.log").toURI());
         LogFile logFile = LogFile.of(file);
-
+        String fileHash = logFile.hashString();
         List<LogFileInformation> logFileInformationSet = new ArrayList<>();
-        logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile).build());
+        logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile).fileHash(fileHash).build());
         ComponentLogFileInformation componentLogFileInformation = ComponentLogFileInformation.builder()
                 .name("TestComponent")
                 .desiredLogLevel(Level.INFO)

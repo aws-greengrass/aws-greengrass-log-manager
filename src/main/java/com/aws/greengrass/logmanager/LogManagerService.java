@@ -55,6 +55,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -526,7 +527,7 @@ public class LogManagerService extends PluginService {
             // If we have completely read the file, then we need add it to the completed files list and remove it
             // it (if necessary) for the current processing list.
             String componentName = attemptLogInformation.getComponentName();
-            if (!logFileGroup.isActiveFile(file) && file.length() <= cloudWatchAttemptLogFileInformation.getBytesRead()
+            if (!logFileGroup.isActiveFile(file) && file.length() == cloudWatchAttemptLogFileInformation.getBytesRead()
                     + cloudWatchAttemptLogFileInformation.getStartPosition()) {
                 Set<LogFile> completedFiles = completedLogFilePerComponent.getOrDefault(componentName,
                         new HashSet<>());
@@ -863,9 +864,8 @@ public class LogManagerService extends PluginService {
                     // If upgrade from older version, then the fileHash does not exist but fileName exists, then
                     // transfer from fileName to fileHash.
                     String savedName = Coerce.toString(PERSISTED_CURRENT_PROCESSING_FILE_NAME);
-                    String savedHash = Coerce.toString(topic);
                     fileHash = Coerce.toString(topic);
-                    if (savedHash.isEmpty() && !savedName.isEmpty()) {
+                    if (Objects.isNull(fileHash) && !Objects.isNull(savedName)) {
                         LogFile savedFile = new LogFile(Paths.get(savedName).toUri());
                         fileHash = savedFile.hashString();
                     }

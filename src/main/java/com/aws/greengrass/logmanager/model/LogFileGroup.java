@@ -111,6 +111,17 @@ public final class LogFileGroup {
     }
 
     /**
+     * Returns the size in bytes of all the contents being tracked on by the log group.
+     */
+    public long totalSizeInBytes() {
+        long bytes = 0;
+        for (LogFile log : logFiles) {
+            bytes += log.length();
+        }
+        return bytes;
+    }
+
+    /**
      * Validate if the logFile is the active of one logFileGroup.
      * @param file the target file.
      * @return boolean.

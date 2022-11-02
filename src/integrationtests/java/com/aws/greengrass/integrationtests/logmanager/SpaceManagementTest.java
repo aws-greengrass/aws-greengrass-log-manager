@@ -10,9 +10,9 @@ import com.aws.greengrass.deployment.DeviceConfiguration;
 import com.aws.greengrass.deployment.exceptions.DeviceConfigurationException;
 import com.aws.greengrass.integrationtests.BaseITCase;
 import com.aws.greengrass.lifecyclemanager.Kernel;
-import com.aws.greengrass.logging.impl.GreengrassLogMessage;
 import com.aws.greengrass.logging.impl.LogManager;
 import com.aws.greengrass.logmanager.LogManagerService;
+import com.aws.greengrass.logmanager.exceptions.InvalidLogGroupException;
 import com.aws.greengrass.logmanager.model.LogFileGroup;
 import com.aws.greengrass.testcommons.testutilities.GGExtension;
 import com.aws.greengrass.util.exceptions.TLSAuthException;
@@ -36,18 +36,19 @@ import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.time.temporal.ChronoUnit;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
-import java.util.function.Consumer;
 import java.util.regex.Pattern;
 
 import static com.aws.greengrass.integrationtests.logmanager.util.LogFileHelper.createTempFileAndWriteData;
 import static com.aws.greengrass.testcommons.testutilities.ExceptionLogProtector.ignoreExceptionOfType;
-import static com.aws.greengrass.testcommons.testutilities.TestUtils.createCloseableLogListener;
-import static org.junit.jupiter.api.Assertions.assertEquals;
+import static com.github.grantwest.eventually.EventuallyLambdaMatcher.eventuallyEval;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.is;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
@@ -120,27 +121,33 @@ class SpaceManagementTest extends BaseITCase {
     @Test
     void GIVEN_user_component_config_with_space_management_WHEN_space_exceeds_THEN_excess_log_files_are_deleted()
             throws Exception {
+        // Given
+
         tempDirectoryPath = Files.createDirectory(tempRootDir.resolve("IntegrationTestsTemporaryLogFiles"));
-
+        // This method configures the LogManager to get logs with the pattern ^integTestRandomLogFiles.log\w* inside
+        // then tempDirectoryPath with a diskSpaceLimit of 105kb
         setupKernel(tempDirectoryPath);
-        TimeUnit.SECONDS.sleep(10);
 
-        CountDownLatch cdl = new CountDownLatch(5);
-        Consumer<GreengrassLogMessage> listener = (m) -> {
-            if (m.getMessage().contains("Successfully deleted file")) {
-                cdl.countDown();
-            }
-        };
-        try (AutoCloseable l = createCloseableLogListener(listener)) {
-            for (int i = 0; i < 15; i++) {
-                createTempFileAndWriteData(tempDirectoryPath, "integTestRandomLogFiles.log_", "");
-            }
-            //Todo: we should not be checking for log messages to verify if a log file was deleted.
-            assertTrue(cdl.await(60, TimeUnit.SECONDS), "5 files deleted");
+        // When
+
+        // The total size will be 150kb (each log file written is 10kb * 15) given the max space is 105 kb, then we
+        // expect it to delete 5 files for the total log size to be under 105kb
+        for (int i = 0; i < 15; i++) {
+            createTempFileAndWriteData(tempDirectoryPath, "integTestRandomLogFiles.log_", "");
         }
 
         Pattern logFileNamePattern = Pattern.compile("^integTestRandomLogFiles.log\\w*");
         LogFileGroup logFileGroup = LogFileGroup.create(logFileNamePattern, tempDirectoryPath.toUri(), mockInstant);
-        assertEquals(10, logFileGroup.getLogFiles().size());
+        // Then
+
+        assertThat("log group size should eventually be less than 105 KB",() -> {
+            try {
+                logFileGroup.syncDirectory();
+                long kb = logFileGroup.totalSizeInBytes() / 1024;
+                return kb <= 105;
+            } catch (InvalidLogGroupException e) {
+                return  false;
+            }
+        }, eventuallyEval(is(true), Duration.ofSeconds(60)));
     }
 }

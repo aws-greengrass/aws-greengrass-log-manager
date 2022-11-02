@@ -11,6 +11,7 @@ import java.util.Random;
 
 public final class TestUtils {
     private static Random rnd = new Random();
+
     private TestUtils() { }
 
     public static String givenAStringOfSize(int bytesNeeded) {

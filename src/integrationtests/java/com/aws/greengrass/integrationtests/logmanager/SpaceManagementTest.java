@@ -36,6 +36,7 @@ import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.time.temporal.ChronoUnit;
@@ -44,8 +45,10 @@ import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
 import static com.aws.greengrass.integrationtests.logmanager.util.LogFileHelper.createTempFileAndWriteData;
-import static com.aws.greengrass.logmanager.util.TestUtils.eventuallyTrue;
 import static com.aws.greengrass.testcommons.testutilities.ExceptionLogProtector.ignoreExceptionOfType;
+import static com.github.grantwest.eventually.EventuallyLambdaMatcher.eventuallyEval;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.is;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
@@ -135,17 +138,16 @@ class SpaceManagementTest extends BaseITCase {
 
         Pattern logFileNamePattern = Pattern.compile("^integTestRandomLogFiles.log\\w*");
         LogFileGroup logFileGroup = LogFileGroup.create(logFileNamePattern, tempDirectoryPath.toUri(), mockInstant);
-
         // Then
 
-        eventuallyTrue(() -> {
+        assertThat("Log group file size never not below 105 kb",() -> {
             try {
                 logFileGroup.syncDirectory();
+                long kb = logFileGroup.byteSize() / 1024;
+                return kb <= 105;
             } catch (InvalidLogGroupException e) {
-               return  false;
+                return  false;
             }
-
-            return logFileGroup.getLogFiles().size() == 10;
-        }, TimeUnit.SECONDS.toMillis(60), 500);
+        }, eventuallyEval(is(true), Duration.ofSeconds(60)));
     }
 }

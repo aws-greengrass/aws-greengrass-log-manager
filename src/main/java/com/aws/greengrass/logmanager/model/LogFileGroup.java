@@ -110,6 +110,14 @@ public final class LogFileGroup {
         return create(this.filePattern, this.directoryURI, this.lastUpdated);
     }
 
+    public long byteSize() {
+        long bytes = 0;
+        for (LogFile log : logFiles) {
+            bytes += log.length();
+        }
+        return bytes;
+    }
+
     /**
      * Validate if the logFile is the active of one logFileGroup.
      * @param file the target file.

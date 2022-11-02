@@ -413,11 +413,6 @@ public class LogManagerService extends PluginService {
                     CurrentProcessingFileInformation.builder().build();
             currentProcessingComponentTopics.iterator().forEachRemaining(node ->
                     currentProcessingFileInformation.updateFromTopic((Topic) node));
-            // If upgrade from older version, then the fileHash does not exist but fileName exists, then
-            // transfer from fileName to fileHash. If no fileName, then keep the fileHash as empty.
-            if (Utils.isEmpty(currentProcessingFileInformation.getFileHash())) {
-                currentProcessingFileInformation.convertNameToHash();
-            }
             // Only store the processing information when the fileHash is not empty or null.
             if (Utils.isNotEmpty(currentProcessingFileInformation.getFileHash())) {
                 componentCurrentProcessingLogFile.put(componentName, currentProcessingFileInformation);
@@ -873,6 +868,9 @@ public class LogManagerService extends PluginService {
                 default:
                     break;
             }
+            if (Utils.isEmpty(fileHash) && Utils.isNotEmpty(fileName)) {
+                convertNameToHash();
+            }
         }
 
         public static CurrentProcessingFileInformation convertFromMapOfObjects(
@@ -889,20 +887,18 @@ public class LogManagerService extends PluginService {
                     .build();
         }
 
-        public void convertNameToHash() {
-            if (Utils.isEmpty(fileHash) && Utils.isNotEmpty(fileName)) {
-                try {
-                    File file = new File(Paths.get(fileName).toUri());
-                    if (file.exists()) {
-                        fileHash = LogFile.of(file).hashString();
-                    } else {
-                        logger.atWarn().log("File {} does not exist.", file.getAbsolutePath());
-                    }
-                } catch (InvalidPathException e) {
-                    logger.atError().cause(e).log("Path string cannot be converted to a path.");
-                } catch (IllegalArgumentException e) {
-                    logger.atError().cause(e).log("URI of the file is invalid.");
+        private void convertNameToHash() {
+            try {
+                File file = new File(Paths.get(fileName).toUri());
+                if (file.exists()) {
+                    fileHash = LogFile.of(file).hashString();
+                } else {
+                    logger.atWarn().log("File {} does not exist.", file.getAbsolutePath());
                 }
+            } catch (InvalidPathException e) {
+                logger.atError().cause(e).log("Path string cannot be converted to a path.");
+            } catch (IllegalArgumentException e) {
+                logger.atError().cause(e).log("URI of the file is invalid.");
             }
         }
     }

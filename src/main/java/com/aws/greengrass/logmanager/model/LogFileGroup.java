@@ -113,7 +113,7 @@ public final class LogFileGroup {
     /**
      * Returns the size in bytes of all the contents being tracked on by the log group.
      */
-    public long byteSize() {
+    public long totalSizeInBytes() {
         long bytes = 0;
         for (LogFile log : logFiles) {
             bytes += log.length();

@@ -596,6 +596,7 @@ public class LogManagerService extends PluginService {
                     LogFileGroup logFileGroup =
                             LogFileGroup.create(componentLogConfiguration.getFileNameRegex(),
                                     componentLogConfiguration.getDirectoryPath().toUri(), lastUploadedLogFileTimeMs);
+
                     if (logFileGroup.isEmpty()) {
                         continue;
                     }
@@ -834,8 +835,7 @@ public class LogManagerService extends PluginService {
         private long lastModifiedTime;
         @JsonProperty(PERSISTED_CURRENT_PROCESSING_FILE_HASH)
         private String fileHash;
-        private final Logger logger = LogManager.getLogger(LogManagerService.class);
-
+        private static final Logger logger = LogManager.getLogger(LogManagerService.class);
 
         public Map<String, Object> convertToMapOfObjects() {
             Map<String, Object> currentProcessingFileInformationMap = new HashMap<>();
@@ -855,6 +855,7 @@ public class LogManagerService extends PluginService {
                 // upgrade-downgrade issues.
                 case PERSISTED_CURRENT_PROCESSING_FILE_NAME:
                     fileName = Coerce.toString(topic);
+                    fileHash = getFileHashFromTopic(topic);
                     break;
                 case PERSISTED_CURRENT_PROCESSING_FILE_START_POSITION:
                     startPosition = Coerce.toLong(topic);
@@ -863,13 +864,10 @@ public class LogManagerService extends PluginService {
                     lastModifiedTime = Coerce.toLong(topic);
                     break;
                 case PERSISTED_CURRENT_PROCESSING_FILE_HASH:
-                    fileHash = Coerce.toString(topic);
+                    fileHash = getFileHashFromTopic(topic);
                     break;
                 default:
                     break;
-            }
-            if (Utils.isEmpty(fileHash) && Utils.isNotEmpty(fileName)) {
-                convertNameToHash();
             }
         }
 
@@ -887,19 +885,35 @@ public class LogManagerService extends PluginService {
                     .build();
         }
 
-        private void convertNameToHash() {
-            try {
-                File file = new File(Paths.get(fileName).toUri());
-                if (file.exists()) {
-                    fileHash = LogFile.of(file).hashString();
-                } else {
-                    logger.atWarn().log("File {} does not exist.", file.getAbsolutePath());
-                }
-            } catch (InvalidPathException e) {
-                logger.atError().cause(e).log("Path string cannot be converted to a path.");
-            } catch (IllegalArgumentException e) {
-                logger.atError().cause(e).log("URI of the file is invalid.");
+        private String getFileHashFromTopic(Topic topic) {
+            Topics topics = topic.parent;
+            Topic hashTopic = topics.find(PERSISTED_CURRENT_PROCESSING_FILE_HASH);
+
+            if (hashTopic != null) {
+                return Coerce.toString(hashTopic);
             }
+
+            Topic nameTopic = topics.find(PERSISTED_CURRENT_PROCESSING_FILE_NAME);
+
+            if (nameTopic == null || Coerce.toString(nameTopic) == null) {
+                return null;
+            }
+
+            try {
+                Path filePath = Paths.get(Coerce.toString(nameTopic));
+                File file = filePath.toFile();
+
+                if (!file.exists() || !file.isFile()) {
+                    return null;
+                }
+
+                LogFile logFile = LogFile.of(file);
+                return logFile.hashString();
+            } catch (InvalidPathException e) {
+                logger.atWarn().cause(e).log("File name is not a valid path");
+            }
+
+            return null;
         }
     }
 }

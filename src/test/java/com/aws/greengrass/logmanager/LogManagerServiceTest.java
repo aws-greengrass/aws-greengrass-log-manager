@@ -83,6 +83,10 @@ import static com.aws.greengrass.logmanager.LogManagerService.LOGS_UPLOADER_PERI
 import static com.aws.greengrass.logmanager.LogManagerService.MIN_LOG_LEVEL_CONFIG_TOPIC_NAME;
 import static com.aws.greengrass.logmanager.LogManagerService.PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION;
 import static com.aws.greengrass.logmanager.LogManagerService.PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP;
+import static com.aws.greengrass.logmanager.LogManagerService.PERSISTED_CURRENT_PROCESSING_FILE_HASH;
+import static com.aws.greengrass.logmanager.LogManagerService.PERSISTED_CURRENT_PROCESSING_FILE_LAST_MODIFIED_TIME;
+import static com.aws.greengrass.logmanager.LogManagerService.PERSISTED_CURRENT_PROCESSING_FILE_NAME;
+import static com.aws.greengrass.logmanager.LogManagerService.PERSISTED_CURRENT_PROCESSING_FILE_START_POSITION;
 import static com.aws.greengrass.logmanager.LogManagerService.PERSISTED_LAST_FILE_PROCESSED_TIMESTAMP;
 import static com.aws.greengrass.logmanager.LogManagerService.SYSTEM_LOGS_COMPONENT_NAME;
 import static com.aws.greengrass.logmanager.LogManagerService.SYSTEM_LOGS_CONFIG_TOPIC_NAME;
@@ -107,6 +111,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith({MockitoExtension.class, GGExtension.class})
+@SuppressWarnings("PMD.ExcessiveClassLength")
 class LogManagerServiceTest extends GGServiceTestUtil {
     @Mock
     private CloudWatchLogsUploader mockUploader;
@@ -1060,5 +1065,66 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         assertEquals("TestFileHash2", userComponentInfo.getFileHash());
         assertEquals(10000, userComponentInfo.getStartPosition());
         assertEquals(now.toEpochMilli(), userComponentInfo.getLastModifiedTime());
+    }
+
+    @Test
+    void GIVEN_config_without_hash_but_name_WHEN_config_is_processed_THEN_processingFile_info_is_loaded()
+            throws IOException, InterruptedException {
+        Topic periodicUpdateIntervalMsTopic = Topic.of(context, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC, "3");
+        when(config.lookup(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC))
+                .thenReturn(periodicUpdateIntervalMsTopic);
+        Topics configTopics = Topics.of(context, CONFIGURATION_CONFIG_KEY, null);
+        when(config.lookupTopics(CONFIGURATION_CONFIG_KEY)).thenReturn(configTopics);
+        Topics logsUploaderConfigTopics = Topics.of(context, LOGS_UPLOADER_CONFIGURATION_TOPIC, null);
+        when(config.lookupTopics(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC))
+                .thenReturn(logsUploaderConfigTopics);
+
+        Topics componentConfigTopics = logsUploaderConfigTopics.createInteriorChild(COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME);
+        Topics componentATopic = componentConfigTopics.createInteriorChild("testComponent");
+        componentATopic.createLeafChild(FILE_REGEX_CONFIG_TOPIC_NAME).withValue("testlogs1.log");
+        componentATopic.createLeafChild(FILE_DIRECTORY_PATH_CONFIG_TOPIC_NAME).withValue(directoryPath.toAbsolutePath().toString());
+        componentATopic.createLeafChild(MIN_LOG_LEVEL_CONFIG_TOPIC_NAME).withValue("DEBUG");
+        componentATopic.createLeafChild(DISK_SPACE_LIMIT_CONFIG_TOPIC_NAME).withValue("10");
+        componentATopic.createLeafChild(DISK_SPACE_LIMIT_UNIT_CONFIG_TOPIC_NAME).withValue("GB");
+        componentATopic.createLeafChild(DELETE_LOG_FILES_AFTER_UPLOAD_CONFIG_TOPIC_NAME).withValue("false");
+
+        LogFile processingFile = createLogFileWithSize(directoryPath.resolve("testlogs1.log").toUri(), 1061);
+        String fileHash = processingFile.hashString();
+
+        Topics allCurrentProcessingComponentTopics =
+                Topics.of(context, PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION, null);
+        Topics currentProcessingComponentTopics =
+                Topics.of(context, "testComponent", allCurrentProcessingComponentTopics);
+        currentProcessingComponentTopics.createLeafChild(PERSISTED_CURRENT_PROCESSING_FILE_NAME)
+                .withValue(processingFile.getAbsolutePath());
+        //Empty fileHash
+        currentProcessingComponentTopics.createLeafChild(PERSISTED_CURRENT_PROCESSING_FILE_HASH)
+                .withValue(Coerce.toString(""));
+        currentProcessingComponentTopics.createLeafChild(PERSISTED_CURRENT_PROCESSING_FILE_LAST_MODIFIED_TIME)
+                .withValue(processingFile.lastModified());
+        currentProcessingComponentTopics.createLeafChild(PERSISTED_CURRENT_PROCESSING_FILE_START_POSITION)
+                .withValue(598);
+        lenient().when(config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC)
+                        .lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION, "testComponent"))
+                        .thenReturn(currentProcessingComponentTopics);
+
+        Topics allLastFileProcessedComponentTopics =
+                Topics.of(context, PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP, null);
+        Topics lastFileProcessedComponentTopics2 =
+                Topics.of(context, "testComponent", allLastFileProcessedComponentTopics);
+        lenient().when(config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC)
+                        .lookupTopics(PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP, "testComponent"))
+                .thenReturn(lastFileProcessedComponentTopics2);
+
+        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor);
+        TimeUnit.SECONDS.sleep(5);
+        assertTrue(logsUploaderService.componentCurrentProcessingLogFile.containsKey("testComponent"));
+        LogManagerService.CurrentProcessingFileInformation currentProcessingFileInformation =
+                logsUploaderService.componentCurrentProcessingLogFile.get(
+                "testComponent");
+        assertEquals(fileHash, currentProcessingFileInformation.getFileHash());
+        assertEquals(598, currentProcessingFileInformation.getStartPosition());
+        assertEquals(processingFile.getAbsolutePath(), currentProcessingFileInformation.getFileName());
+        assertEquals(processingFile.lastModified(), currentProcessingFileInformation.getLastModifiedTime());
     }
 }

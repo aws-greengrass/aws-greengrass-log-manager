@@ -12,6 +12,7 @@ import com.aws.greengrass.config.UpdateBehaviorTree;
 import com.aws.greengrass.config.WhatHappened;
 import com.aws.greengrass.dependency.ImplementsService;
 import com.aws.greengrass.lifecyclemanager.PluginService;
+import com.aws.greengrass.logging.api.Logger;
 import com.aws.greengrass.logging.impl.LogManager;
 import com.aws.greengrass.logging.impl.config.LogConfig;
 import com.aws.greengrass.logmanager.exceptions.InvalidLogGroupException;
@@ -39,6 +40,7 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardWatchEventKinds;
@@ -55,7 +57,6 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -412,6 +413,11 @@ public class LogManagerService extends PluginService {
                     CurrentProcessingFileInformation.builder().build();
             currentProcessingComponentTopics.iterator().forEachRemaining(node ->
                     currentProcessingFileInformation.updateFromTopic((Topic) node));
+            // If upgrade from older version, then the fileHash does not exist but fileName exists, then
+            // transfer from fileName to fileHash. If no fileName, then keep the fileHash as empty.
+            if (Utils.isEmpty(currentProcessingFileInformation.getFileHash())) {
+                currentProcessingFileInformation.convertNameToHash();
+            }
             // Only store the processing information when the fileHash is not empty or null.
             if (Utils.isNotEmpty(currentProcessingFileInformation.getFileHash())) {
                 componentCurrentProcessingLogFile.put(componentName, currentProcessingFileInformation);
@@ -595,7 +601,6 @@ public class LogManagerService extends PluginService {
                     LogFileGroup logFileGroup =
                             LogFileGroup.create(componentLogConfiguration.getFileNameRegex(),
                                     componentLogConfiguration.getDirectoryPath().toUri(), lastUploadedLogFileTimeMs);
-
                     if (logFileGroup.isEmpty()) {
                         continue;
                     }
@@ -834,6 +839,8 @@ public class LogManagerService extends PluginService {
         private long lastModifiedTime;
         @JsonProperty(PERSISTED_CURRENT_PROCESSING_FILE_HASH)
         private String fileHash;
+        private final Logger logger = LogManager.getLogger(LogManagerService.class);
+
 
         public Map<String, Object> convertToMapOfObjects() {
             Map<String, Object> currentProcessingFileInformationMap = new HashMap<>();
@@ -861,14 +868,7 @@ public class LogManagerService extends PluginService {
                     lastModifiedTime = Coerce.toLong(topic);
                     break;
                 case PERSISTED_CURRENT_PROCESSING_FILE_HASH:
-                    // If upgrade from older version, then the fileHash does not exist but fileName exists, then
-                    // transfer from fileName to fileHash.
-                    String savedName = Coerce.toString(PERSISTED_CURRENT_PROCESSING_FILE_NAME);
                     fileHash = Coerce.toString(topic);
-                    if (Objects.isNull(fileHash) && !Objects.isNull(savedName)) {
-                        LogFile savedFile = new LogFile(Paths.get(savedName).toUri());
-                        fileHash = savedFile.hashString();
-                    }
                     break;
                 default:
                     break;
@@ -887,6 +887,23 @@ public class LogManagerService extends PluginService {
                     .fileHash(Coerce.toString(currentProcessingFileInformationMap
                             .get(PERSISTED_CURRENT_PROCESSING_FILE_HASH)))
                     .build();
+        }
+
+        public void convertNameToHash() {
+            if (Utils.isEmpty(fileHash) && Utils.isNotEmpty(fileName)) {
+                try {
+                    File file = new File(Paths.get(fileName).toUri());
+                    if (file.exists()) {
+                        fileHash = LogFile.of(file).hashString();
+                    } else {
+                        logger.atWarn().log("File {} does not exist.", file.getAbsolutePath());
+                    }
+                } catch (InvalidPathException e) {
+                    logger.atError().cause(e).log("Path string cannot be converted to a path.");
+                } catch (IllegalArgumentException e) {
+                    logger.atError().cause(e).log("URI of the file is invalid.");
+                }
+            }
         }
     }
 }

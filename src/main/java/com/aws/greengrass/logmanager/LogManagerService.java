@@ -835,7 +835,7 @@ public class LogManagerService extends PluginService {
         private long lastModifiedTime;
         @JsonProperty(PERSISTED_CURRENT_PROCESSING_FILE_HASH)
         private String fileHash;
-        private static final Logger logger = LogManager.getLogger(LogManagerService.class);
+        private static final Logger logger = LogManager.getLogger(CurrentProcessingFileInformation.class);
 
         public Map<String, Object> convertToMapOfObjects() {
             Map<String, Object> currentProcessingFileInformationMap = new HashMap<>();

@@ -9,6 +9,7 @@ import com.aws.greengrass.config.Topic;
 import com.aws.greengrass.config.Topics;
 import com.aws.greengrass.config.UnsupportedInputTypeException;
 import com.aws.greengrass.config.UpdateBehaviorTree;
+import com.aws.greengrass.dependency.Context;
 import com.aws.greengrass.dependency.Crashable;
 import com.aws.greengrass.logging.impl.LogManager;
 import com.aws.greengrass.logging.impl.config.LogConfig;
@@ -83,6 +84,7 @@ import static com.aws.greengrass.logmanager.LogManagerService.LOGS_UPLOADER_PERI
 import static com.aws.greengrass.logmanager.LogManagerService.MIN_LOG_LEVEL_CONFIG_TOPIC_NAME;
 import static com.aws.greengrass.logmanager.LogManagerService.PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION;
 import static com.aws.greengrass.logmanager.LogManagerService.PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP;
+import static com.aws.greengrass.logmanager.LogManagerService.PERSISTED_CURRENT_PROCESSING_FILE_NAME;
 import static com.aws.greengrass.logmanager.LogManagerService.PERSISTED_LAST_FILE_PROCESSED_TIMESTAMP;
 import static com.aws.greengrass.logmanager.LogManagerService.SYSTEM_LOGS_COMPONENT_NAME;
 import static com.aws.greengrass.logmanager.LogManagerService.SYSTEM_LOGS_CONFIG_TOPIC_NAME;
@@ -107,6 +109,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith({MockitoExtension.class, GGExtension.class})
+@SuppressWarnings("PMD.ExcessiveClassLength")
 class LogManagerServiceTest extends GGServiceTestUtil {
     @Mock
     private CloudWatchLogsUploader mockUploader;
@@ -253,9 +256,12 @@ class LogManagerServiceTest extends GGServiceTestUtil {
 
     @AfterEach
     public void cleanup() throws InterruptedException {
-        logsUploaderService.componentCurrentProcessingLogFile.clear();
-        logsUploaderService.lastComponentUploadedLogFileInstantMap.clear();
-        logsUploaderService.shutdown();
+        if (logsUploaderService != null) {
+            logsUploaderService.componentCurrentProcessingLogFile.clear();
+            logsUploaderService.lastComponentUploadedLogFileInstantMap.clear();
+            logsUploaderService.shutdown();
+        }
+
         executor.shutdownNow();
     }
 
@@ -1060,5 +1066,35 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         assertEquals("TestFileHash2", userComponentInfo.getFileHash());
         assertEquals(10000, userComponentInfo.getStartPosition());
         assertEquals(now.toEpochMilli(), userComponentInfo.getLastModifiedTime());
+    }
+
+    @Test
+    void GIVEN_config_without_hash_but_name_WHEN_config_is_processed_THEN_processingFile_info_is_loaded()
+            throws Exception {
+        // Given
+
+        // A rotated log file
+        Path rotatedLogFilePath  = directoryPath.resolve("testlogs1.log");
+        LogFile rotatedLogFile = new LogFile(rotatedLogFilePath.toUri());
+        createLogFileWithSize(rotatedLogFilePath.toUri(), 1061);
+
+        // Configuration of file being currently processed with only the file name
+        String componentName = "testlogs\\w*.log";
+        Topics runtimeConfig = Topics.of(new Context(), RUNTIME_STORE_NAMESPACE_TOPIC, null);
+        Topics currentlyProcessing = runtimeConfig
+                .lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION, componentName);
+        currentlyProcessing.lookup(PERSISTED_CURRENT_PROCESSING_FILE_NAME)
+                .withValue(rotatedLogFilePath.toAbsolutePath().toString());
+
+        // When
+        LogManagerService.CurrentProcessingFileInformation processingInfo =
+                LogManagerService.CurrentProcessingFileInformation.builder().build();
+        Topic nameTopic = currentlyProcessing.find(PERSISTED_CURRENT_PROCESSING_FILE_NAME);
+        processingInfo.updateFromTopic(nameTopic);
+
+
+        // Then
+        assertEquals(processingInfo.getFileName(), rotatedLogFilePath.toAbsolutePath().toString());
+        assertEquals(processingInfo.getFileHash(), rotatedLogFile.hashString());
     }
 }

@@ -110,6 +110,9 @@ public final class LogFileGroup {
         return create(this.filePattern, this.directoryURI, this.lastUpdated);
     }
 
+    /**
+     * Returns the size in bytes of all the contents being tracked on by the log group.
+     */
     public long byteSize() {
         long bytes = 0;
         for (LogFile log : logFiles) {

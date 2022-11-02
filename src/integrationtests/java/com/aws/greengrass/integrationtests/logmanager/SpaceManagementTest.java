@@ -140,7 +140,7 @@ class SpaceManagementTest extends BaseITCase {
         LogFileGroup logFileGroup = LogFileGroup.create(logFileNamePattern, tempDirectoryPath.toUri(), mockInstant);
         // Then
 
-        assertThat("Log group file size never not below 105 kb",() -> {
+        assertThat("Log group size not below 105 kb",() -> {
             try {
                 logFileGroup.syncDirectory();
                 long kb = logFileGroup.byteSize() / 1024;

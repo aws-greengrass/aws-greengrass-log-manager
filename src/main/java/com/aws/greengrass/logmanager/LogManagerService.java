@@ -12,6 +12,7 @@ import com.aws.greengrass.config.UpdateBehaviorTree;
 import com.aws.greengrass.config.WhatHappened;
 import com.aws.greengrass.dependency.ImplementsService;
 import com.aws.greengrass.lifecyclemanager.PluginService;
+import com.aws.greengrass.logging.api.Logger;
 import com.aws.greengrass.logging.impl.LogManager;
 import com.aws.greengrass.logging.impl.config.LogConfig;
 import com.aws.greengrass.logmanager.exceptions.InvalidLogGroupException;
@@ -39,6 +40,7 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardWatchEventKinds;
@@ -833,6 +835,7 @@ public class LogManagerService extends PluginService {
         private long lastModifiedTime;
         @JsonProperty(PERSISTED_CURRENT_PROCESSING_FILE_HASH)
         private String fileHash;
+        private static final Logger logger = LogManager.getLogger(CurrentProcessingFileInformation.class);
 
         public Map<String, Object> convertToMapOfObjects() {
             Map<String, Object> currentProcessingFileInformationMap = new HashMap<>();
@@ -852,6 +855,7 @@ public class LogManagerService extends PluginService {
                 // upgrade-downgrade issues.
                 case PERSISTED_CURRENT_PROCESSING_FILE_NAME:
                     fileName = Coerce.toString(topic);
+                    fileHash = getFileHashFromTopic(topic);
                     break;
                 case PERSISTED_CURRENT_PROCESSING_FILE_START_POSITION:
                     startPosition = Coerce.toLong(topic);
@@ -860,8 +864,7 @@ public class LogManagerService extends PluginService {
                     lastModifiedTime = Coerce.toLong(topic);
                     break;
                 case PERSISTED_CURRENT_PROCESSING_FILE_HASH:
-                    //TODO: the scenario of upgrading from older version needs to be handled in next PR.
-                    fileHash = Coerce.toString(topic);
+                    fileHash = getFileHashFromTopic(topic);
                     break;
                 default:
                     break;
@@ -880,6 +883,37 @@ public class LogManagerService extends PluginService {
                     .fileHash(Coerce.toString(currentProcessingFileInformationMap
                             .get(PERSISTED_CURRENT_PROCESSING_FILE_HASH)))
                     .build();
+        }
+
+        private String getFileHashFromTopic(Topic topic) {
+            Topics topics = topic.parent;
+            Topic hashTopic = topics.find(PERSISTED_CURRENT_PROCESSING_FILE_HASH);
+
+            if (hashTopic != null) {
+                return Coerce.toString(hashTopic);
+            }
+
+            Topic nameTopic = topics.find(PERSISTED_CURRENT_PROCESSING_FILE_NAME);
+
+            if (nameTopic == null || Coerce.toString(nameTopic) == null) {
+                return null;
+            }
+
+            try {
+                Path filePath = Paths.get(Coerce.toString(nameTopic));
+                File file = filePath.toFile();
+
+                if (!file.exists() || !file.isFile()) {
+                    return null;
+                }
+
+                LogFile logFile = LogFile.of(file);
+                return logFile.hashString();
+            } catch (InvalidPathException e) {
+                logger.atWarn().cause(e).log("File name is not a valid path");
+            }
+
+            return null;
         }
     }
 }

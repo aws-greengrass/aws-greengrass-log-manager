@@ -6,9 +6,9 @@ You can add/update UATs at uat source.
 The uat module generates a UAT artifact (greengrass-log-manager-uat-artifact.jar) which is an executable jar meant to run the UATs.
 
 ##Running UATs locally
-* UAT runs require the credentials for the AWS account you want to use.
-* Ensure credentials are available in the environment.
-* The Other way to provide the AWS credentials are through AWS profile. (Aws profile->admin->BASH)
+Ensure credentials are available either by setting them in environment variables or 
+[configuring them in your aws cli profile]
+(https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-files.html)
 
 For UATs to run you will need to package your entire application along with OTF as a dependency on an Uber jar. 
 To do that run following commands from the root of the project:

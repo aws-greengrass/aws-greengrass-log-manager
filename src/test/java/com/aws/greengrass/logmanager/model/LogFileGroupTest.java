@@ -14,7 +14,6 @@ import java.time.Instant;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
-import static com.aws.greengrass.logmanager.LogManagerService.ACTIVE_LOG_FILE_FEATURE_ENABLED_FLAG;
 import static com.aws.greengrass.logmanager.util.TestUtils.givenAStringOfSize;
 import static com.aws.greengrass.logmanager.util.TestUtils.writeFile;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -29,7 +28,6 @@ public class LogFileGroupTest {
     @Test
     void GIVEN_log_files_THEN_find_the_active_file() throws IOException, InterruptedException,
             InvalidLogGroupException {
-        ACTIVE_LOG_FILE_FEATURE_ENABLED_FLAG.set(true);
         LogFile file = new LogFile(directoryPath.resolve("greengrass_test.log_1").toUri());
         byte[] bytesArray = givenAStringOfSize(1024).getBytes(StandardCharsets.UTF_8);
         writeFile(file, bytesArray);
@@ -46,8 +44,7 @@ public class LogFileGroupTest {
         LogFileGroup logFileGroup = LogFileGroup.create(pattern, file.getParentFile().toURI(), instant);
 
         assertEquals(2, logFileGroup.getLogFiles().size());
-        assertFalse(logFileGroup.getActiveFile().get().fileEquals(file));
-        assertTrue(logFileGroup.getActiveFile().get().fileEquals(file2));
-        ACTIVE_LOG_FILE_FEATURE_ENABLED_FLAG.set(false);
+        assertFalse(logFileGroup.isActiveFile(file));
+        assertTrue(logFileGroup.isActiveFile(file2));
     }
 }

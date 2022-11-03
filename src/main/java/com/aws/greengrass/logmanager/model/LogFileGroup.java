@@ -11,17 +11,16 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 import java.util.regex.Pattern;
 
-import static com.aws.greengrass.logmanager.LogManagerService.ACTIVE_LOG_FILE_FEATURE_ENABLED_FLAG;
 
 public final class LogFileGroup {
     @Getter
     private List<LogFile> logFiles;
     private static Map<String, LogFile> fileHashToLogFile;
+    @Getter
     private final Pattern filePattern;
     private final URI directoryURI;
     private final Instant lastUpdated;
@@ -55,36 +54,22 @@ public final class LogFileGroup {
         if (files.length != 0) {
             for (LogFile file: files) {
                 String fileHash = file.hashString();
+                boolean isModifiedAfterLastUpdatedFile =
+                        lastUpdated.isBefore(Instant.ofEpochMilli(file.lastModified()));
+                boolean isNameMatchPattern = filePattern.matcher(file.getName()).find();
+                boolean isEmptyFileHash = Utils.isEmpty(fileHash);
+
                 if (file.isFile()
-                        && lastUpdated.isBefore(Instant.ofEpochMilli(file.lastModified()))
-                        && filePattern.matcher(file.getName()).find()
-                        && !Utils.isEmpty(fileHash)) {
+                        && isModifiedAfterLastUpdatedFile
+                        && isNameMatchPattern
+                        && !isEmptyFileHash) {
                     allFiles.add(file);
                     fileHashToLogFile.put(fileHash, file);
                 }
             }
         }
         allFiles.sort(Comparator.comparingLong(LogFile::lastModified));
-        //TODO: setting this flag is only to develop incrementally without having to changed all tests yet, so that
-        // we can avoid a massive PR. This will be removed in the end.
-        if (!ACTIVE_LOG_FILE_FEATURE_ENABLED_FLAG.get()) {
-            if (allFiles.size() - 1 <= 0) {
-                return new LogFileGroup(new ArrayList<>(), filePattern, directoryURI, lastUpdated);
-            }
-            allFiles = allFiles.subList(0, allFiles.size() - 1);
-        }
         return new LogFileGroup(allFiles, filePattern, directoryURI, lastUpdated);
-    }
-
-    /**
-     * Using the sorted log files to get the active file.
-     * @return the active logFile.
-     */
-    public Optional<LogFile> getActiveFile() {
-        if (logFiles.isEmpty()) {
-            return Optional.empty();
-        }
-        return Optional.of(logFiles.get(logFiles.size() - 1));
     }
 
     public void forEach(Consumer<LogFile> callback) {
@@ -100,11 +85,17 @@ public final class LogFileGroup {
      * @param fileHash the fileHash obtained from uploader.
      * @return the logFile.
      */
-    public Optional<LogFile> getFile(String fileHash) {
-        if (!fileHashToLogFile.containsKey(fileHash)) {
-            return Optional.empty();
-        }
-        return Optional.of(fileHashToLogFile.get(fileHash));
+    public LogFile getFile(String fileHash) {
+        return fileHashToLogFile.get(fileHash);
+    }
+
+    /**
+     * Validate if the hash exists in the current logFileGroup.
+     * @param fileHash the hash of the file.
+     * @return boolean.
+     */
+    public boolean isHashExist(String fileHash) {
+        return fileHashToLogFile.containsKey(fileHash);
     }
 
     /**
@@ -119,4 +110,27 @@ public final class LogFileGroup {
         return create(this.filePattern, this.directoryURI, this.lastUpdated);
     }
 
+    /**
+     * Returns the size in bytes of all the contents being tracked on by the log group.
+     */
+    public long totalSizeInBytes() {
+        long bytes = 0;
+        for (LogFile log : logFiles) {
+            bytes += log.length();
+        }
+        return bytes;
+    }
+
+    /**
+     * Validate if the logFile is the active of one logFileGroup.
+     * @param file the target file.
+     * @return boolean.
+     */
+    public boolean isActiveFile(LogFile file) {
+        if (logFiles.isEmpty()) {
+            return false;
+        }
+        LogFile activeFile = logFiles.get(logFiles.size() - 1);
+        return file.hashString().equals(activeFile.hashString());
+    }
 }

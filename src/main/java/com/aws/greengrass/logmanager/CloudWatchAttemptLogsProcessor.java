@@ -132,10 +132,8 @@ public class CloudWatchAttemptLogsProcessor {
             LogFile logFile = logFileInformation.getLogFile();
             long startPosition = logFileInformation.getStartPosition();
             String fileHash = logFileInformation.getFileHash();
-            String fileName = logFile.getAbsolutePath();
-            //TODO: this is only for passing the checkstyle check in the current PR. It will be removed since we will
-            // only add the non-empty fileHash into the logFileInformation
-            if (logFile.isEmpty()) {
+            //This has been handled in the service, but leave here to prevent processor crash
+            if (logFile.isEmpty() || startPosition == logFile.length()) {
                 componentLogFileInformation.getLogFileInformationList().remove(0);
                 continue;
             }
@@ -164,7 +162,7 @@ public class CloudWatchAttemptLogsProcessor {
                         if (partialLogLine == null) {
                             reachedMaxSize.set(processLogLine(totalBytesRead,
                                     componentLogFileInformation.getDesiredLogLevel(), logStreamName,
-                                    logStreamsMap, data, fileName, fileHash, startPosition,
+                                    logStreamsMap, data, fileHash, startPosition,
                                     componentLogFileInformation.getName(),
                                     tempStartPosition, lastModified, logFileGroup));
                             componentLogFileInformation.getLogFileInformationList().remove(0);
@@ -178,7 +176,7 @@ public class CloudWatchAttemptLogsProcessor {
                         if (checkLogStartPattern(componentLogFileInformation, partialLogLine)) {
                             reachedMaxSize.set(processLogLine(totalBytesRead,
                                     componentLogFileInformation.getDesiredLogLevel(), logStreamName,
-                                    logStreamsMap, data, fileName, fileHash, startPosition,
+                                    logStreamsMap, data, fileHash, startPosition,
                                     componentLogFileInformation.getName(),
                                     tempStartPosition, lastModified, logFileGroup));
                             data = new StringBuilder();
@@ -225,7 +223,6 @@ public class CloudWatchAttemptLogsProcessor {
                                    String logStreamName,
                                    Map<String, CloudWatchAttemptLogInformation> logStreamsMap,
                                    StringBuilder data,
-                                   String fileName,
                                    String fileHash,
                                    long startPosition,
                                    String componentName,
@@ -278,7 +275,7 @@ public class CloudWatchAttemptLogsProcessor {
         boolean reachedMaxSize = addEventResult.getLeft();
         int actualAddedSize = addEventResult.getRight().get();
         if (actualAddedSize > 0) {
-            updateCloudWatchAttemptLogInformation(fileName, fileHash, startPosition,
+            updateCloudWatchAttemptLogInformation(fileHash, startPosition,
                     currentPosition - (dataSize - actualAddedSize), attemptLogInformation, lastModified);
         }
         return reachedMaxSize;
@@ -287,20 +284,19 @@ public class CloudWatchAttemptLogsProcessor {
     /**
      * Updates the number of bytes read for the current CloudWatchAttempt.
      *
-     * @param fileName              The name of the file we are currently processing.
+     * @param fileHash              The hash of the file we are currently processing, as the file identifier.
      * @param startPosition         The initial start offset of the file.
      * @param currentPosition       The current offset in the file.
      * @param attemptLogInformation The attempt information containing the log file information.
      * @param lastModified          The last modified time for the file we are processing.
      */
-    private void updateCloudWatchAttemptLogInformation(String fileName,
-                                                       String fileHash,
+    private void updateCloudWatchAttemptLogInformation(String fileHash,
                                                        long startPosition,
                                                        long currentPosition,
                                                        CloudWatchAttemptLogInformation attemptLogInformation,
                                                        long lastModified) {
         CloudWatchAttemptLogFileInformation attemptLogFileInformation =
-                attemptLogInformation.getAttemptLogFileInformationMap().computeIfAbsent(fileName,
+                attemptLogInformation.getAttemptLogFileInformationMap().computeIfAbsent(fileHash,
                         key -> CloudWatchAttemptLogFileInformation.builder()
                                 .startPosition(startPosition)
                                 .lastModifiedTime(lastModified)

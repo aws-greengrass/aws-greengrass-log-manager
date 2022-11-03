@@ -1,13 +1,14 @@
 ##User Acceptance Test
 UATs are defined under uat module. 
-UATs use aws-greengrass-testing-standalone as the test framework to run the tests.
+UATs use aws-greengrass-testing-standalone as the test framework to run the tests.(OTF)
 aws-greengrass-testing-standalone is pulled as maven dependency from GG maven repo. 
 You can add/update UATs at uat source. 
-The uat module generates a UAT artifact (nucleus-uat-artifact.jar) which is an executable jar meant to run the UATs.
+The uat module generates a UAT artifact (greengrass-log-manager-uat-artifact.jar) which is an executable jar meant to run the UATs.
 
 ##Running UATs locally
 * UAT runs require the credentials for the AWS account you want to use.
 * Ensure credentials are available in the environment.
+* The Other way to provide the AWS credentials are through AWS profile. (Aws profile->admin->BASH)
 
 For UATs to run you will need to package your entire application along with OTF as a dependency on an Uber jar. 
 To do that run following commands from the root of the project:
@@ -29,4 +30,4 @@ Command arguments:
 
 Dggc.archive - path to the nucleus zip
 Dtest.log.path - path where the test results are being stored
-Dtags - filter tests by a specific cucumber tag (HelloWorldTst in above command)
+Dtags - filter tests by a specific cucumber tags.

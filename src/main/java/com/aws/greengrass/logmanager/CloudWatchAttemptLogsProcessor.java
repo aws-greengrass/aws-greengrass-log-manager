@@ -104,7 +104,7 @@ public class CloudWatchAttemptLogsProcessor {
         return logStreamName.replace(":", "+");
     }
 
-    public String getLogStreamName(String componentType, String componentName) {
+    public String getLogGroupName(String componentType, String componentName) {
         String awsRegion = Coerce.toString(deviceConfiguration.getAWSRegion());
 
         return DEFAULT_LOG_GROUP_NAME

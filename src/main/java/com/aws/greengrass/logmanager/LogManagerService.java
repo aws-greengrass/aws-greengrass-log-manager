@@ -38,11 +38,13 @@ import org.slf4j.event.Level;
 import java.io.File;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.nio.channels.SeekableByteChannel;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
 import java.nio.file.StandardWatchEventKinds;
 import java.nio.file.WatchEvent;
 import java.nio.file.WatchKey;
@@ -611,9 +613,22 @@ public class LogManagerService extends PluginService {
 
                     unitsOfWork.add(unitOfWork);
 
+                    // TODO: get correct group name
+                    CloudWatchAttempt groupAttempt = new CloudWatchAttempt();
+                    groupAttempt.setLogGroupName(logsProcessor.getLogGroupName("", ""));
                     logFileGroup.forEach(file -> {
+                        SeekableByteChannel fileByteChannel;
+
+                        try {
+                            fileByteChannel = Files.newByteChannel(file.toPath(), StandardOpenOption.READ);
+                        } catch (IOException e) {
+                            // TODO: fix log
+                            logger.atWarn().log("Unable to read file");
+                            return;
+                        }
+
                         long startPosition = 0;
-                        String fileHash = file.hashString();
+                        String fileHash = file.hashStringV2(fileByteChannel);
                         // The file must contain enough lines for digest hash, otherwise fileHash is empty string
                         if (!HASH_VALUE_OF_EMPTY_STRING.equals(fileHash)) {
                             // If the file was partially read in the previous run, then get the starting position for

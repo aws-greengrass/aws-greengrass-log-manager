@@ -574,8 +574,15 @@ public class LogManagerService extends PluginService {
                 continue;
             }
 
-            processLogsAndUpload();
+            List<ComponentLogFileInformation> units = getComponentLogFileInformation();
+
+            units.forEach((unit) -> {
+                CloudWatchAttempt cloudWatchAttempt = logsProcessor.processLogFiles(unit);
+                uploader.upload(cloudWatchAttempt, 1);
+            });
+
             emitEventStatus(EventType.ALL_COMPONENTS_PROCESSED);
+            isCurrentlyUploading.set(false);
             // after handle one cycle, we sleep for interval to avoid seamless scanning and processing next cycle.
             // TODO: do not use lazy sleep. Use scheduler to unblock the thread.
             TimeUnit.SECONDS.sleep(periodicUpdateIntervalSec);
@@ -584,21 +591,23 @@ public class LogManagerService extends PluginService {
 
     /**
      * Process and uploads log files.
-     *<p>
+     * <p>
      * 1.  It will then go through the components log configuration map and check if there are any log files from any
-     *     component that needs to be uploaded to the cloud.
-     *</p>
-     *<p>
+     * component that needs to be uploaded to the cloud.
+     * </p>
+     * <p>
      * 2.  The service will first get all the files from the log file directory and then sort them by the last modified
-     *     time.
-     *</p>
-     *<p>
+     * time.
+     * </p>
+     * <p>
      * 3.  It will then get all the log files which have not yet been uploaded to the cloud. This is done by checking
-     *     the last uploaded log file time for that component.
-     *</p>
+     * the last uploaded log file time for that component.
+     * </p>
+     *
+     * @return
      */
     @SuppressWarnings("PMD.CollapsibleIfStatements")
-    public void processLogsAndUpload() {
+    public List<ComponentLogFileInformation> getComponentLogFileInformation() {
         List<ComponentLogFileInformation> unitsOfWork = new ArrayList<>();
         // Get the latest known configurations because the componentLogConfigurations can change if a new
         // configuration is received from the customer.
@@ -669,12 +678,7 @@ public class LogManagerService extends PluginService {
         unitsOfWork = unitsOfWork.stream().filter(unit -> !unit.getLogFileInformationList().isEmpty()).collect(
                 Collectors.toList());
 
-        unitsOfWork.forEach((unit) -> {
-            CloudWatchAttempt cloudWatchAttempt = logsProcessor.processLogFiles(unit);
-            uploader.upload(cloudWatchAttempt, 1);
-        });
-
-        isCurrentlyUploading.set(false);
+        return unitsOfWork;
     }
 
     public void registerEventStatusListener(Consumer<EventType> callback) {

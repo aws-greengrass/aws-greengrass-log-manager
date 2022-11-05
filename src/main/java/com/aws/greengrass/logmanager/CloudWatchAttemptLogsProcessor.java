@@ -113,27 +113,27 @@ public class CloudWatchAttemptLogsProcessor {
                 .replace("{componentName}", componentName);
     }
 
-    public CloudWatchAttempt processLogFilesV2(String logGroupName, CloudWatchAttempt attempt,  ComponentLogFileInformation cpInfo, LogFileInformation fileInfo) {
+    public CloudWatchAttempt processLogFilesV2(
+            CloudWatchAttempt attempt, ComponentLogFileInformation cpInfo, LogFileInformation fileInfo,
+            SeekableByteChannel chan) throws IOException {
         long startPosition = fileInfo.getStartPosition();
-        String fileHash = fileInfo.getFileHash();
         AtomicBoolean reachedMaxSize = new AtomicBoolean(false);
         AtomicInteger totalBytesRead = new AtomicInteger();
-
         String thingName = Coerce.toString(deviceConfiguration.getThingName());
         String logStreamName = getLogStreamName(thingName);
         LogFile logFile = fileInfo.getLogFile();
-        long lastModified = logFile.lastModified();
-
-        Map<String, CloudWatchAttemptLogInformation> logStreamsMap = new ConcurrentHashMap<>();
         LogFileGroup logFileGroup = cpInfo.getLogFileGroup();
 
-        attempt.setLogGroupName(logGroupName);
-        attempt.setLogStreamsToLogEventsMap(logStreamsMap);
+        Map<String, CloudWatchAttemptLogInformation> logStreamsMap = attempt.getLogStreamsToLogEventsMap();
 
-        try (SeekableByteChannel chan = Files.newByteChannel(logFile.toPath(), StandardOpenOption.READ);
-             PositionTrackingBufferedReader r =
-                     new PositionTrackingBufferedReader(new InputStreamReader(Channels.newInputStream(chan),
-                             StandardCharsets.UTF_8))) {
+        if (logStreamsMap == null) {
+            logStreamsMap = new ConcurrentHashMap<>();
+            attempt.setLogStreamsToLogEventsMap(logStreamsMap);
+        }
+
+        InputStreamReader reader = new InputStreamReader(Channels.newInputStream(chan), StandardCharsets.UTF_8);
+
+        try (PositionTrackingBufferedReader r = new PositionTrackingBufferedReader(reader)) {
             r.setInitialPosition(startPosition);
             chan.position(startPosition);
             StringBuilder data = new StringBuilder(r.readLine());
@@ -150,9 +150,9 @@ public class CloudWatchAttemptLogsProcessor {
                     if (partialLogLine == null) {
                         reachedMaxSize.set(processLogLine(totalBytesRead,
                                 cpInfo.getDesiredLogLevel(), logStreamName,
-                                logStreamsMap, data, fileHash, startPosition,
+                                logStreamsMap, data, fileInfo.getFileHash(), startPosition,
                                 cpInfo.getName(),
-                                tempStartPosition, lastModified, logFileGroup));
+                                tempStartPosition, logFile.lastModified(), logFileGroup));
                         break;
                     }
 
@@ -163,9 +163,9 @@ public class CloudWatchAttemptLogsProcessor {
                     if (checkLogStartPattern(cpInfo, partialLogLine)) {
                         reachedMaxSize.set(processLogLine(totalBytesRead,
                                 cpInfo.getDesiredLogLevel(), logStreamName,
-                                logStreamsMap, data, fileHash, startPosition,
+                                logStreamsMap, data, fileInfo.getFileHash(), startPosition,
                                 cpInfo.getName(),
-                                tempStartPosition, lastModified, logFileGroup));
+                                tempStartPosition, logFile.lastModified(), logFileGroup));
                         data = new StringBuilder();
                     }
 
@@ -181,7 +181,8 @@ public class CloudWatchAttemptLogsProcessor {
             logger.atError().cause(e).log("Unable to read file {}", logFile.getAbsolutePath());
         }
 
-        return  attempt;
+        chan.close();
+        return attempt;
     }
 
     /**

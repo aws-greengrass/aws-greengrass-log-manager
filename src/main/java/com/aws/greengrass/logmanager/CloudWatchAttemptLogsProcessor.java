@@ -13,6 +13,7 @@ import com.aws.greengrass.logmanager.model.CloudWatchAttempt;
 import com.aws.greengrass.logmanager.model.CloudWatchAttemptLogFileInformation;
 import com.aws.greengrass.logmanager.model.CloudWatchAttemptLogInformation;
 import com.aws.greengrass.logmanager.model.ComponentLogFileInformation;
+import com.aws.greengrass.logmanager.model.ComponentType;
 import com.aws.greengrass.logmanager.model.LogFile;
 import com.aws.greengrass.logmanager.model.LogFileGroup;
 import com.aws.greengrass.logmanager.model.LogFileInformation;
@@ -104,11 +105,11 @@ public class CloudWatchAttemptLogsProcessor {
         return logStreamName.replace(":", "+");
     }
 
-    public String getLogGroupName(String componentType, String componentName) {
+    public String getLogGroupName(ComponentType componentType, String componentName) {
         String awsRegion = Coerce.toString(deviceConfiguration.getAWSRegion());
 
         return DEFAULT_LOG_GROUP_NAME
-                .replace("{componentType}", componentType)
+                .replace("{componentType}", componentType.name())
                 .replace("{region}", awsRegion)
                 .replace("{componentName}", componentName);
     }

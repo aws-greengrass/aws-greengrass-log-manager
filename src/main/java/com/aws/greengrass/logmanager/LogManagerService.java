@@ -615,7 +615,8 @@ public class LogManagerService extends PluginService {
 
                     // TODO: get correct group name
                     CloudWatchAttempt groupAttempt = new CloudWatchAttempt();
-                    groupAttempt.setLogGroupName(logsProcessor.getLogGroupName("", ""));
+                    groupAttempt.setLogGroupName(
+                            logsProcessor.getLogGroupName(componentLogConfiguration.getComponentType(), componentName));
                     logFileGroup.forEach(file -> {
                         SeekableByteChannel fileByteChannel;
 

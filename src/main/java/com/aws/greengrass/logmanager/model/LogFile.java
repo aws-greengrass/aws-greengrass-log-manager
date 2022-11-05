@@ -110,6 +110,23 @@ public class LogFile extends File {
         return "";
     }
 
+    public String hashStringV2(SeekableByteChannel chan) {
+        String fileHash = HASH_VALUE_OF_EMPTY_STRING;
+        try {
+            if (!this.exists()) {
+                return fileHash;
+            }
+            // String stringToHash = readBytesToString();
+            String stringToHash = readBytesToStringV2(chan);
+            if (!stringToHash.isEmpty()) {
+                fileHash = calculate(stringToHash);
+            }
+        }  catch (NoSuchAlgorithmException e) {
+            logger.atError().cause(e).log("The digest algorithm is invalid");
+        }
+        return fileHash;
+    }
+
     /**
      * Get the hash of the logfile with target lines.
      *

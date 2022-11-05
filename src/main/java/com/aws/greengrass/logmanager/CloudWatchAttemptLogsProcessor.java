@@ -104,6 +104,86 @@ public class CloudWatchAttemptLogsProcessor {
         return logStreamName.replace(":", "+");
     }
 
+    public String getLogStreamName(String componentType, String componentName) {
+        String awsRegion = Coerce.toString(deviceConfiguration.getAWSRegion());
+
+        return DEFAULT_LOG_GROUP_NAME
+                .replace("{componentType}", componentType)
+                .replace("{region}", awsRegion)
+                .replace("{componentName}", componentName);
+    }
+
+    public CloudWatchAttempt processLogFilesV2(String logGroupName, CloudWatchAttempt attempt,  ComponentLogFileInformation cpInfo, LogFileInformation fileInfo) {
+        long startPosition = fileInfo.getStartPosition();
+        String fileHash = fileInfo.getFileHash();
+        AtomicBoolean reachedMaxSize = new AtomicBoolean(false);
+        AtomicInteger totalBytesRead = new AtomicInteger();
+
+        String thingName = Coerce.toString(deviceConfiguration.getThingName());
+        String logStreamName = getLogStreamName(thingName);
+        LogFile logFile = fileInfo.getLogFile();
+        long lastModified = logFile.lastModified();
+
+        Map<String, CloudWatchAttemptLogInformation> logStreamsMap = new ConcurrentHashMap<>();
+        LogFileGroup logFileGroup = cpInfo.getLogFileGroup();
+
+        attempt.setLogGroupName(logGroupName);
+        attempt.setLogStreamsToLogEventsMap(logStreamsMap);
+
+        try (SeekableByteChannel chan = Files.newByteChannel(logFile.toPath(), StandardOpenOption.READ);
+             PositionTrackingBufferedReader r =
+                     new PositionTrackingBufferedReader(new InputStreamReader(Channels.newInputStream(chan),
+                             StandardCharsets.UTF_8))) {
+            r.setInitialPosition(startPosition);
+            chan.position(startPosition);
+            StringBuilder data = new StringBuilder(r.readLine());
+
+            // Run the loop until we detect that the log file is completely read, or that we have reached the max
+            // message size or if we detect any IOException while reading from the file.
+            while (!reachedMaxSize.get()) {
+                try {
+                    long tempStartPosition = r.position();
+                    String partialLogLine = r.readLine();
+                    // If we do not get any data from the file, we have reached the end of the file.
+                    // and we add the log line into our input logs event list since we are currently only
+                    // working on rotated files, this will be guaranteed to be a complete log line.
+                    if (partialLogLine == null) {
+                        reachedMaxSize.set(processLogLine(totalBytesRead,
+                                cpInfo.getDesiredLogLevel(), logStreamName,
+                                logStreamsMap, data, fileHash, startPosition,
+                                cpInfo.getName(),
+                                tempStartPosition, lastModified, logFileGroup));
+                        break;
+                    }
+
+                    // If the new log line read from the file matches the start pattern, that means
+                    // the string builder we have appended data to until now, has a complete log line.
+                    // Let's add that in the input logs event list.
+                    // The default pattern is checking if the line starts with non-white space
+                    if (checkLogStartPattern(cpInfo, partialLogLine)) {
+                        reachedMaxSize.set(processLogLine(totalBytesRead,
+                                cpInfo.getDesiredLogLevel(), logStreamName,
+                                logStreamsMap, data, fileHash, startPosition,
+                                cpInfo.getName(),
+                                tempStartPosition, lastModified, logFileGroup));
+                        data = new StringBuilder();
+                    }
+
+                    // Need to read more lines until we get a complete log line. Let's add this to the SB.
+                    data.append(partialLogLine);
+                } catch (IOException e) {
+                    logger.atError().cause(e).log("Unable to read file {}", logFile.getAbsolutePath());
+                    break;
+                }
+            }
+        } catch (IOException e) {
+            // File probably does not exist.
+            logger.atError().cause(e).log("Unable to read file {}", logFile.getAbsolutePath());
+        }
+
+        return  attempt;
+    }
+
     /**
      * Gets CW input log events from the component which processSingleLogFile need to be uploaded to CloudWatch.
      *

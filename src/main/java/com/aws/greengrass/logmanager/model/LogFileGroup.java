@@ -72,10 +72,6 @@ public final class LogFileGroup {
         return new LogFileGroup(allFiles, filePattern, directoryURI, lastUpdated);
     }
 
-    public void forEach(Consumer<LogFile> callback) {
-        logFiles.forEach(callback::accept);
-    }
-
     public boolean isEmpty() {
         return this.logFiles.isEmpty();
     }

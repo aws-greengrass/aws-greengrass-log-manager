@@ -629,27 +629,30 @@ public class LogManagerService extends PluginService {
 
                         long startPosition = 0;
                         String fileHash = file.hashStringV2(fileByteChannel);
+
                         // The file must contain enough lines for digest hash, otherwise fileHash is empty string
-                        if (!HASH_VALUE_OF_EMPTY_STRING.equals(fileHash)) {
-                            // If the file was partially read in the previous run, then get the starting position for
-                            // new log lines.
-                            if (componentCurrentProcessingLogFile.containsKey(componentName)) {
-                                CurrentProcessingFileInformation processingFileInformation =
-                                        componentCurrentProcessingLogFile.get(componentName);
-                                if (processingFileInformation.fileHash.equals(fileHash)) {
-                                    startPosition = processingFileInformation.startPosition;
-                                }
-                            }
+                        if (HASH_VALUE_OF_EMPTY_STRING.equals(fileHash)) {
+                            return;
+                        }
 
-                            LogFileInformation logFileInformation = LogFileInformation.builder()
-                                    .logFile(file)
-                                    .startPosition(startPosition)
-                                    .fileHash(fileHash)
-                                    .build();
-
-                            if (startPosition < file.length()) {
-                                unitOfWork.getLogFileInformationList().add(logFileInformation);
+                        // If the file was partially read in the previous run, then get the starting position for
+                        // new log lines.
+                        if (componentCurrentProcessingLogFile.containsKey(componentName)) {
+                            CurrentProcessingFileInformation processingFileInformation =
+                                    componentCurrentProcessingLogFile.get(componentName);
+                            if (processingFileInformation.fileHash.equals(fileHash)) {
+                                startPosition = processingFileInformation.startPosition;
                             }
+                        }
+
+                        LogFileInformation logFileInformation = LogFileInformation.builder()
+                                .logFile(file)
+                                .startPosition(startPosition)
+                                .fileHash(fileHash)
+                                .build();
+
+                        if (startPosition < file.length()) {
+                            unitOfWork.getLogFileInformationList().add(logFileInformation);
                         }
                     });
                 } catch (SecurityException e) {

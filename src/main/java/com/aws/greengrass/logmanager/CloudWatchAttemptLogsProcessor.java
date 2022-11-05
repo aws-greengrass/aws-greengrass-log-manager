@@ -181,7 +181,6 @@ public class CloudWatchAttemptLogsProcessor {
             logger.atError().cause(e).log("Unable to read file {}", logFile.getAbsolutePath());
         }
 
-        chan.close();
         return attempt;
     }
 

@@ -13,6 +13,7 @@ import com.aws.greengrass.logmanager.model.CloudWatchAttemptLogInformation;
 import com.aws.greengrass.logmanager.model.ComponentLogFileInformation;
 import com.aws.greengrass.logmanager.model.ComponentType;
 import com.aws.greengrass.logmanager.model.LogFile;
+import com.aws.greengrass.logmanager.model.LogFileGroup;
 import com.aws.greengrass.logmanager.model.LogFileInformation;
 import com.aws.greengrass.testcommons.testutilities.GGExtension;
 import com.aws.greengrass.testcommons.testutilities.GGServiceTestUtil;
@@ -84,6 +85,9 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
     private final Clock defaultClock = Clock.fixed(Instant.parse("2020-12-17T12:00:00.00Z"), ZoneId.systemDefault());
     @TempDir
     static Path directoryPath;
+    private final Instant mockInstant = Instant.EPOCH;
+    @Mock
+    LogFileGroup mockLogFileGroup;
 
     private CloudWatchAttemptLogsProcessor logsProcessor;
 
@@ -109,6 +113,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
                 .desiredLogLevel(Level.INFO)
                 .componentType(ComponentType.GreengrassSystemComponent)
                 .logFileInformationList(logFileInformationSet)
+                .logFileGroup(mockLogFileGroup)
                 .build();
         logsProcessor = new CloudWatchAttemptLogsProcessor(mockDeviceConfiguration, defaultClock);
         CloudWatchAttempt attempt = logsProcessor.processLogFiles(componentLogFileInformation);
@@ -139,7 +144,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
 
     @Test
     void GIVEN_one_user_component_one_file_less_than_max_WHEN_merge_THEN_reads_entire_file(ExtensionContext ec)
-            throws URISyntaxException {
+            throws URISyntaxException, InvalidLogGroupException {
         ignoreExceptionOfType(ec, DateTimeParseException.class);
 
         File file1 = new File(getClass().getResource("testlogs2.log").toURI());
@@ -152,6 +157,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
                 .desiredLogLevel(Level.INFO)
                 .componentType(ComponentType.UserComponent)
                 .logFileInformationList(logFileInformationSet)
+                .logFileGroup(mockLogFileGroup)
                 .build();
         logsProcessor = new CloudWatchAttemptLogsProcessor(mockDeviceConfiguration, defaultClock);
         CloudWatchAttempt attempt = logsProcessor.processLogFiles(componentLogFileInformation);
@@ -182,7 +188,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
 
     @Test
     void GIVEN_one_component_WHEN_one_file_less_than_max_THEN_reads_entire_file(
-            ExtensionContext ec) throws URISyntaxException {
+            ExtensionContext ec) throws URISyntaxException, InvalidLogGroupException {
         ignoreExceptionOfType(ec, DateTimeParseException.class);
 
         File file1 = new File(getClass().getResource("testlogs2.log").toURI());
@@ -195,6 +201,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
                 .desiredLogLevel(Level.INFO)
                 .componentType(ComponentType.GreengrassSystemComponent)
                 .logFileInformationList(logFileInformationSet)
+                .logFileGroup(mockLogFileGroup)
                 .build();
         logsProcessor = new CloudWatchAttemptLogsProcessor(mockDeviceConfiguration, defaultClock);
         CloudWatchAttempt attempt = logsProcessor.processLogFiles(componentLogFileInformation);
@@ -225,7 +232,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
 
     @Test
     void GIVEN_one_component_one_file_more_than_max_WHEN_merge_THEN_reads_partial_file(ExtensionContext context1)
-            throws IOException {
+            throws IOException, InvalidLogGroupException {
 
         ignoreExceptionOfType(context1, DateTimeParseException.class);
         File file = new File(directoryPath.resolve("greengrass_test.log").toUri());
@@ -252,6 +259,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
                     .desiredLogLevel(Level.INFO)
                     .componentType(ComponentType.GreengrassSystemComponent)
                     .logFileInformationList(logFileInformationSet)
+                    .logFileGroup(mockLogFileGroup)
                     .build();
 
             logsProcessor = new CloudWatchAttemptLogsProcessor(mockDeviceConfiguration, defaultClock);
@@ -287,7 +295,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
 
     @Test
     void GIVEN_one_component_one_file_24h_gap_WHEN_merge_THEN_reads_partial_file()
-            throws IOException {
+            throws IOException, InvalidLogGroupException {
         File file = new File(directoryPath.resolve("greengrass_test.log").toUri());
         assertTrue(file.createNewFile());
         assertTrue(file.setReadable(true));
@@ -311,6 +319,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
                     .desiredLogLevel(Level.INFO)
                     .componentType(ComponentType.GreengrassSystemComponent)
                     .logFileInformationList(logFileInformationSet)
+                    .logFileGroup(mockLogFileGroup)
                     .build();
 
             logsProcessor = new CloudWatchAttemptLogsProcessor(mockDeviceConfiguration);
@@ -328,7 +337,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
 
     @Test
     void GIVEN_one_component_WHEN_file_older_than_14_days_THEN_skip_file()
-            throws IOException {
+            throws IOException, InvalidLogGroupException {
         File file = new File(directoryPath.resolve("greengrass_test.log").toUri());
         assertTrue(file.createNewFile());
         assertTrue(file.setReadable(true));
@@ -352,6 +361,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
                     .desiredLogLevel(Level.INFO)
                     .componentType(ComponentType.GreengrassSystemComponent)
                     .logFileInformationList(logFileInformationSet)
+                    .logFileGroup(mockLogFileGroup)
                     .build();
 
             logsProcessor = new CloudWatchAttemptLogsProcessor(mockDeviceConfiguration);
@@ -371,7 +381,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
 
     @Test
     void GIVEN_one_components_two_file_less_than_max_WHEN_merge_THEN_reads_and_merges_both_files(ExtensionContext ec)
-            throws URISyntaxException {
+            throws URISyntaxException, InvalidLogGroupException {
         ignoreExceptionOfType(ec, DateTimeParseException.class);
 
         LogFile logFile1 = new LogFile(getClass().getResource("testlogs2.log").toURI());
@@ -386,6 +396,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
                 .desiredLogLevel(Level.INFO)
                 .componentType(ComponentType.GreengrassSystemComponent)
                 .logFileInformationList(logFileInformationSet)
+                .logFileGroup(mockLogFileGroup)
                 .build();
         logsProcessor = new CloudWatchAttemptLogsProcessor(mockDeviceConfiguration, defaultClock);
         CloudWatchAttempt attempt = logsProcessor.processLogFiles(componentLogFileInformation);
@@ -426,7 +437,8 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
     }
 
     @Test
-    void GIVEN_unstructured_log_WHEN_breaches_event_size_limit_THEN_split_line(ExtensionContext ec) throws IOException {
+    void GIVEN_unstructured_log_WHEN_breaches_event_size_limit_THEN_split_line(ExtensionContext ec)
+            throws IOException, InvalidLogGroupException {
 
         ignoreExceptionOfType(ec, DateTimeParseException.class);
         File file = new File(directoryPath.resolve("greengrass_test.log").toUri());
@@ -458,6 +470,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
             ComponentLogFileInformation componentLogFileInformation =
                     ComponentLogFileInformation.builder().name("TestComponent")
                             .desiredLogLevel(Level.INFO).componentType(ComponentType.GreengrassSystemComponent)
+                            .logFileGroup(mockLogFileGroup)
                             .logFileInformationList(logFileInformationSet).build();
 
             logsProcessor = new CloudWatchAttemptLogsProcessor(mockDeviceConfiguration, defaultClock);
@@ -494,7 +507,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
 
     @Test
     void GIVEN_unstructured_log_WHEN_breaches_event_size_and_batch_size_limits_THEN_split_line_and_skip_extra(
-            ExtensionContext ec) throws IOException {
+            ExtensionContext ec) throws IOException, InvalidLogGroupException {
 
         ignoreExceptionOfType(ec, DateTimeParseException.class);
         File file = new File(directoryPath.resolve("greengrass_test.log").toUri());
@@ -525,6 +538,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
             ComponentLogFileInformation componentLogFileInformation =
                     ComponentLogFileInformation.builder().name("TestComponent")
                             .desiredLogLevel(Level.INFO).componentType(ComponentType.GreengrassSystemComponent)
+                            .logFileGroup(mockLogFileGroup)
                             .logFileInformationList(logFileInformationSet).build();
 
             logsProcessor = new CloudWatchAttemptLogsProcessor(mockDeviceConfiguration, defaultClock);
@@ -554,7 +568,8 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
         }
     }
     @Test
-    void GIVEN_null_log_message_WHEN_upload_attempted_THEN_null_message_considered_as_unstructured_log(ExtensionContext ec) throws IOException {
+    void GIVEN_null_log_message_WHEN_upload_attempted_THEN_null_message_considered_as_unstructured_log(ExtensionContext ec)
+            throws IOException, InvalidLogGroupException {
 
         ignoreExceptionOfType(ec, DateTimeParseException.class);
         File file = new File(directoryPath.resolve("greengrass_test.log").toUri());
@@ -576,6 +591,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
                     .desiredLogLevel(Level.INFO)
                     .componentType(ComponentType.GreengrassSystemComponent)
                     .logFileInformationList(logFileInformationSet)
+                    .logFileGroup(mockLogFileGroup)
                     .build();
 
             logsProcessor = new CloudWatchAttemptLogsProcessor(mockDeviceConfiguration, defaultClock);
@@ -609,7 +625,8 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
     }
 
     @Test
-    void GIVEN_empty_log_message_WHEN_upload_attempted_THEN_empty_message_skipped(ExtensionContext ec) throws IOException {
+    void GIVEN_empty_log_message_WHEN_upload_attempted_THEN_empty_message_skipped(ExtensionContext ec)
+            throws IOException, InvalidLogGroupException {
 
         ignoreExceptionOfType(ec, DateTimeParseException.class);
         File file = new File(directoryPath.resolve("greengrass_test.log").toUri());
@@ -638,6 +655,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
                     .desiredLogLevel(Level.INFO)
                     .componentType(ComponentType.GreengrassSystemComponent)
                     .logFileInformationList(logFileInformationSet)
+                    .logFileGroup(mockLogFileGroup)
                     .build();
 
             logsProcessor = new CloudWatchAttemptLogsProcessor(mockDeviceConfiguration, defaultClock);
@@ -671,7 +689,8 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
     }
 
     @Test
-    void GIVEN_component_multiline_pattern_default_WHEN_logs_start_with_whitespace_THEN_append_to_previous_log() throws IOException{
+    void GIVEN_component_multiline_pattern_default_WHEN_logs_start_with_whitespace_THEN_append_to_previous_log()
+            throws IOException, InvalidLogGroupException {
         File file = new File(directoryPath.resolve("greengrass_test.log").toUri());
         assertTrue(file.createNewFile());
         assertTrue(file.setReadable(true));
@@ -686,6 +705,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
         }
         LogFile logFile = LogFile.of(file);
         String fileHash = logFile.hashString();
+
         try {
             List<LogFileInformation> logFileInformationSet = new ArrayList<>();
             logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile).fileHash(fileHash).build());
@@ -694,6 +714,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
                     .desiredLogLevel(Level.INFO)
                     .componentType(ComponentType.GreengrassSystemComponent)
                     .logFileInformationList(logFileInformationSet)
+                    .logFileGroup(mockLogFileGroup)
                     .build();
 
             logsProcessor = new CloudWatchAttemptLogsProcessor(mockDeviceConfiguration);
@@ -714,7 +735,8 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
     }
 
     @Test
-    void GIVEN_component_multiline_pattern_set_WHEN_log_lines_do_not_match_pattern_THEN_append_to_previous_log() throws IOException{
+    void GIVEN_component_multiline_pattern_set_WHEN_log_lines_do_not_match_pattern_THEN_append_to_previous_log()
+            throws IOException, InvalidLogGroupException {
         File file = new File(directoryPath.resolve("greengrass_test.log").toUri());
         assertTrue(file.createNewFile());
         assertTrue(file.setReadable(true));
@@ -730,6 +752,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
         }
         LogFile logFile = LogFile.of(file);
         String fileHash = logFile.hashString();
+
         try {
             List<LogFileInformation> logFileInformationSet = new ArrayList<>();
             logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile).fileHash(fileHash).build());
@@ -740,6 +763,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
                     //it's newline if line starts with number
                     .multiLineStartPattern(Pattern.compile("^\\d.*$"))
                     .logFileInformationList(logFileInformationSet)
+                    .logFileGroup(mockLogFileGroup)
                     .build();
 
             logsProcessor = new CloudWatchAttemptLogsProcessor(mockDeviceConfiguration);
@@ -762,7 +786,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
     @SuppressWarnings("PMD.CloseResource")
     @Test
     void GIVEN_component_multiline_pattern_set_WHEN_log_lines_trigger_stack_overflow_THEN_use_default_pattern_and_log_warning()
-            throws URISyntaxException {
+            throws URISyntaxException, InvalidLogGroupException {
         ByteArrayOutputStream outputCaptor = new ByteArrayOutputStream();
         PrintStream old = System.out;
         System.setOut(new PrintStream(outputCaptor));
@@ -778,6 +802,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
                 .multiLineStartPattern(Pattern.compile("^[^\\s]+(\\s+[^\\s]+)*$"))
                 .componentType(ComponentType.GreengrassSystemComponent)
                 .logFileInformationList(logFileInformationSet)
+                .logFileGroup(mockLogFileGroup)
                 .build();
         logsProcessor = new CloudWatchAttemptLogsProcessor(mockDeviceConfiguration, defaultClock);
         CloudWatchAttempt attempt = logsProcessor.processLogFiles(componentLogFileInformation);
@@ -834,5 +859,72 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
                     .replace("{thingName}", thingName)
                     .replace("{date}", DATE_FORMATTER.format(new Date()));
         }
+    }
+
+    @Test
+    void GIVEN_log_rotates_WHEN_between_scanning_and_reading_THEN_what_happen()
+            throws IOException, InterruptedException, InvalidLogGroupException {
+        // given
+        LogFile activefile = new LogFile(directoryPath.resolve("demo.log").toUri());
+        LogFile rotated1 = new LogFile(directoryPath.resolve("demo.log.1").toUri());
+        LogFile rotated2 = new LogFile(directoryPath.resolve("demo.log.2").toUri());
+        // write data in rotated 2
+        assertTrue(rotated2.createNewFile());
+        assertTrue(rotated2.setReadable(true));
+        assertTrue(rotated2.setWritable(true));
+        try (OutputStream fileOutputStream = Files.newOutputStream(rotated2.toPath())) {
+            fileOutputStream.write("3333333 this is rotated file 2, with name demo.log.2\n".getBytes(StandardCharsets.UTF_8));
+        }
+        // write data in rotated1
+        assertTrue(rotated1.createNewFile());
+        assertTrue(rotated1.setReadable(true));
+        assertTrue(rotated1.setWritable(true));
+        try (OutputStream fileOutputStream = Files.newOutputStream(rotated1.toPath())) {
+            fileOutputStream.write("222222 this is rotated file 1, with name demo.log.1.\n"
+                    .getBytes(StandardCharsets.UTF_8));
+        }
+        // write data in activeFile, this is the active file before rotation
+        assertTrue(activefile.createNewFile());
+        assertTrue(activefile.setReadable(true));
+        assertTrue(activefile.setWritable(true));
+        try (OutputStream fileOutputStream = Files.newOutputStream(activefile.toPath())) {
+            fileOutputStream.write("1111 old active file, with name demo.log now.\n"
+                    .getBytes(StandardCharsets.UTF_8));
+        }
+        Pattern pattern = Pattern.compile("demo.log\\w*");
+        LogFileGroup logFileGroup = LogFileGroup.create(pattern, activefile.getParentFile().toURI(), mockInstant);
+        String fileHash = activefile.hashString();
+        try {
+            List<LogFileInformation> logFileInformationSet = new ArrayList<>();
+            logFileInformationSet.add(LogFileInformation.builder().startPosition(activefile.length() - 2)
+                    .logFile(activefile).fileHash(fileHash).build());
+            ComponentLogFileInformation componentLogFileInformation = ComponentLogFileInformation.builder()
+                    .name("TestComponent")
+                    .desiredLogLevel(Level.INFO)
+                    .componentType(ComponentType.GreengrassSystemComponent)
+                    //it's newline if line starts with number
+                    .multiLineStartPattern(Pattern.compile("^\\d.*$"))
+                    .logFileInformationList(logFileInformationSet)
+                    .logFileGroup(logFileGroup)
+                    .build();
+
+            // rename file before processing
+            rotated1.renameTo(rotated2);
+            activefile.renameTo(rotated1);
+            // create the new active file
+            LogFile newActiveFile = new LogFile(directoryPath.resolve("demo.log").toUri());
+            assertTrue(newActiveFile.createNewFile());
+            assertTrue(newActiveFile.setReadable(true));
+            assertTrue(newActiveFile.setWritable(true));
+            try (OutputStream fileOutputStream = Files.newOutputStream(newActiveFile.toPath())) {
+                fileOutputStream.write("this is new active file\n".getBytes(StandardCharsets.UTF_8));
+            }
+            // start processing
+            logsProcessor = new CloudWatchAttemptLogsProcessor(mockDeviceConfiguration);
+            logsProcessor.processLogFiles(componentLogFileInformation);
+        } finally {
+            assertTrue(activefile.exists());
+        }
+
     }
 }

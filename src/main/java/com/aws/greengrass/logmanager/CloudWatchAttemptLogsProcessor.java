@@ -9,6 +9,7 @@ import com.aws.greengrass.deployment.DeviceConfiguration;
 import com.aws.greengrass.logging.api.Logger;
 import com.aws.greengrass.logging.impl.GreengrassLogMessage;
 import com.aws.greengrass.logging.impl.LogManager;
+import com.aws.greengrass.logmanager.exceptions.InvalidLogGroupException;
 import com.aws.greengrass.logmanager.model.CloudWatchAttempt;
 import com.aws.greengrass.logmanager.model.CloudWatchAttemptLogFileInformation;
 import com.aws.greengrass.logmanager.model.CloudWatchAttemptLogInformation;
@@ -124,14 +125,24 @@ public class CloudWatchAttemptLogsProcessor {
                 .replace("{componentName}", componentLogFileInformation.getName());
         attempt.setLogGroupName(logGroupName);
         String logStreamName = getLogStreamName(thingName);
-        LogFileGroup logFileGroup = componentLogFileInformation.getLogFileGroup();
         // Run the loop until all the log files from the component have been read or the max message
         // size has been reached.
         while (!componentLogFileInformation.getLogFileInformationList().isEmpty() && !reachedMaxSize.get()) {
             LogFileInformation logFileInformation = componentLogFileInformation.getLogFileInformationList().get(0);
             LogFile logFile = logFileInformation.getLogFile();
-            long startPosition = logFileInformation.getStartPosition();
             String fileHash = logFileInformation.getFileHash();
+            long startPosition = logFileInformation.getStartPosition();
+            LogFileGroup logFileGroup = componentLogFileInformation.getLogFileGroup();
+            // If the race condition happen, meaning file get rotated between scanning file and reading file, then
+            // let us update logFileGroup and get the new file object.
+            if (!fileHash.equals(logFile.hashString())) {
+                try {
+                    logFileGroup = logFileGroup.syncDirectory();
+                    logFile = logFileGroup.getFile(fileHash);
+                } catch (InvalidLogGroupException e) {
+                    logger.atDebug().cause(e).log("Invalid log group");
+                }
+            }
             //This has been handled in the service, but leave here to prevent processor crash
             if (logFile.isEmpty() || startPosition == logFile.length()) {
                 componentLogFileInformation.getLogFileInformationList().remove(0);
@@ -139,7 +150,6 @@ public class CloudWatchAttemptLogsProcessor {
             }
 
             long lastModified = logFile.lastModified();
-
             // If we have read the file already, we are at the correct offset in the file to start reading from
             // Let's get that file handle to read the new log line.
             try (SeekableByteChannel chan = Files.newByteChannel(logFile.toPath(), StandardOpenOption.READ);
@@ -148,10 +158,15 @@ public class CloudWatchAttemptLogsProcessor {
                          StandardCharsets.UTF_8))) {
                 r.setInitialPosition(startPosition);
                 chan.position(startPosition);
+                //TODO: this only used for verifying the bugs
+                if (startPosition > logFile.length()) {
+                    logger.atError().log("The startPos {} is larger than file length {} for file {}",
+                            startPosition, logFile.length(), logFile.getName());
+                }
                 StringBuilder data = new StringBuilder(r.readLine());
 
-                // Run the loop until we detect that the log file is completely read, or that we have reached the max
-                // message size or if we detect any IOException while reading from the file.
+                // Run the loop until we detect that the log file is completely read, or that we have reached
+                // the max message size or if we detect any IOException while reading from the file.
                 while (!reachedMaxSize.get()) {
                     try {
                         long tempStartPosition = r.position();

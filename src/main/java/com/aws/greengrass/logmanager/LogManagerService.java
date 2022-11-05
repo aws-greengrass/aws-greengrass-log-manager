@@ -458,12 +458,8 @@ public class LogManagerService extends PluginService {
         });
         completedLogFilePerComponent.forEach((componentName, completedFiles) -> {
             completedFiles.forEach(file -> {
-                if (!lastComponentUploadedLogFileInstantMap.containsKey(componentName)
-                        || lastComponentUploadedLogFileInstantMap.get(componentName)
-                        .isBefore(Instant.ofEpochMilli(file.lastModified()))) {
-                    lastComponentUploadedLogFileInstantMap.put(componentName,
-                            Instant.ofEpochMilli(file.lastModified()));
-                }
+                updatelastComponentUploadedLogFile(lastComponentUploadedLogFileInstantMap, componentName,
+                        file.lastModified());
             });
             if (!componentLogConfigurations.containsKey(componentName)) {
                 return;
@@ -527,6 +523,7 @@ public class LogManagerService extends PluginService {
             String fileName = file.getAbsolutePath();
             // If we have completely read the file, then we need add it to the completed files list and remove it
             // it (if necessary) for the current processing list.
+            // .log, .log1, .log2, .log3
             String componentName = attemptLogInformation.getComponentName();
             if (!logFileGroup.isActiveFile(file) && file.length() == cloudWatchAttemptLogFileInformation.getBytesRead()
                     + cloudWatchAttemptLogFileInformation.getStartPosition()) {
@@ -546,6 +543,9 @@ public class LogManagerService extends PluginService {
                 // Note: There should always be only 1 file which will be in progress at any given time.
                 // @deprecated The fileName is deprecated value in versions greater than 2.2, but keep it here to avoid
                 // upgrade-downgrade issues.
+                //TODO: If the file is not well-ordered, we shall have processing file only record the last_modified
+                // file out of the uploaded files.
+                //Todo: we should use file.lastModified time
                 CurrentProcessingFileInformation processingFileInformation =
                         CurrentProcessingFileInformation.builder()
                                 .fileName(fileName)
@@ -559,6 +559,24 @@ public class LogManagerService extends PluginService {
             }
         } catch (InvalidLogGroupException e) {
             logger.atDebug().cause(e).log("Invalid log group");
+        }
+    }
+
+    /**
+     * This updates the lastComponentUploadedLogFileInstantMap if the current component has a newly uploaded file,
+     * which the lastModified time is larger than saved value of lastModified time.
+     * @param lastComponentUploadedLogFileInstantMap The instant map of all components.
+     * @param componentName componentName.
+     * @param lastModified the lastModified time of the file.
+     */
+    private void updatelastComponentUploadedLogFile(Map<String, Instant> lastComponentUploadedLogFileInstantMap,
+                                                    String componentName,
+                                                    long lastModified) {
+        if (!lastComponentUploadedLogFileInstantMap.containsKey(componentName)
+                || lastComponentUploadedLogFileInstantMap.get(componentName)
+                .isBefore(Instant.ofEpochMilli(lastModified))) {
+            lastComponentUploadedLogFileInstantMap.put(componentName,
+                    Instant.ofEpochMilli(lastModified));
         }
     }
 
@@ -634,6 +652,9 @@ public class LogManagerService extends PluginService {
 
                             if (startPosition < file.length()) {
                                 unitOfWork.getLogFileInformationList().add(logFileInformation);
+                            } else if (startPosition == file.length() && !logFileGroup.isActiveFile(file)) {
+                                updatelastComponentUploadedLogFile(lastComponentUploadedLogFileInstantMap,
+                                                                    componentName, file.lastModified());
                             }
                         }
                     });

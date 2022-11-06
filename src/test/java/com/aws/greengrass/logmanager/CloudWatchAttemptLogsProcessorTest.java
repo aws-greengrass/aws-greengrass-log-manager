@@ -111,7 +111,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
                 .logFileInformationList(logFileInformationSet)
                 .build();
         logsProcessor = new CloudWatchAttemptLogsProcessor(mockDeviceConfiguration, defaultClock);
-        CloudWatchAttempt attempt = logsProcessor.processLogFiles(componentLogFileInformation);
+        CloudWatchAttempt attempt = logsProcessor.processLogFilesDeprecated(componentLogFileInformation);
         assertNotNull(attempt);
 
         assertNotNull(attempt.getLogStreamsToLogEventsMap());
@@ -154,7 +154,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
                 .logFileInformationList(logFileInformationSet)
                 .build();
         logsProcessor = new CloudWatchAttemptLogsProcessor(mockDeviceConfiguration, defaultClock);
-        CloudWatchAttempt attempt = logsProcessor.processLogFiles(componentLogFileInformation);
+        CloudWatchAttempt attempt = logsProcessor.processLogFilesDeprecated(componentLogFileInformation);
         assertNotNull(attempt);
 
         assertNotNull(attempt.getLogStreamsToLogEventsMap());
@@ -197,7 +197,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
                 .logFileInformationList(logFileInformationSet)
                 .build();
         logsProcessor = new CloudWatchAttemptLogsProcessor(mockDeviceConfiguration, defaultClock);
-        CloudWatchAttempt attempt = logsProcessor.processLogFiles(componentLogFileInformation);
+        CloudWatchAttempt attempt = logsProcessor.processLogFilesDeprecated(componentLogFileInformation);
         assertNotNull(attempt);
 
         assertNotNull(attempt.getLogStreamsToLogEventsMap());
@@ -255,7 +255,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
                     .build();
 
             logsProcessor = new CloudWatchAttemptLogsProcessor(mockDeviceConfiguration, defaultClock);
-            CloudWatchAttempt attempt = logsProcessor.processLogFiles(componentLogFileInformation);
+            CloudWatchAttempt attempt = logsProcessor.processLogFilesDeprecated(componentLogFileInformation);
             assertNotNull(attempt);
 
             assertNotNull(attempt.getLogStreamsToLogEventsMap());
@@ -314,7 +314,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
                     .build();
 
             logsProcessor = new CloudWatchAttemptLogsProcessor(mockDeviceConfiguration);
-            CloudWatchAttempt attempt = logsProcessor.processLogFiles(componentLogFileInformation);
+            CloudWatchAttempt attempt = logsProcessor.processLogFilesDeprecated(componentLogFileInformation);
             assertNotNull(attempt);
             sdf = new SimpleDateFormat("/yyyy/MM/dd/'thing/testThing'", Locale.ENGLISH);
             String logStream1 = sdf.format(new Date(then.toEpochMilli()));
@@ -355,7 +355,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
                     .build();
 
             logsProcessor = new CloudWatchAttemptLogsProcessor(mockDeviceConfiguration);
-            CloudWatchAttempt attempt = logsProcessor.processLogFiles(componentLogFileInformation);
+            CloudWatchAttempt attempt = logsProcessor.processLogFilesDeprecated(componentLogFileInformation);
             assertNotNull(attempt);
             String logStream1 = "/2021/06/08/thing/testThing";
             String logStream2 = "/2021/06/09/thing/testThing";
@@ -388,7 +388,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
                 .logFileInformationList(logFileInformationSet)
                 .build();
         logsProcessor = new CloudWatchAttemptLogsProcessor(mockDeviceConfiguration, defaultClock);
-        CloudWatchAttempt attempt = logsProcessor.processLogFiles(componentLogFileInformation);
+        CloudWatchAttempt attempt = logsProcessor.processLogFilesDeprecated(componentLogFileInformation);
 
         assertNotNull(attempt);
 
@@ -461,7 +461,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
                             .logFileInformationList(logFileInformationSet).build();
 
             logsProcessor = new CloudWatchAttemptLogsProcessor(mockDeviceConfiguration, defaultClock);
-            CloudWatchAttempt attempt = logsProcessor.processLogFiles(componentLogFileInformation);
+            CloudWatchAttempt attempt = logsProcessor.processLogFilesDeprecated(componentLogFileInformation);
             assertNotNull(attempt);
 
             assertNotNull(attempt.getLogStreamsToLogEventsMap());
@@ -528,7 +528,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
                             .logFileInformationList(logFileInformationSet).build();
 
             logsProcessor = new CloudWatchAttemptLogsProcessor(mockDeviceConfiguration, defaultClock);
-            CloudWatchAttempt attempt = logsProcessor.processLogFiles(componentLogFileInformation);
+            CloudWatchAttempt attempt = logsProcessor.processLogFilesDeprecated(componentLogFileInformation);
             assertNotNull(attempt);
 
             assertNotNull(attempt.getLogStreamsToLogEventsMap());
@@ -579,7 +579,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
                     .build();
 
             logsProcessor = new CloudWatchAttemptLogsProcessor(mockDeviceConfiguration, defaultClock);
-            CloudWatchAttempt attempt = logsProcessor.processLogFiles(componentLogFileInformation);
+            CloudWatchAttempt attempt = logsProcessor.processLogFilesDeprecated(componentLogFileInformation);
             assertNotNull(attempt);
 
             assertNotNull(attempt.getLogStreamsToLogEventsMap());
@@ -641,7 +641,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
                     .build();
 
             logsProcessor = new CloudWatchAttemptLogsProcessor(mockDeviceConfiguration, defaultClock);
-            CloudWatchAttempt attempt = logsProcessor.processLogFiles(componentLogFileInformation);
+            CloudWatchAttempt attempt = logsProcessor.processLogFilesDeprecated(componentLogFileInformation);
             assertNotNull(attempt);
 
             assertNotNull(attempt.getLogStreamsToLogEventsMap());
@@ -697,7 +697,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
                     .build();
 
             logsProcessor = new CloudWatchAttemptLogsProcessor(mockDeviceConfiguration);
-            CloudWatchAttempt attempt = logsProcessor.processLogFiles(componentLogFileInformation);
+            CloudWatchAttempt attempt = logsProcessor.processLogFilesDeprecated(componentLogFileInformation);
             assertNotNull(attempt);
             assertNotNull(attempt.getLogStreamsToLogEventsMap());
             assertThat(attempt.getLogStreamsToLogEventsMap().entrySet(), IsNot.not(IsEmptyCollection.empty()));
@@ -743,7 +743,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
                     .build();
 
             logsProcessor = new CloudWatchAttemptLogsProcessor(mockDeviceConfiguration);
-            CloudWatchAttempt attempt = logsProcessor.processLogFiles(componentLogFileInformation);
+            CloudWatchAttempt attempt = logsProcessor.processLogFilesDeprecated(componentLogFileInformation);
             assertNotNull(attempt);
             assertNotNull(attempt.getLogStreamsToLogEventsMap());
             assertThat(attempt.getLogStreamsToLogEventsMap().entrySet(), IsNot.not(IsEmptyCollection.empty()));
@@ -780,7 +780,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
                 .logFileInformationList(logFileInformationSet)
                 .build();
         logsProcessor = new CloudWatchAttemptLogsProcessor(mockDeviceConfiguration, defaultClock);
-        CloudWatchAttempt attempt = logsProcessor.processLogFiles(componentLogFileInformation);
+        CloudWatchAttempt attempt = logsProcessor.processLogFilesDeprecated(componentLogFileInformation);
 
         assertNotNull(attempt);
         assertNotNull(attempt.getLogStreamsToLogEventsMap());

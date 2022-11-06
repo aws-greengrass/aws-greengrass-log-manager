@@ -47,7 +47,6 @@ import org.slf4j.event.Level;
 import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
-import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
@@ -267,12 +266,13 @@ class LogManagerServiceTest extends GGServiceTestUtil {
 
     @Test
     void GIVEN_system_log_files_to_be_uploaded_WHEN_merger_merges_THEN_we_get_all_log_files()
-            throws InterruptedException, UnsupportedInputTypeException {
+            throws InterruptedException, IOException {
         mockDefaultPersistedState();
         Topic periodicUpdateIntervalMsTopic = Topic.of(context, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC, "1");
         when(config.lookup(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC))
                 .thenReturn(periodicUpdateIntervalMsTopic);
-        when(mockMerger.processLogFiles(componentLogsInformationCaptor.capture())).thenReturn(new CloudWatchAttempt());
+        when(mockMerger.processLogFiles(any(), componentLogsInformationCaptor.capture(), any(), any()))
+                .thenReturn(new CloudWatchAttempt());
 
         Topics configTopics = Topics.of(context, CONFIGURATION_CONFIG_KEY, null);
         when(config.lookupTopics(CONFIGURATION_CONFIG_KEY)).thenReturn(configTopics);
@@ -320,12 +320,13 @@ class LogManagerServiceTest extends GGServiceTestUtil {
 
     @Test
     void GIVEN_user_component_log_files_to_be_uploaded_with_required_config_as_array_WHEN_merger_merges_THEN_we_get_all_log_files()
-            throws InterruptedException, UnsupportedInputTypeException {
+            throws InterruptedException, UnsupportedInputTypeException, IOException {
         mockDefaultPersistedState();
         Topic periodicUpdateIntervalMsTopic = Topic.of(context, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC, "1");
         when(config.lookup(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC))
                 .thenReturn(periodicUpdateIntervalMsTopic);
-        when(mockMerger.processLogFiles(componentLogsInformationCaptor.capture())).thenReturn(new CloudWatchAttempt());
+        when(mockMerger.processLogFiles(any(), componentLogsInformationCaptor.capture(), any(), any()))
+                .thenReturn(new CloudWatchAttempt());
 
         Topics configTopics = Topics.of(context, CONFIGURATION_CONFIG_KEY, null);
         when(config.lookupTopics(CONFIGURATION_CONFIG_KEY)).thenReturn(configTopics);
@@ -373,12 +374,13 @@ class LogManagerServiceTest extends GGServiceTestUtil {
 
     @Test
     void GIVEN_user_component_log_files_to_be_uploaded_with_required_config_WHEN_merger_merges_THEN_we_get_all_log_files()
-            throws InterruptedException, UnsupportedInputTypeException {
+            throws InterruptedException, IOException {
         mockDefaultPersistedState();
         Topic periodicUpdateIntervalMsTopic = Topic.of(context, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC, "1");
         when(config.lookup(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC))
                 .thenReturn(periodicUpdateIntervalMsTopic);
-        when(mockMerger.processLogFiles(componentLogsInformationCaptor.capture())).thenReturn(new CloudWatchAttempt());
+        when(mockMerger.processLogFiles(any(), componentLogsInformationCaptor.capture(), any(), any()))
+                .thenReturn(new CloudWatchAttempt());
 
         Topics configTopics = Topics.of(context, CONFIGURATION_CONFIG_KEY, null);
         when(config.lookupTopics(CONFIGURATION_CONFIG_KEY)).thenReturn(configTopics);
@@ -424,12 +426,13 @@ class LogManagerServiceTest extends GGServiceTestUtil {
 
     @Test
     void GIVEN_user_component_log_files_to_be_uploaded_with_all_config_WHEN_merger_merges_THEN_we_get_all_log_files()
-            throws InterruptedException, UnsupportedInputTypeException {
+            throws InterruptedException, IOException {
         mockDefaultPersistedState();
         Topic periodicUpdateIntervalMsTopic = Topic.of(context, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC, "1");
         when(config.lookup(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC))
                 .thenReturn(periodicUpdateIntervalMsTopic);
-        when(mockMerger.processLogFiles(componentLogsInformationCaptor.capture())).thenReturn(new CloudWatchAttempt());
+        when(mockMerger.processLogFiles(any(), componentLogsInformationCaptor.capture(), any(), any()))
+                .thenReturn(new CloudWatchAttempt());
 
         Topics configTopics = Topics.of(context, CONFIGURATION_CONFIG_KEY, null);
         when(config.lookupTopics(CONFIGURATION_CONFIG_KEY)).thenReturn(configTopics);
@@ -476,12 +479,13 @@ class LogManagerServiceTest extends GGServiceTestUtil {
 
     @Test
     void GIVEN_multiple_user_components_log_files_to_be_uploaded_with_all_config_WHEN_merger_merges_THEN_we_get_all_log_files()
-            throws InterruptedException, UnsupportedInputTypeException {
+            throws InterruptedException, IOException {
         mockDefaultPersistedState();
         Topic periodicUpdateIntervalMsTopic = Topic.of(context, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC, "1");
         when(config.lookup(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC))
                 .thenReturn(periodicUpdateIntervalMsTopic);
-        when(mockMerger.processLogFiles(componentLogsInformationCaptor.capture())).thenReturn(new CloudWatchAttempt());
+        when(mockMerger.processLogFiles(any(), componentLogsInformationCaptor.capture(), any(), any()))
+                .thenReturn(new CloudWatchAttempt());
 
         Topics configTopics = Topics.of(context, CONFIGURATION_CONFIG_KEY, null);
         when(config.lookupTopics(CONFIGURATION_CONFIG_KEY)).thenReturn(configTopics);
@@ -564,7 +568,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
 
     @Test
     void GIVEN_cloud_watch_attempt_handler_WHEN_attempt_completes_THEN_successfully_updates_states_for_each_component()
-            throws URISyntaxException, IOException, InvalidLogGroupException, InterruptedException {
+            throws IOException, InvalidLogGroupException, InterruptedException {
         mockDefaultPersistedState();
         Topic periodicUpdateIntervalMsTopic = Topic.of(context, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC, "1000");
         when(config.lookup(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC))
@@ -669,7 +673,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         doNothing().when(mockUploader).registerAttemptStatus(anyString(), callbackCaptor.capture());
         CloudWatchAttempt attempt1 = new CloudWatchAttempt();
         ComponentLogFileInformation info1 = ComponentLogFileInformation.builder().build();
-        lenient().doReturn(attempt1).when(mockMerger).processLogFiles(info1);
+        lenient().doReturn(attempt1).when(mockMerger).processLogFilesDeprecated(info1);
         lenient().doNothing().when(mockUploader).upload(attempt1, 1);
         logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor);
         startServiceOnAnotherThread();
@@ -703,12 +707,13 @@ class LogManagerServiceTest extends GGServiceTestUtil {
 
     @Test
     void GIVEN_some_system_files_uploaded_and_another_partially_uploaded_WHEN_merger_merges_THEN_sets_the_start_position_correctly()
-            throws InterruptedException {
+            throws InterruptedException, IOException {
         mockDefaultPersistedState();
         Topic periodicUpdateIntervalMsTopic = Topic.of(context, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC, "3");
         when(config.lookup(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC))
                 .thenReturn(periodicUpdateIntervalMsTopic);
-        when(mockMerger.processLogFiles(componentLogsInformationCaptor.capture())).thenReturn(new CloudWatchAttempt());
+        when(mockMerger.processLogFiles(any(), componentLogsInformationCaptor.capture(), any(), any()))
+                .thenReturn(new CloudWatchAttempt());
 
         Topics configTopics = Topics.of(context, CONFIGURATION_CONFIG_KEY, null);
         when(config.lookupTopics(CONFIGURATION_CONFIG_KEY)).thenReturn(configTopics);
@@ -923,12 +928,13 @@ class LogManagerServiceTest extends GGServiceTestUtil {
 
     @Test
     void GIVEN_a_partially_uploaded_file_but_rotated_WHEN_merger_merges_THEN_sets_the_start_position_correctly()
-            throws InterruptedException {
+            throws InterruptedException, IOException {
         mockDefaultPersistedState();
         Topic periodicUpdateIntervalMsTopic = Topic.of(context, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC, "3");
         when(config.lookup(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC))
                 .thenReturn(periodicUpdateIntervalMsTopic);
-        when(mockMerger.processLogFiles(componentLogsInformationCaptor.capture())).thenReturn(new CloudWatchAttempt());
+        when(mockMerger.processLogFiles(any(), componentLogsInformationCaptor.capture(), any(), any()))
+                .thenReturn(new CloudWatchAttempt());
 
         Topics configTopics = Topics.of(context, CONFIGURATION_CONFIG_KEY, null);
         when(config.lookupTopics(CONFIGURATION_CONFIG_KEY)).thenReturn(configTopics);

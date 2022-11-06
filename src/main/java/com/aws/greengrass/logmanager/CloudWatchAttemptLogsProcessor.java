@@ -130,7 +130,7 @@ public class CloudWatchAttemptLogsProcessor {
      *
      * @throws IOException if it fails to read the file or the file has been deleted
      */
-    public CloudWatchAttempt processLogFilesV2(
+    public CloudWatchAttempt processLogFiles(
             CloudWatchAttempt attempt, ComponentLogFileInformation cpInfo, LogFileInformation fileInfo,
             SeekableByteChannel chan) throws IOException {
         long startPosition = fileInfo.getStartPosition();
@@ -297,7 +297,7 @@ public class CloudWatchAttemptLogsProcessor {
      * @param componentLogFileInformation log files information for a component to read logs from.
      * @return CloudWatch attempt containing information needed to upload logs from the component to the cloud.
      */
-    public CloudWatchAttempt processLogFiles(ComponentLogFileInformation componentLogFileInformation) {
+    public CloudWatchAttempt processLogFilesDeprecated(ComponentLogFileInformation componentLogFileInformation) {
         AtomicInteger totalBytesRead = new AtomicInteger();
         CloudWatchAttempt attempt = new CloudWatchAttempt();
         Map<String, CloudWatchAttemptLogInformation> logStreamsMap = new ConcurrentHashMap<>();

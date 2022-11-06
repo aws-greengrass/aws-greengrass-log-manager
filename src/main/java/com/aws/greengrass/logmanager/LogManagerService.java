@@ -676,7 +676,7 @@ public class LogManagerService extends PluginService {
                                 componentLogFileInformation.getLogFileInformationList().add(logFileInformation);
                             }
 
-                            logsProcessor.processLogFilesV2(
+                            logsProcessor.processLogFiles(
                                     groupAttempt, componentLogFileInformation, logFileInformation, fileByteChannel);
 
                             processedFileHashes.add(fileHash);

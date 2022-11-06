@@ -460,12 +460,8 @@ public class LogManagerService extends PluginService {
         });
         completedLogFilePerComponent.forEach((componentName, completedFiles) -> {
             completedFiles.forEach(file -> {
-                if (!lastComponentUploadedLogFileInstantMap.containsKey(componentName)
-                        || lastComponentUploadedLogFileInstantMap.get(componentName)
-                        .isBefore(Instant.ofEpochMilli(file.lastModified()))) {
-                    lastComponentUploadedLogFileInstantMap.put(componentName,
-                            Instant.ofEpochMilli(file.lastModified()));
-                }
+                updatelastComponentUploadedLogFile(lastComponentUploadedLogFileInstantMap, componentName,
+                        file.lastModified());
             });
             if (!componentLogConfigurations.containsKey(componentName)) {
                 return;
@@ -561,6 +557,24 @@ public class LogManagerService extends PluginService {
             }
         } catch (InvalidLogGroupException e) {
             logger.atDebug().cause(e).log("Invalid log group");
+        }
+    }
+
+    /**
+     * This updates the lastComponentUploadedLogFileInstantMap if the current component has a newly uploaded file,
+     * which the lastModified time is larger than saved value of lastModified time.
+     * @param lastComponentUploadedLogFileInstantMap The instant map of all components.
+     * @param componentName componentName.
+     * @param lastModified the lastModified time of the file.
+     */
+    private void updatelastComponentUploadedLogFile(Map<String, Instant> lastComponentUploadedLogFileInstantMap,
+                                                    String componentName,
+                                                    long lastModified) {
+        if (!lastComponentUploadedLogFileInstantMap.containsKey(componentName)
+                || lastComponentUploadedLogFileInstantMap.get(componentName)
+                .isBefore(Instant.ofEpochMilli(lastModified))) {
+            lastComponentUploadedLogFileInstantMap.put(componentName,
+                    Instant.ofEpochMilli(lastModified));
         }
     }
 
@@ -676,10 +690,10 @@ public class LogManagerService extends PluginService {
                                 componentLogFileInformation.getLogFileInformationList().add(logFileInformation);
                                 logsProcessor.processLogFiles(
                                         groupAttempt, componentLogFileInformation, logFileInformation, fileByteChannel);
+                            } else if (startPosition == file.length() && !logFileGroup.isActiveFile(file)) {
+                                updatelastComponentUploadedLogFile(lastComponentUploadedLogFileInstantMap,
+                                        componentName, file.lastModified());
                             }
-
-
-
                             processedFileHashes.add(fileHash);
                         } catch (IOException e) {
                             logger.atDebug().kv("path", file.getAbsolutePath()).cause(e)
@@ -689,7 +703,6 @@ public class LogManagerService extends PluginService {
                     }
 
                     // 3. Upload the logs lines. If there is something to upload
-
                     if (!componentLogFileInformation.getLogFileInformationList().isEmpty())  {
                        uploader.upload(groupAttempt, 1);
                     }

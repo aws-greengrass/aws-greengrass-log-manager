@@ -23,6 +23,7 @@ import com.aws.greengrass.logmanager.model.ComponentLogFileInformation;
 import com.aws.greengrass.logmanager.model.ComponentType;
 import com.aws.greengrass.logmanager.model.LogFile;
 import com.aws.greengrass.logmanager.model.LogFileGroup;
+import com.aws.greengrass.logmanager.model.LogFileInformation;
 import com.aws.greengrass.testcommons.testutilities.GGExtension;
 import com.aws.greengrass.testcommons.testutilities.GGServiceTestUtil;
 import com.aws.greengrass.util.Coerce;
@@ -47,11 +48,13 @@ import org.slf4j.event.Level;
 import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.nio.channels.SeekableByteChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -566,6 +569,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         assertThat(logsUploaderService.componentCurrentProcessingLogFile.values(), IsEmptyCollection.empty());
     }
 
+    @SuppressWarnings("PMD.CloseResource")
     @Test
     void GIVEN_cloud_watch_attempt_handler_WHEN_attempt_completes_THEN_successfully_updates_states_for_each_component()
             throws IOException, InvalidLogGroupException, InterruptedException {
@@ -673,7 +677,9 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         doNothing().when(mockUploader).registerAttemptStatus(anyString(), callbackCaptor.capture());
         CloudWatchAttempt attempt1 = new CloudWatchAttempt();
         ComponentLogFileInformation info1 = ComponentLogFileInformation.builder().build();
-        lenient().doReturn(attempt1).when(mockMerger).processLogFilesDeprecated(info1);
+        SeekableByteChannel chan = Files.newByteChannel(lastProcessedFile.toPath(), StandardOpenOption.READ);
+        LogFileInformation logFileInformation = LogFileInformation.builder().build();
+        lenient().doReturn(attempt1).when(mockMerger).processLogFiles(attempt1, info1, logFileInformation, chan);
         lenient().doNothing().when(mockUploader).upload(attempt1, 1);
         logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor);
         startServiceOnAnotherThread();
@@ -821,6 +827,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         }
     }
 
+    @SuppressWarnings("PMD.CloseResource")
     @Test
     void GIVEN_user_component_logs_delete_file_after_upload_set_WHEN_upload_logs_THEN_deletes_uploaded_log_files(
             ExtensionContext ec)
@@ -911,6 +918,12 @@ class LogManagerServiceTest extends GGServiceTestUtil {
                 .lookupTopics(PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP, "UserComponentA"))
                 .thenReturn(componentTopics1);
 
+        CloudWatchAttempt attempt1 = new CloudWatchAttempt();
+        ComponentLogFileInformation info1 = ComponentLogFileInformation.builder().build();
+        SeekableByteChannel chan = Files.newByteChannel(file1.toPath(), StandardOpenOption.READ);
+        LogFileInformation logFileInformation = LogFileInformation.builder().build();
+        lenient().doReturn(attempt).when(mockMerger).processLogFiles(attempt1, info1, logFileInformation, chan);
+        lenient().doNothing().when(mockUploader).upload(attempt, 1);
         logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor);
         startServiceOnAnotherThread();
 
@@ -1077,8 +1090,8 @@ class LogManagerServiceTest extends GGServiceTestUtil {
     @Test
     void GIVEN_config_without_hash_but_name_WHEN_config_is_processed_THEN_processingFile_info_is_loaded()
             throws Exception {
+        // This is unit test for upgrade from older version
         // Given
-
         // A rotated log file
         Path rotatedLogFilePath  = directoryPath.resolve("testlogs1.log");
         LogFile rotatedLogFile = new LogFile(rotatedLogFilePath.toUri());

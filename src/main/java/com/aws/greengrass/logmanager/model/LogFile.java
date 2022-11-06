@@ -60,7 +60,8 @@ public class LogFile extends File {
     private String readBytesToString(SeekableByteChannel chan) {
         byte[] bytesReadArray = new byte[bytesNeeded];
         int bytesRead;
-        try (InputStream r = Channels.newInputStream(chan)) {
+        try {
+            InputStream r = Channels.newInputStream(chan);
             bytesRead = r.read(bytesReadArray);
             String bytesReadString = new String(bytesReadArray, StandardCharsets.UTF_8);
             // if there is an entire line before 1KB, we hash the line; Otherwise, we hash 1KB to prevent super long
@@ -115,7 +116,7 @@ public class LogFile extends File {
      * @param chan a nyte channel that allow us to read the file
      * @return the calculated hash value of the logfile, empty string if not enough lines for digest.
      */
-    public String hashStringV2(SeekableByteChannel chan) {
+    public String hashStringWithChannel(SeekableByteChannel chan) {
         String fileHash = HASH_VALUE_OF_EMPTY_STRING;
         try {
             if (!this.exists()) {

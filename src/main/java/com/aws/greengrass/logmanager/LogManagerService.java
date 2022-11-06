@@ -626,7 +626,7 @@ public class LogManagerService extends PluginService {
                         // want to be able to read the correct file and match it to its correct file hash.
                         try (SeekableByteChannel fileByteChannel =
                                      Files.newByteChannel(file.toPath(), StandardOpenOption.READ)) {
-                            String fileHash = file.hashStringV2(fileByteChannel);
+                            String fileHash = file.hashStringWithChannel(fileByteChannel);
 
                             // While we are looping through the files they can get rotated and the file that we have in
                             // memory can point to one that has already been processed. In the scenario that happens we

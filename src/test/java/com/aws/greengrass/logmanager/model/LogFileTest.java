@@ -12,13 +12,16 @@ import static com.aws.greengrass.logmanager.util.TestUtils.writeFile;
 import static com.aws.greengrass.util.Digest.calculate;
 
 import java.io.IOException;
+import java.nio.channels.SeekableByteChannel;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.security.NoSuchAlgorithmException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-
+@SuppressWarnings("PMD.CloseResource")
 @ExtendWith({MockitoExtension.class, GGExtension.class})
 public class LogFileTest {
 
@@ -31,9 +34,14 @@ public class LogFileTest {
         LogFile file = new LogFile(directoryPath.resolve("greengrass_test.log").toUri());
         byte[] bytesArray = givenAStringOfSize(0).getBytes(StandardCharsets.UTF_8);
         writeFile(file, bytesArray);
-        String fileHash = file.hashString();
+        SeekableByteChannel fileByteChannel =
+                Files.newByteChannel(file.toPath(), StandardOpenOption.READ);
+        String fileHash = file.hashStringWithChannel(fileByteChannel);
         assertEquals(fileHash, HASH_VALUE_OF_EMPTY_STRING);
+        String fileHash1 = file.hashString();
+        assertEquals(fileHash1, HASH_VALUE_OF_EMPTY_STRING);
         file.delete();
+        fileByteChannel.close();
     }
 
     @Test
@@ -42,9 +50,14 @@ public class LogFileTest {
         LogFile file = new LogFile(directoryPath.resolve("greengrass_test.log").toUri());
         byte[] bytesArray = givenAStringOfSize(DEFAULT_BYTES_FOR_DIGEST_NUM - 100).getBytes(StandardCharsets.UTF_8);
         writeFile(file, bytesArray);
-        String fileHash = file.hashString();
+        SeekableByteChannel fileByteChannel =
+                Files.newByteChannel(file.toPath(), StandardOpenOption.READ);
+        String fileHash = file.hashStringWithChannel(fileByteChannel);
         assertEquals(fileHash, HASH_VALUE_OF_EMPTY_STRING);
+        String fileHash1 = file.hashString();
+        assertEquals(fileHash1, HASH_VALUE_OF_EMPTY_STRING);
         file.delete();
+        fileByteChannel.close();
     }
 
 
@@ -54,10 +67,15 @@ public class LogFileTest {
         LogFile file = new LogFile(directoryPath.resolve("greengrass_test.log").toUri());
         byte[] bytesArray = givenAStringOfSize(DEFAULT_BYTES_FOR_DIGEST_NUM).getBytes(StandardCharsets.UTF_8);
         writeFile(file, bytesArray);
-        String fileHash = file.hashString();
+        SeekableByteChannel fileByteChannel =
+                Files.newByteChannel(file.toPath(), StandardOpenOption.READ);
+        String fileHash = file.hashStringWithChannel(fileByteChannel);
         String msg = new String(bytesArray);
         assertEquals(fileHash, calculate(msg));
+        String fileHash1 = file.hashString();
+        assertEquals(fileHash1, calculate(msg));
         file.delete();
+        fileByteChannel.close();
     }
 
     @Test
@@ -66,10 +84,15 @@ public class LogFileTest {
         LogFile file = new LogFile(directoryPath.resolve("greengrass_test.log").toUri());
         byte[] bytesArray = givenAStringOfSize(DEFAULT_BYTES_FOR_DIGEST_NUM + 100).getBytes(StandardCharsets.UTF_8);
         writeFile(file, bytesArray);
-        String fileHash = file.hashString();
+        SeekableByteChannel fileByteChannel =
+                Files.newByteChannel(file.toPath(), StandardOpenOption.READ);
+        String fileHash = file.hashStringWithChannel(fileByteChannel);
         String msg = new String(bytesArray, 0, DEFAULT_BYTES_FOR_DIGEST_NUM);
         assertEquals(fileHash, calculate(msg));
+        String fileHash1 = file.hashString();
+        assertEquals(fileHash1, calculate(msg));
         file.delete();
+        fileByteChannel.close();
     }
 
     @Test
@@ -80,9 +103,14 @@ public class LogFileTest {
         StringBuilder builder = new StringBuilder();
         builder.append(givenAStringOfSize(DEFAULT_BYTES_FOR_DIGEST_NUM - 100)).append(System.lineSeparator());
         writeFile(file, builder.toString().getBytes(StandardCharsets.UTF_8));
-        String fileHash = file.hashString();
+        SeekableByteChannel fileByteChannel =
+                Files.newByteChannel(file.toPath(), StandardOpenOption.READ);
+        String fileHash = file.hashStringWithChannel(fileByteChannel);
         assertEquals(fileHash, calculate(builder.toString()));
+        String fileHash1 = file.hashString();
+        assertEquals(fileHash1, calculate(builder.toString()));
         file.delete();
+        fileByteChannel.close();
     }
 
     @Test
@@ -95,8 +123,14 @@ public class LogFileTest {
         String expectedHash = calculate(builder.toString());
         builder.append(givenAStringOfSize(100));
         writeFile(file, builder.toString().getBytes(StandardCharsets.UTF_8));
-        String fileHash = file.hashString();
+        SeekableByteChannel fileByteChannel =
+                Files.newByteChannel(file.toPath(), StandardOpenOption.READ);
+        String fileHash = file.hashStringWithChannel(fileByteChannel);
+        String fileHash1 = file.hashString();
         assertEquals(fileHash, expectedHash);
+        assertEquals(fileHash1, expectedHash);
         file.delete();
+        fileByteChannel.close();
     }
+
 }

@@ -274,7 +274,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         Topic periodicUpdateIntervalMsTopic = Topic.of(context, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC, "1");
         when(config.lookup(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC))
                 .thenReturn(periodicUpdateIntervalMsTopic);
-        when(mockMerger.processLogFiles(any(), componentLogsInformationCaptor.capture(), any(), any()))
+        when(mockMerger.processSingleLogFile(any(), componentLogsInformationCaptor.capture(), any(), any()))
                 .thenReturn(new CloudWatchAttempt());
 
         Topics configTopics = Topics.of(context, CONFIGURATION_CONFIG_KEY, null);
@@ -328,7 +328,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         Topic periodicUpdateIntervalMsTopic = Topic.of(context, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC, "1");
         when(config.lookup(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC))
                 .thenReturn(periodicUpdateIntervalMsTopic);
-        when(mockMerger.processLogFiles(any(), componentLogsInformationCaptor.capture(), any(), any()))
+        when(mockMerger.processSingleLogFile(any(), componentLogsInformationCaptor.capture(), any(), any()))
                 .thenReturn(new CloudWatchAttempt());
 
         Topics configTopics = Topics.of(context, CONFIGURATION_CONFIG_KEY, null);
@@ -382,7 +382,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         Topic periodicUpdateIntervalMsTopic = Topic.of(context, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC, "1");
         when(config.lookup(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC))
                 .thenReturn(periodicUpdateIntervalMsTopic);
-        when(mockMerger.processLogFiles(any(), componentLogsInformationCaptor.capture(), any(), any()))
+        when(mockMerger.processSingleLogFile(any(), componentLogsInformationCaptor.capture(), any(), any()))
                 .thenReturn(new CloudWatchAttempt());
 
         Topics configTopics = Topics.of(context, CONFIGURATION_CONFIG_KEY, null);
@@ -434,7 +434,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         Topic periodicUpdateIntervalMsTopic = Topic.of(context, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC, "1");
         when(config.lookup(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC))
                 .thenReturn(periodicUpdateIntervalMsTopic);
-        when(mockMerger.processLogFiles(any(), componentLogsInformationCaptor.capture(), any(), any()))
+        when(mockMerger.processSingleLogFile(any(), componentLogsInformationCaptor.capture(), any(), any()))
                 .thenReturn(new CloudWatchAttempt());
 
         Topics configTopics = Topics.of(context, CONFIGURATION_CONFIG_KEY, null);
@@ -487,7 +487,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         Topic periodicUpdateIntervalMsTopic = Topic.of(context, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC, "1");
         when(config.lookup(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC))
                 .thenReturn(periodicUpdateIntervalMsTopic);
-        when(mockMerger.processLogFiles(any(), componentLogsInformationCaptor.capture(), any(), any()))
+        when(mockMerger.processSingleLogFile(any(), componentLogsInformationCaptor.capture(), any(), any()))
                 .thenReturn(new CloudWatchAttempt());
 
         Topics configTopics = Topics.of(context, CONFIGURATION_CONFIG_KEY, null);
@@ -679,7 +679,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         ComponentLogFileInformation info1 = ComponentLogFileInformation.builder().build();
         SeekableByteChannel chan = Files.newByteChannel(lastProcessedFile.toPath(), StandardOpenOption.READ);
         LogFileInformation logFileInformation = LogFileInformation.builder().build();
-        lenient().doReturn(attempt1).when(mockMerger).processLogFiles(attempt1, info1, logFileInformation, chan);
+        lenient().doReturn(attempt1).when(mockMerger).processSingleLogFile(attempt1, info1, logFileInformation, chan);
         lenient().doNothing().when(mockUploader).upload(attempt1, 1);
         logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor);
         startServiceOnAnotherThread();
@@ -718,7 +718,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         Topic periodicUpdateIntervalMsTopic = Topic.of(context, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC, "3");
         when(config.lookup(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC))
                 .thenReturn(periodicUpdateIntervalMsTopic);
-        when(mockMerger.processLogFiles(any(), componentLogsInformationCaptor.capture(), any(), any()))
+        when(mockMerger.processSingleLogFile(any(), componentLogsInformationCaptor.capture(), any(), any()))
                 .thenReturn(new CloudWatchAttempt());
 
         Topics configTopics = Topics.of(context, CONFIGURATION_CONFIG_KEY, null);
@@ -922,7 +922,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         ComponentLogFileInformation info1 = ComponentLogFileInformation.builder().build();
         SeekableByteChannel chan = Files.newByteChannel(file1.toPath(), StandardOpenOption.READ);
         LogFileInformation logFileInformation = LogFileInformation.builder().build();
-        lenient().doReturn(attempt).when(mockMerger).processLogFiles(attempt1, info1, logFileInformation, chan);
+        lenient().doReturn(attempt).when(mockMerger).processSingleLogFile(attempt1, info1, logFileInformation, chan);
         lenient().doNothing().when(mockUploader).upload(attempt, 1);
         logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor);
         startServiceOnAnotherThread();
@@ -946,7 +946,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         Topic periodicUpdateIntervalMsTopic = Topic.of(context, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC, "3");
         when(config.lookup(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC))
                 .thenReturn(periodicUpdateIntervalMsTopic);
-        when(mockMerger.processLogFiles(any(), componentLogsInformationCaptor.capture(), any(), any()))
+        when(mockMerger.processSingleLogFile(any(), componentLogsInformationCaptor.capture(), any(), any()))
                 .thenReturn(new CloudWatchAttempt());
 
         Topics configTopics = Topics.of(context, CONFIGURATION_CONFIG_KEY, null);

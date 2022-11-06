@@ -116,14 +116,14 @@ public class LogFile extends File {
      * @param chan a nyte channel that allow us to read the file
      * @return the calculated hash value of the logfile, empty string if not enough lines for digest.
      */
-    public String hashStringWithChannel(SeekableByteChannel chan) {
+    public String hashString(SeekableByteChannel chan) {
         String fileHash = HASH_VALUE_OF_EMPTY_STRING;
         try {
             if (!this.exists()) {
                 return fileHash;
             }
             // String stringToHash = readBytesToString();
-            String stringToHash = readBytesToStringV2(chan);
+            String stringToHash = readBytesToString(chan);
             if (!stringToHash.isEmpty()) {
                 fileHash = calculate(stringToHash);
             }

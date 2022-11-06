@@ -459,9 +459,14 @@ public class LogManagerService extends PluginService {
                                     cloudWatchAttemptLogFileInformation));
         });
         completedLogFilePerComponent.forEach((componentName, completedFiles) -> {
+            // TODO: need to have better way to handle deletion
             completedFiles.forEach(file -> {
-                updatelastComponentUploadedLogFile(lastComponentUploadedLogFileInstantMap, componentName,
-                        file.lastModified());
+                if (!lastComponentUploadedLogFileInstantMap.containsKey(componentName)
+                        || lastComponentUploadedLogFileInstantMap.get(componentName)
+                        .isBefore(Instant.ofEpochMilli(file.lastModified()))) {
+                    lastComponentUploadedLogFileInstantMap.put(componentName,
+                            Instant.ofEpochMilli(file.lastModified()));
+                }
             });
             if (!componentLogConfigurations.containsKey(componentName)) {
                 return;
@@ -528,6 +533,9 @@ public class LogManagerService extends PluginService {
             String componentName = attemptLogInformation.getComponentName();
             if (!logFileGroup.isActiveFile(file) && file.length() == cloudWatchAttemptLogFileInformation.getBytesRead()
                     + cloudWatchAttemptLogFileInformation.getStartPosition()) {
+                // TODO: we can update the timestamp of the lastUploaded file for the component here
+                //updateLastComponentUploadedLogFile(lastComponentUploadedLogFileInstantMap, componentName,
+                //        file.lastModified());
                 Set<LogFile> completedFiles = completedLogFilePerComponent.getOrDefault(componentName,
                         new HashSet<>());
                 completedFiles.add(file);
@@ -557,24 +565,6 @@ public class LogManagerService extends PluginService {
             }
         } catch (InvalidLogGroupException e) {
             logger.atDebug().cause(e).log("Invalid log group");
-        }
-    }
-
-    /**
-     * This updates the lastComponentUploadedLogFileInstantMap if the current component has a newly uploaded file,
-     * which the lastModified time is larger than saved value of lastModified time.
-     * @param lastComponentUploadedLogFileInstantMap The instant map of all components.
-     * @param componentName componentName.
-     * @param lastModified the lastModified time of the file.
-     */
-    private void updatelastComponentUploadedLogFile(Map<String, Instant> lastComponentUploadedLogFileInstantMap,
-                                                    String componentName,
-                                                    long lastModified) {
-        if (!lastComponentUploadedLogFileInstantMap.containsKey(componentName)
-                || lastComponentUploadedLogFileInstantMap.get(componentName)
-                .isBefore(Instant.ofEpochMilli(lastModified))) {
-            lastComponentUploadedLogFileInstantMap.put(componentName,
-                    Instant.ofEpochMilli(lastModified));
         }
     }
 
@@ -636,11 +626,11 @@ public class LogManagerService extends PluginService {
 
                     for (LogFile file : logFileGroup.getLogFiles()) {
 
-                        // Open the file while file before trying to process it given it might be rotated and we still
+                        // Open the file before file trying to process it given it might be rotated and we still
                         // want to be able to read the correct file and match it to its correct file hash.
                         try (SeekableByteChannel fileByteChannel =
                                      Files.newByteChannel(file.toPath(), StandardOpenOption.READ)) {
-                            String fileHash = file.hashStringWithChannel(fileByteChannel);
+                            String fileHash = file.hashString(fileByteChannel);
 
                             // While we are looping through the files they can get rotated and the file that we have in
                             // memory can point to one that has already been processed. In the scenario that happens we
@@ -662,10 +652,10 @@ public class LogManagerService extends PluginService {
                             if (processedFileHashes.contains(fileHash)) {
                                 break;
                             }
-
+                            //TODO: if not enough contain, we shall not return null
                             // The file must contain enough lines for digest hash, otherwise fileHash is empty string
                             if (HASH_VALUE_OF_EMPTY_STRING.equals(fileHash)) {
-                                return;
+                                continue;
                             }
 
                             long startPosition = 0;
@@ -688,12 +678,10 @@ public class LogManagerService extends PluginService {
 
                             if (startPosition < file.length()) {
                                 componentLogFileInformation.getLogFileInformationList().add(logFileInformation);
-                                logsProcessor.processLogFiles(
+                                logsProcessor.processSingleLogFile(
                                         groupAttempt, componentLogFileInformation, logFileInformation, fileByteChannel);
-                            } else if (startPosition == file.length() && !logFileGroup.isActiveFile(file)) {
-                                updatelastComponentUploadedLogFile(lastComponentUploadedLogFileInstantMap,
-                                        componentName, file.lastModified());
                             }
+
                             processedFileHashes.add(fileHash);
                         } catch (IOException e) {
                             logger.atDebug().kv("path", file.getAbsolutePath()).cause(e)

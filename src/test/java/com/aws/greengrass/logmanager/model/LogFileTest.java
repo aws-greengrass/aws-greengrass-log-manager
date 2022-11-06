@@ -36,7 +36,7 @@ public class LogFileTest {
         writeFile(file, bytesArray);
         SeekableByteChannel fileByteChannel =
                 Files.newByteChannel(file.toPath(), StandardOpenOption.READ);
-        String fileHash = file.hashStringWithChannel(fileByteChannel);
+        String fileHash = file.hashString(fileByteChannel);
         assertEquals(fileHash, HASH_VALUE_OF_EMPTY_STRING);
         String fileHash1 = file.hashString();
         assertEquals(fileHash1, HASH_VALUE_OF_EMPTY_STRING);
@@ -52,7 +52,7 @@ public class LogFileTest {
         writeFile(file, bytesArray);
         SeekableByteChannel fileByteChannel =
                 Files.newByteChannel(file.toPath(), StandardOpenOption.READ);
-        String fileHash = file.hashStringWithChannel(fileByteChannel);
+        String fileHash = file.hashString(fileByteChannel);
         assertEquals(fileHash, HASH_VALUE_OF_EMPTY_STRING);
         String fileHash1 = file.hashString();
         assertEquals(fileHash1, HASH_VALUE_OF_EMPTY_STRING);
@@ -69,7 +69,7 @@ public class LogFileTest {
         writeFile(file, bytesArray);
         SeekableByteChannel fileByteChannel =
                 Files.newByteChannel(file.toPath(), StandardOpenOption.READ);
-        String fileHash = file.hashStringWithChannel(fileByteChannel);
+        String fileHash = file.hashString(fileByteChannel);
         String msg = new String(bytesArray);
         assertEquals(fileHash, calculate(msg));
         String fileHash1 = file.hashString();
@@ -86,7 +86,7 @@ public class LogFileTest {
         writeFile(file, bytesArray);
         SeekableByteChannel fileByteChannel =
                 Files.newByteChannel(file.toPath(), StandardOpenOption.READ);
-        String fileHash = file.hashStringWithChannel(fileByteChannel);
+        String fileHash = file.hashString(fileByteChannel);
         String msg = new String(bytesArray, 0, DEFAULT_BYTES_FOR_DIGEST_NUM);
         assertEquals(fileHash, calculate(msg));
         String fileHash1 = file.hashString();
@@ -105,7 +105,7 @@ public class LogFileTest {
         writeFile(file, builder.toString().getBytes(StandardCharsets.UTF_8));
         SeekableByteChannel fileByteChannel =
                 Files.newByteChannel(file.toPath(), StandardOpenOption.READ);
-        String fileHash = file.hashStringWithChannel(fileByteChannel);
+        String fileHash = file.hashString(fileByteChannel);
         assertEquals(fileHash, calculate(builder.toString()));
         String fileHash1 = file.hashString();
         assertEquals(fileHash1, calculate(builder.toString()));
@@ -125,7 +125,7 @@ public class LogFileTest {
         writeFile(file, builder.toString().getBytes(StandardCharsets.UTF_8));
         SeekableByteChannel fileByteChannel =
                 Files.newByteChannel(file.toPath(), StandardOpenOption.READ);
-        String fileHash = file.hashStringWithChannel(fileByteChannel);
+        String fileHash = file.hashString(fileByteChannel);
         String fileHash1 = file.hashString();
         assertEquals(fileHash, expectedHash);
         assertEquals(fileHash1, expectedHash);

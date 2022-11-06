@@ -134,7 +134,7 @@ public class CloudWatchAttemptLogsProcessor {
             CloudWatchAttempt attempt, ComponentLogFileInformation cpInfo, LogFileInformation fileInfo,
             SeekableByteChannel chan) throws IOException {
         long startPosition = fileInfo.getStartPosition();
-        AtomicBoolean reachedMaxSize = new AtomicBoolean(false);
+        boolean reachedMaxSize = false;
         AtomicInteger totalBytesRead = new AtomicInteger();
         String thingName = Coerce.toString(deviceConfiguration.getThingName());
         String logStreamName = getLogStreamName(thingName);
@@ -148,27 +148,38 @@ public class CloudWatchAttemptLogsProcessor {
             attempt.setLogStreamsToLogEventsMap(logStreamsMap);
         }
 
-        InputStreamReader reader = new InputStreamReader(Channels.newInputStream(chan), StandardCharsets.UTF_8);
+        InputStreamReader channelReader = new InputStreamReader(Channels.newInputStream(chan), StandardCharsets.UTF_8);
 
-        try (PositionTrackingBufferedReader r = new PositionTrackingBufferedReader(reader)) {
-            r.setInitialPosition(startPosition);
+        try (PositionTrackingBufferedReader reader = new PositionTrackingBufferedReader(channelReader)) {
+            reader.setInitialPosition(startPosition);
             chan.position(startPosition);
-            StringBuilder data = new StringBuilder(r.readLine());
+            String line = reader.readLine();
+
+            if (line == null) {
+                logger.atError()
+                        .kv("file", logFile.getAbsolutePath())
+                        .kv("fileLength", logFile.length())
+                        .kv("startPosition", startPosition)
+                        .log("Error reading file contents. Invalid start position");
+                return attempt;
+            }
+
+            StringBuilder data = new StringBuilder(line);
 
             // Run the loop until we detect that the log file is completely read, or that we have reached the max
             // message size or if we detect any IOException while reading from the file.
-            while (!reachedMaxSize.get()) {
-                long tempStartPosition = r.position();
-                String partialLogLine = r.readLine();
+            while (!reachedMaxSize) {
+                long tempStartPosition = reader.position();
+                String partialLogLine = reader.readLine();
+
                 // If we do not get any data from the file, we have reached the end of the file.
-                // and we add the log line into our input logs event list since we are currently only
-                // working on rotated files, this will be guaranteed to be a complete log line.
+                // and we add the log line into our input logs event list.
                 if (partialLogLine == null) {
-                    reachedMaxSize.set(processLogLine(totalBytesRead,
+                    processLogLine(totalBytesRead,
                             cpInfo.getDesiredLogLevel(), logStreamName,
                             logStreamsMap, data, fileInfo.getFileHash(), startPosition,
                             cpInfo.getName(),
-                            tempStartPosition, logFile.lastModified(), logFileGroup));
+                            tempStartPosition, logFile.lastModified(), logFileGroup);
                     break;
                 }
 
@@ -177,11 +188,11 @@ public class CloudWatchAttemptLogsProcessor {
                 // Let's add that in the input logs event list.
                 // The default pattern is checking if the line starts with non-white space
                 if (checkLogStartPattern(cpInfo, partialLogLine)) {
-                    reachedMaxSize.set(processLogLine(totalBytesRead,
+                    reachedMaxSize = processLogLine(totalBytesRead,
                             cpInfo.getDesiredLogLevel(), logStreamName,
                             logStreamsMap, data, fileInfo.getFileHash(), startPosition,
                             cpInfo.getName(),
-                            tempStartPosition, logFile.lastModified(), logFileGroup));
+                            tempStartPosition, logFile.lastModified(), logFileGroup);
                     data = new StringBuilder();
                 }
 

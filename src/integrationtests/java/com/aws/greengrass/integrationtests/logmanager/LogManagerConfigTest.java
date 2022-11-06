@@ -27,6 +27,7 @@ import software.amazon.awssdk.crt.CrtRuntimeException;
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.net.URISyntaxException;
+import java.nio.channels.ClosedChannelException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -105,6 +106,7 @@ class LogManagerConfigTest extends BaseITCase {
     @BeforeEach
     void beforeEach(ExtensionContext context)
             throws DeviceConfigurationException, URISyntaxException, IOException, InterruptedException {
+        ignoreExceptionOfType(context, ClosedChannelException.class);
         ignoreExceptionOfType(context, TLSAuthException.class);
         ignoreExceptionOfType(context, InterruptedException.class);
         ignoreExceptionOfType(context, DateTimeParseException.class);

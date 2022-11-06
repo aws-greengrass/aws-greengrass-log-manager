@@ -105,6 +105,90 @@ public class CloudWatchAttemptLogsProcessor {
     }
 
     /**
+     * Gets CW input log events from the component which processSingleLogFile need to be uploaded to CloudWatch.
+     *
+     * @param attempt a cloudwatch attempt
+     * @param cpInfo log files information for a component to read logs from.
+     * @param fileInfo metadata of the file
+     * @param chan a byte channel that allows to read a file from the specified position
+     */
+    public CloudWatchAttempt processSingleLogFile(CloudWatchAttempt attempt, ComponentLogFileInformation cpInfo,
+                                                  LogFileInformation fileInfo, SeekableByteChannel chan) {
+        long startPosition = fileInfo.getStartPosition();
+        boolean reachedMaxSize = false;
+        AtomicInteger totalBytesRead = new AtomicInteger();
+        String thingName = Coerce.toString(deviceConfiguration.getThingName());
+        String logStreamName = getLogStreamName(thingName);
+        LogFile logFile = fileInfo.getLogFile();
+        LogFileGroup logFileGroup = cpInfo.getLogFileGroup();
+
+        Map<String, CloudWatchAttemptLogInformation> logStreamsMap = attempt.getLogStreamsToLogEventsMap();
+
+        if (logStreamsMap == null) {
+            logStreamsMap = new ConcurrentHashMap<>();
+            attempt.setLogStreamsToLogEventsMap(logStreamsMap);
+        }
+
+        InputStreamReader channelReader = new InputStreamReader(Channels.newInputStream(chan), StandardCharsets.UTF_8);
+
+        try (PositionTrackingBufferedReader reader = new PositionTrackingBufferedReader(channelReader)) {
+            reader.setInitialPosition(startPosition);
+            chan.position(startPosition);
+            String line = reader.readLine();
+
+            if (line == null) {
+                logger.atError()
+                        .kv("file", logFile.getAbsolutePath())
+                        .kv("fileLength", logFile.length())
+                        .kv("startPosition", startPosition)
+                        .log("Error reading file contents. Invalid start position");
+                return attempt;
+            }
+
+            StringBuilder data = new StringBuilder(line);
+
+            // Run the loop until we detect that the log file is completely read, or that we have reached the max
+            // message size or if we detect any IOException while reading from the file.
+            while (!reachedMaxSize) {
+                long tempStartPosition = reader.position();
+                String partialLogLine = reader.readLine();
+
+                // If we do not get any data from the file, we have reached the end of the file.
+                // and we add the log line into our input logs event list.
+                if (partialLogLine == null) {
+                    processLogLine(totalBytesRead,
+                            cpInfo.getDesiredLogLevel(), logStreamName,
+                            logStreamsMap, data, fileInfo.getFileHash(), startPosition,
+                            cpInfo.getName(),
+                            tempStartPosition, logFile.lastModified(), logFileGroup);
+                    break;
+                }
+
+                // If the new log line read from the file matches the start pattern, that means
+                // the string builder we have appended data to until now, has a complete log line.
+                // Let's add that in the input logs event list.
+                // The default pattern is checking if the line starts with non-white space
+                if (checkLogStartPattern(cpInfo, partialLogLine)) {
+                    reachedMaxSize = processLogLine(totalBytesRead,
+                            cpInfo.getDesiredLogLevel(), logStreamName,
+                            logStreamsMap, data, fileInfo.getFileHash(), startPosition,
+                            cpInfo.getName(),
+                            tempStartPosition, logFile.lastModified(), logFileGroup);
+                    data = new StringBuilder();
+                }
+
+                // Need to read more lines until we get a complete log line. Let's add this to the SB.
+                data.append(partialLogLine);
+            }
+        } catch (IOException e) {
+            // File probably does not exist.
+            logger.atError().cause(e).log("Unable to read file {}", logFile.getAbsolutePath());
+        }
+
+        return attempt;
+    }
+
+    /**
      * Gets CW input log events from the component which processLogFiles need to be uploaded to CloudWatch.
      *
      * @param componentLogFileInformation log files information for a component to read logs from.
@@ -118,9 +202,8 @@ public class CloudWatchAttemptLogsProcessor {
         String thingName = Coerce.toString(deviceConfiguration.getThingName());
         String awsRegion = Coerce.toString(deviceConfiguration.getAWSRegion());
 
-        String logGroupName = DEFAULT_LOG_GROUP_NAME
-                .replace("{componentType}", componentLogFileInformation.getComponentType().toString())
-                .replace("{region}", awsRegion)
+        String logGroupName = DEFAULT_LOG_GROUP_NAME.replace("{componentType}",
+                        componentLogFileInformation.getComponentType().toString()).replace("{region}", awsRegion)
                 .replace("{componentName}", componentLogFileInformation.getName());
         attempt.setLogGroupName(logGroupName);
         String logStreamName = getLogStreamName(thingName);
@@ -143,9 +226,8 @@ public class CloudWatchAttemptLogsProcessor {
             // If we have read the file already, we are at the correct offset in the file to start reading from
             // Let's get that file handle to read the new log line.
             try (SeekableByteChannel chan = Files.newByteChannel(logFile.toPath(), StandardOpenOption.READ);
-                 PositionTrackingBufferedReader r =
-                         new PositionTrackingBufferedReader(new InputStreamReader(Channels.newInputStream(chan),
-                         StandardCharsets.UTF_8))) {
+                 PositionTrackingBufferedReader r = new PositionTrackingBufferedReader(
+                         new InputStreamReader(Channels.newInputStream(chan), StandardCharsets.UTF_8))) {
                 r.setInitialPosition(startPosition);
                 chan.position(startPosition);
                 StringBuilder data = new StringBuilder(r.readLine());
@@ -160,11 +242,11 @@ public class CloudWatchAttemptLogsProcessor {
                         // and we add the log line into our input logs event list since we are currently only
                         // working on rotated files, this will be guaranteed to be a complete log line.
                         if (partialLogLine == null) {
-                            reachedMaxSize.set(processLogLine(totalBytesRead,
-                                    componentLogFileInformation.getDesiredLogLevel(), logStreamName,
-                                    logStreamsMap, data, fileHash, startPosition,
-                                    componentLogFileInformation.getName(),
-                                    tempStartPosition, lastModified, logFileGroup));
+                            reachedMaxSize.set(
+                                    processLogLine(totalBytesRead, componentLogFileInformation.getDesiredLogLevel(),
+                                            logStreamName, logStreamsMap, data, fileHash, startPosition,
+                                            componentLogFileInformation.getName(), tempStartPosition, lastModified,
+                                            logFileGroup));
                             componentLogFileInformation.getLogFileInformationList().remove(0);
                             break;
                         }
@@ -174,11 +256,11 @@ public class CloudWatchAttemptLogsProcessor {
                         // Let's add that in the input logs event list.
                         // The default pattern is checking if the line starts with non-white space
                         if (checkLogStartPattern(componentLogFileInformation, partialLogLine)) {
-                            reachedMaxSize.set(processLogLine(totalBytesRead,
-                                    componentLogFileInformation.getDesiredLogLevel(), logStreamName,
-                                    logStreamsMap, data, fileHash, startPosition,
-                                    componentLogFileInformation.getName(),
-                                    tempStartPosition, lastModified, logFileGroup));
+                            reachedMaxSize.set(
+                                    processLogLine(totalBytesRead, componentLogFileInformation.getDesiredLogLevel(),
+                                            logStreamName, logStreamsMap, data, fileHash, startPosition,
+                                            componentLogFileInformation.getName(), tempStartPosition, lastModified,
+                                            logFileGroup));
                             data = new StringBuilder();
                         }
 

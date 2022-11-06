@@ -674,10 +674,11 @@ public class LogManagerService extends PluginService {
 
                             if (startPosition < file.length()) {
                                 componentLogFileInformation.getLogFileInformationList().add(logFileInformation);
+                                logsProcessor.processLogFiles(
+                                        groupAttempt, componentLogFileInformation, logFileInformation, fileByteChannel);
                             }
 
-                            logsProcessor.processLogFiles(
-                                    groupAttempt, componentLogFileInformation, logFileInformation, fileByteChannel);
+
 
                             processedFileHashes.add(fileHash);
                         } catch (IOException e) {

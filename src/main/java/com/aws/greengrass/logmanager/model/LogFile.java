@@ -110,6 +110,11 @@ public class LogFile extends File {
         return "";
     }
 
+    /**
+     * Get the hash of the logfile with target lines.
+     * @param chan a nyte channel that allow us to read the file
+     * @return the calculated hash value of the logfile, empty string if not enough lines for digest.
+     */
     public String hashStringV2(SeekableByteChannel chan) {
         String fileHash = HASH_VALUE_OF_EMPTY_STRING;
         try {

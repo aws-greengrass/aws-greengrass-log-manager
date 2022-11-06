@@ -585,7 +585,6 @@ public class LogManagerService extends PluginService {
                 TimeUnit.SECONDS.sleep(periodicUpdateIntervalSec);
                 continue;
             }
-            List<ComponentLogFileInformation> unitsOfWork = new ArrayList<>();
             // Get the latest known configurations because the componentLogConfigurations can change if a new
             // configuration is received from the customer.
             for (ComponentLogConfiguration componentLogConfiguration : componentLogConfigurations.values()) {
@@ -595,6 +594,9 @@ public class LogManagerService extends PluginService {
                                 Instant.EPOCH);
 
                 try {
+
+                    // 1. Collect the files for that need to be processed
+
                     LogFileGroup logFileGroup =
                             LogFileGroup.create(componentLogConfiguration.getFileNameRegex(),
                                     componentLogConfiguration.getDirectoryPath().toUri(), lastUploadedLogFileTimeMs);
@@ -603,7 +605,7 @@ public class LogManagerService extends PluginService {
                         continue;
                     }
 
-                    ComponentLogFileInformation unitOfWork = ComponentLogFileInformation.builder()
+                    ComponentLogFileInformation componentLogFileInformation = ComponentLogFileInformation.builder()
                             .name(componentName)
                             .multiLineStartPattern(componentLogConfiguration.getMultiLineStartPattern())
                             .desiredLogLevel(componentLogConfiguration.getMinimumLogLevel())
@@ -611,7 +613,7 @@ public class LogManagerService extends PluginService {
                             .logFileGroup(logFileGroup)
                             .build();
 
-                    unitsOfWork.add(unitOfWork);
+                    // 2. Collect the contents from the files that need to be uploaded in a CloudWatchAttempt
 
                     CloudWatchAttempt groupAttempt = new CloudWatchAttempt();
                     groupAttempt.setLogGroupName(
@@ -619,65 +621,76 @@ public class LogManagerService extends PluginService {
                     HashSet<String> processedFileHashes = new HashSet<>();
 
                     for (LogFile file : logFileGroup.getLogFiles()) {
-                        SeekableByteChannel fileByteChannel;
 
-                        try {
-                            fileByteChannel = Files.newByteChannel(file.toPath(), StandardOpenOption.READ);
-                        } catch (IOException e) {
-                            // TODO: fix log
-                            logger.atWarn().log("Unable to read file");
-                            return;
-                        }
+                        // Open the file while file before trying to process it given it might be rotated and we still
+                        // want to be able to read the correct file and match it to its correct file hash.
+                        try (SeekableByteChannel fileByteChannel =
+                                     Files.newByteChannel(file.toPath(), StandardOpenOption.READ)) {
+                            String fileHash = file.hashStringV2(fileByteChannel);
 
-                        long startPosition = 0;
-                        String fileHash = file.hashStringV2(fileByteChannel);
-
-                        // While we are looping through the files they can get rotated and the file that we have in
-                        // memory can point to one that has already been processed. In the scenario that happens we
-                        // will skip processing that file and it would get processed on the next run. For example
-                        //
-                        //  Given: test.log (hash = a) test.log.1 (hash = b) where test.log is the active file
-                        //
-                        //  While processing test.log.1 (hash b) file first, test.log (hash a) might be rotated so that
-                        //  the files on the file system would be test.log (hash = c) test.log.1 (hash = a)
-                        //  test.log.2 (hash = b). This would result in the code pointing to then new active log file,
-                        //  (hash c) rather than the one the file that was previously active (hash a)
-                        //
-                        //  We are skipping processing any more files to avoid hash c (new active log file after rotation)
-                        //  from uploading the contents it has, given it would result in a potential situation in which
-                        //  cloudwatch can have active file logs (hash c), then rotated file logs (hash a) and then
-                        //  more active file logs (hash c), cause the log to display out of order in cloudwatch
-                        //
-                        if (processedFileHashes.contains(fileHash)) {
-                            break;
-                        }
-
-                        // The file must contain enough lines for digest hash, otherwise fileHash is empty string
-                        if (HASH_VALUE_OF_EMPTY_STRING.equals(fileHash)) {
-                            return;
-                        }
-
-                        // If the file was partially read in the previous run, then get the starting position for
-                        // new log lines.
-                        if (componentCurrentProcessingLogFile.containsKey(componentName)) {
-                            CurrentProcessingFileInformation processingFileInformation =
-                                    componentCurrentProcessingLogFile.get(componentName);
-                            if (processingFileInformation.fileHash.equals(fileHash)) {
-                                startPosition = processingFileInformation.startPosition;
+                            // While we are looping through the files they can get rotated and the file that we have in
+                            // memory can point to one that has already been processed. In the scenario that happens we
+                            // will skip processing that file and it would get processed on the next run. For example
+                            //
+                            //  Given: test.log (hash = a) test.log.1 (hash = b) where test.log is the active file
+                            //
+                            //  While processing test.log.1 (hash b) file first, test.log (hash a) might be rotated so
+                            //  that the files on the file system would be test.log (hash = c) test.log.1 (hash = a)
+                            //  test.log.2 (hash = b). This would result in the code pointing to then new active log
+                            //  file, (hash c) rather than the one the file that was previously active (hash a)
+                            //
+                            //  We are skipping processing any more files to avoid hash c (new active log
+                            //  file after rotation) from uploading the contents it has, given it would result in a
+                            //  potential situation in which cloudwatch can have active file logs (hash c), then
+                            //  rotated file logs (hash a) and then more active file logs (hash c), cause the log to
+                            //  display out of order in cloudwatch
+                            //
+                            if (processedFileHashes.contains(fileHash)) {
+                                break;
                             }
+
+                            // The file must contain enough lines for digest hash, otherwise fileHash is empty string
+                            if (HASH_VALUE_OF_EMPTY_STRING.equals(fileHash)) {
+                                return;
+                            }
+
+                            long startPosition = 0;
+
+                            // If the file was partially read in the previous run, then get the starting position for
+                            // new log lines.
+                            if (componentCurrentProcessingLogFile.containsKey(componentName)) {
+                                CurrentProcessingFileInformation processingFileInformation =
+                                        componentCurrentProcessingLogFile.get(componentName);
+                                if (processingFileInformation.fileHash.equals(fileHash)) {
+                                    startPosition = processingFileInformation.startPosition;
+                                }
+                            }
+
+                            LogFileInformation logFileInformation = LogFileInformation.builder()
+                                    .logFile(file)
+                                    .startPosition(startPosition)
+                                    .fileHash(fileHash)
+                                    .build();
+
+                            if (startPosition < file.length()) {
+                                componentLogFileInformation.getLogFileInformationList().add(logFileInformation);
+                            }
+
+                            logsProcessor.processLogFilesV2(
+                                    groupAttempt, componentLogFileInformation, logFileInformation, fileByteChannel);
+
+                            processedFileHashes.add(fileHash);
+                        } catch (IOException e) {
+                            logger.atDebug().kv("path", file.getAbsolutePath()).cause(e)
+                                .log("Failed to process file contents. "
+                                        + "This could happen because the file was deleted before we could read it.");
                         }
+                    }
 
-                        LogFileInformation logFileInformation = LogFileInformation.builder()
-                                .logFile(file)
-                                .startPosition(startPosition)
-                                .fileHash(fileHash)
-                                .build();
+                    // 3. Upload the logs lines. If there is something to upload
 
-                        if (startPosition < file.length()) {
-                            unitOfWork.getLogFileInformationList().add(logFileInformation);
-                        }
-
-                        processedFileHashes.add(fileHash);
+                    if (!componentLogFileInformation.getLogFileInformationList().isEmpty())  {
+                       uploader.upload(groupAttempt, 1);
                     }
                 } catch (SecurityException e) {
                     logger.atError().cause(e).log("Unable to get log files for {} from {}",
@@ -686,15 +699,7 @@ public class LogManagerService extends PluginService {
                     logger.atDebug().cause(e).log("Unable to read the directory");
                 }
             }
-            //TODO: need to refactor. This is for the case unitOfWork may be empty. This will get refactored when the
-            // logFilgeGroup won't return files that should not be processed.
-            unitsOfWork = unitsOfWork.stream().filter(unit -> !unit.getLogFileInformationList().isEmpty()).collect(
-                    Collectors.toList());
 
-            unitsOfWork.forEach((unit) -> {
-                CloudWatchAttempt cloudWatchAttempt = logsProcessor.processLogFiles(unit);
-                uploader.upload(cloudWatchAttempt, 1);
-            });
             isCurrentlyUploading.set(false);
             emitEventStatus(EventType.ALL_COMPONENTS_PROCESSED);
             // after handle one cycle, we sleep for interval to avoid seamless scanning and processing next cycle.

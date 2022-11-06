@@ -105,6 +105,12 @@ public class CloudWatchAttemptLogsProcessor {
         return logStreamName.replace(":", "+");
     }
 
+    /**
+     * Returns the name of the CloudWatch log group.
+     *
+     * @param componentType ComponentType
+     * @param componentName Name of the component
+     */
     public String getLogGroupName(ComponentType componentType, String componentName) {
         String awsRegion = Coerce.toString(deviceConfiguration.getAWSRegion());
 
@@ -114,6 +120,16 @@ public class CloudWatchAttemptLogsProcessor {
                 .replace("{componentName}", componentName);
     }
 
+    /**
+     * Gets CW input log events from the component which processLogFiles need to be uploaded to CloudWatch.
+     *
+     * @param  attempt a cloudwatch attempt
+     * @param cpInfo log files information for a component to read logs from.
+     * @param fileInfo metadata of the file
+     * @param chan a byte channel that allows to read a file from the specified position
+     *
+     * @throws IOException if it fails to read the file or the file has been deleted
+     */
     public CloudWatchAttempt processLogFilesV2(
             CloudWatchAttempt attempt, ComponentLogFileInformation cpInfo, LogFileInformation fileInfo,
             SeekableByteChannel chan) throws IOException {
@@ -142,40 +158,35 @@ public class CloudWatchAttemptLogsProcessor {
             // Run the loop until we detect that the log file is completely read, or that we have reached the max
             // message size or if we detect any IOException while reading from the file.
             while (!reachedMaxSize.get()) {
-                try {
-                    long tempStartPosition = r.position();
-                    String partialLogLine = r.readLine();
-                    // If we do not get any data from the file, we have reached the end of the file.
-                    // and we add the log line into our input logs event list since we are currently only
-                    // working on rotated files, this will be guaranteed to be a complete log line.
-                    if (partialLogLine == null) {
-                        reachedMaxSize.set(processLogLine(totalBytesRead,
-                                cpInfo.getDesiredLogLevel(), logStreamName,
-                                logStreamsMap, data, fileInfo.getFileHash(), startPosition,
-                                cpInfo.getName(),
-                                tempStartPosition, logFile.lastModified(), logFileGroup));
-                        break;
-                    }
-
-                    // If the new log line read from the file matches the start pattern, that means
-                    // the string builder we have appended data to until now, has a complete log line.
-                    // Let's add that in the input logs event list.
-                    // The default pattern is checking if the line starts with non-white space
-                    if (checkLogStartPattern(cpInfo, partialLogLine)) {
-                        reachedMaxSize.set(processLogLine(totalBytesRead,
-                                cpInfo.getDesiredLogLevel(), logStreamName,
-                                logStreamsMap, data, fileInfo.getFileHash(), startPosition,
-                                cpInfo.getName(),
-                                tempStartPosition, logFile.lastModified(), logFileGroup));
-                        data = new StringBuilder();
-                    }
-
-                    // Need to read more lines until we get a complete log line. Let's add this to the SB.
-                    data.append(partialLogLine);
-                } catch (IOException e) {
-                    logger.atError().cause(e).log("Unable to read file {}", logFile.getAbsolutePath());
+                long tempStartPosition = r.position();
+                String partialLogLine = r.readLine();
+                // If we do not get any data from the file, we have reached the end of the file.
+                // and we add the log line into our input logs event list since we are currently only
+                // working on rotated files, this will be guaranteed to be a complete log line.
+                if (partialLogLine == null) {
+                    reachedMaxSize.set(processLogLine(totalBytesRead,
+                            cpInfo.getDesiredLogLevel(), logStreamName,
+                            logStreamsMap, data, fileInfo.getFileHash(), startPosition,
+                            cpInfo.getName(),
+                            tempStartPosition, logFile.lastModified(), logFileGroup));
                     break;
                 }
+
+                // If the new log line read from the file matches the start pattern, that means
+                // the string builder we have appended data to until now, has a complete log line.
+                // Let's add that in the input logs event list.
+                // The default pattern is checking if the line starts with non-white space
+                if (checkLogStartPattern(cpInfo, partialLogLine)) {
+                    reachedMaxSize.set(processLogLine(totalBytesRead,
+                            cpInfo.getDesiredLogLevel(), logStreamName,
+                            logStreamsMap, data, fileInfo.getFileHash(), startPosition,
+                            cpInfo.getName(),
+                            tempStartPosition, logFile.lastModified(), logFileGroup));
+                    data = new StringBuilder();
+                }
+
+                // Need to read more lines until we get a complete log line. Let's add this to the SB.
+                data.append(partialLogLine);
             }
         } catch (IOException e) {
             // File probably does not exist.

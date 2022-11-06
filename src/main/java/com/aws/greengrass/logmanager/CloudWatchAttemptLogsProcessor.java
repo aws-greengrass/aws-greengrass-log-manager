@@ -107,16 +107,13 @@ public class CloudWatchAttemptLogsProcessor {
     /**
      * Gets CW input log events from the component which processSingleLogFile need to be uploaded to CloudWatch.
      *
-     * @param  attempt a cloudwatch attempt
+     * @param attempt a cloudwatch attempt
      * @param cpInfo log files information for a component to read logs from.
      * @param fileInfo metadata of the file
      * @param chan a byte channel that allows to read a file from the specified position
-     *
-     * @throws IOException if it fails to read the file or the file has been deleted
      */
-    public CloudWatchAttempt processSingleLogFile(
-            CloudWatchAttempt attempt, ComponentLogFileInformation cpInfo, LogFileInformation fileInfo,
-            SeekableByteChannel chan) throws IOException {
+    public CloudWatchAttempt processSingleLogFile(CloudWatchAttempt attempt, ComponentLogFileInformation cpInfo,
+                                                  LogFileInformation fileInfo, SeekableByteChannel chan) {
         long startPosition = fileInfo.getStartPosition();
         boolean reachedMaxSize = false;
         AtomicInteger totalBytesRead = new AtomicInteger();
@@ -205,9 +202,8 @@ public class CloudWatchAttemptLogsProcessor {
         String thingName = Coerce.toString(deviceConfiguration.getThingName());
         String awsRegion = Coerce.toString(deviceConfiguration.getAWSRegion());
 
-        String logGroupName = DEFAULT_LOG_GROUP_NAME
-                .replace("{componentType}", componentLogFileInformation.getComponentType().toString())
-                .replace("{region}", awsRegion)
+        String logGroupName = DEFAULT_LOG_GROUP_NAME.replace("{componentType}",
+                        componentLogFileInformation.getComponentType().toString()).replace("{region}", awsRegion)
                 .replace("{componentName}", componentLogFileInformation.getName());
         attempt.setLogGroupName(logGroupName);
         String logStreamName = getLogStreamName(thingName);
@@ -230,9 +226,8 @@ public class CloudWatchAttemptLogsProcessor {
             // If we have read the file already, we are at the correct offset in the file to start reading from
             // Let's get that file handle to read the new log line.
             try (SeekableByteChannel chan = Files.newByteChannel(logFile.toPath(), StandardOpenOption.READ);
-                 PositionTrackingBufferedReader r =
-                         new PositionTrackingBufferedReader(new InputStreamReader(Channels.newInputStream(chan),
-                         StandardCharsets.UTF_8))) {
+                 PositionTrackingBufferedReader r = new PositionTrackingBufferedReader(
+                         new InputStreamReader(Channels.newInputStream(chan), StandardCharsets.UTF_8))) {
                 r.setInitialPosition(startPosition);
                 chan.position(startPosition);
                 StringBuilder data = new StringBuilder(r.readLine());
@@ -247,11 +242,11 @@ public class CloudWatchAttemptLogsProcessor {
                         // and we add the log line into our input logs event list since we are currently only
                         // working on rotated files, this will be guaranteed to be a complete log line.
                         if (partialLogLine == null) {
-                            reachedMaxSize.set(processLogLine(totalBytesRead,
-                                    componentLogFileInformation.getDesiredLogLevel(), logStreamName,
-                                    logStreamsMap, data, fileHash, startPosition,
-                                    componentLogFileInformation.getName(),
-                                    tempStartPosition, lastModified, logFileGroup));
+                            reachedMaxSize.set(
+                                    processLogLine(totalBytesRead, componentLogFileInformation.getDesiredLogLevel(),
+                                            logStreamName, logStreamsMap, data, fileHash, startPosition,
+                                            componentLogFileInformation.getName(), tempStartPosition, lastModified,
+                                            logFileGroup));
                             componentLogFileInformation.getLogFileInformationList().remove(0);
                             break;
                         }
@@ -261,11 +256,11 @@ public class CloudWatchAttemptLogsProcessor {
                         // Let's add that in the input logs event list.
                         // The default pattern is checking if the line starts with non-white space
                         if (checkLogStartPattern(componentLogFileInformation, partialLogLine)) {
-                            reachedMaxSize.set(processLogLine(totalBytesRead,
-                                    componentLogFileInformation.getDesiredLogLevel(), logStreamName,
-                                    logStreamsMap, data, fileHash, startPosition,
-                                    componentLogFileInformation.getName(),
-                                    tempStartPosition, lastModified, logFileGroup));
+                            reachedMaxSize.set(
+                                    processLogLine(totalBytesRead, componentLogFileInformation.getDesiredLogLevel(),
+                                            logStreamName, logStreamsMap, data, fileHash, startPosition,
+                                            componentLogFileInformation.getName(), tempStartPosition, lastModified,
+                                            logFileGroup));
                             data = new StringBuilder();
                         }
 

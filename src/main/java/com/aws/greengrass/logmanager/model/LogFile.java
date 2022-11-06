@@ -57,7 +57,7 @@ public class LogFile extends File {
         return Arrays.stream(files).map(LogFile::of).toArray(LogFile[]::new);
     }
 
-    private String readBytesToStringV2(SeekableByteChannel chan) {
+    private String readBytesToString(SeekableByteChannel chan) {
         byte[] bytesReadArray = new byte[bytesNeeded];
         int bytesRead;
         try (InputStream r = Channels.newInputStream(chan)) {
@@ -85,6 +85,7 @@ public class LogFile extends File {
      * Read target bytes from the file.
      * @return read byte array.
      */
+    @Deprecated
     private String readBytesToString() {
         byte[] bytesReadArray = new byte[bytesNeeded];
         int bytesRead;
@@ -109,14 +110,19 @@ public class LogFile extends File {
         return "";
     }
 
-    public String hashStringV2(SeekableByteChannel chan) {
+    /**
+     * Get the hash of the logfile with target lines.
+     *
+     * @param chan SeekableByteChannel for a given log file
+     * @return the calculated hash value of the logfile, empty string if not enough lines for digest.
+     */
+    public String hashString(SeekableByteChannel chan) {
         String fileHash = HASH_VALUE_OF_EMPTY_STRING;
         try {
             if (!this.exists()) {
                 return fileHash;
             }
-            // String stringToHash = readBytesToString();
-            String stringToHash = readBytesToStringV2(chan);
+            String stringToHash = readBytesToString(chan);
             if (!stringToHash.isEmpty()) {
                 fileHash = calculate(stringToHash);
             }
@@ -130,6 +136,7 @@ public class LogFile extends File {
      * Get the hash of the logfile with target lines.
      * @return the calculated hash value of the logfile, empty string if not enough lines for digest.
      */
+    @Deprecated
     public String hashString() {
         String fileHash = HASH_VALUE_OF_EMPTY_STRING;
         try {

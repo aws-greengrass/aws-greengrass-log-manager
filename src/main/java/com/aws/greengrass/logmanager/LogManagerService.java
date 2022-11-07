@@ -128,6 +128,8 @@ public class LogManagerService extends PluginService {
     @Getter
     private int periodicUpdateIntervalSec;
     private Future<?> spaceManagementThread;
+    private final Map<String, LogFileInformation> fileHashToFileInformation = new HashMap<>();
+
 
     /**
      * Constructor.
@@ -446,9 +448,11 @@ public class LogManagerService extends PluginService {
      *     processing log file for the component and what is the starting position of the next log line.
      */
     private void handleCloudWatchAttemptStatus(CloudWatchAttempt cloudWatchAttempt) {
-        Map<String, Set<LogFile>> completedLogFilePerComponent = new ConcurrentHashMap<>();
+        // component name -> set file hashes (previously Set<LogFile>)
+        Map<String, Set<String>> completedLogFilePerComponent = new ConcurrentHashMap<>();
         Map<String, CurrentProcessingFileInformation> currentProcessingLogFilePerComponent = new HashMap<>();
 
+        // For each stream name we uploaded to (1 per component)
         cloudWatchAttempt.getLogStreamUploadedSet().forEach((streamName) -> {
             CloudWatchAttemptLogInformation attemptLogInformation =
                     cloudWatchAttempt.getLogStreamsToLogEventsMap().get(streamName);
@@ -459,22 +463,31 @@ public class LogManagerService extends PluginService {
                                     cloudWatchAttemptLogFileInformation));
         });
         completedLogFilePerComponent.forEach((componentName, completedFiles) -> {
-            completedFiles.forEach(file -> {
+            completedFiles.forEach(fileHash -> {
+                LogFileInformation fileInformation = fileHashToFileInformation.get(fileHash);
+
                 if (!lastComponentUploadedLogFileInstantMap.containsKey(componentName)
                         || lastComponentUploadedLogFileInstantMap.get(componentName)
-                        .isBefore(Instant.ofEpochMilli(file.lastModified()))) {
-                    lastComponentUploadedLogFileInstantMap.put(componentName,
-                            Instant.ofEpochMilli(file.lastModified()));
+                        .isBefore(fileInformation.getLastModified())) {
+                    lastComponentUploadedLogFileInstantMap.put(componentName, fileInformation.getLastModified());
                 }
             });
+
+            // TODO: Move the delete logic down to the main loop
+
             if (!componentLogConfigurations.containsKey(componentName)) {
                 return;
             }
+
             ComponentLogConfiguration componentLogConfiguration = componentLogConfigurations.get(componentName);
             if (!componentLogConfiguration.isDeleteLogFileAfterCloudUpload()) {
                 return;
             }
-            completedFiles.forEach(file -> {
+
+            completedFiles.forEach(fileHash -> {
+                LogFileInformation fileInformation = fileHashToFileInformation.get(fileHash);
+                LogFile file = fileInformation.getLogFile();
+
                 try {
                     boolean successfullyDeleted = Files.deleteIfExists(file.toPath());
                     if (successfullyDeleted) {
@@ -509,7 +522,7 @@ public class LogManagerService extends PluginService {
         isCurrentlyUploading.set(false);
     }
 
-    private void processCloudWatchAttemptLogInformation(Map<String, Set<LogFile>> completedLogFilePerComponent,
+    private void processCloudWatchAttemptLogInformation(Map<String, Set<String>> completedLogFilePerComponent,
                                                         Map<String, CurrentProcessingFileInformation>
                                                                 currentProcessingLogFilePerComponent,
                                                         CloudWatchAttemptLogInformation attemptLogInformation,
@@ -524,6 +537,7 @@ public class LogManagerService extends PluginService {
                 return;
             }
             LogFile file = logFileGroup.getFile(fileHash);
+
             // @deprecated  This is deprecated value in versions greater than 2.2, but keep it here to avoid
             // upgrade-downgrade issues.
             String fileName = file.getAbsolutePath();
@@ -532,9 +546,9 @@ public class LogManagerService extends PluginService {
             String componentName = attemptLogInformation.getComponentName();
             if (!logFileGroup.isActiveFile(file) && file.length() == cloudWatchAttemptLogFileInformation.getBytesRead()
                     + cloudWatchAttemptLogFileInformation.getStartPosition()) {
-                Set<LogFile> completedFiles = completedLogFilePerComponent.getOrDefault(componentName,
+                Set<String> completedFiles = completedLogFilePerComponent.getOrDefault(componentName,
                         new HashSet<>());
-                completedFiles.add(file);
+                completedFiles.add(fileHash);
                 completedLogFilePerComponent.put(componentName, completedFiles);
                 if (currentProcessingLogFilePerComponent.containsKey(componentName)) {
                     CurrentProcessingFileInformation fileInformation = currentProcessingLogFilePerComponent
@@ -585,6 +599,9 @@ public class LogManagerService extends PluginService {
                 TimeUnit.SECONDS.sleep(periodicUpdateIntervalSec);
                 continue;
             }
+
+            fileHashToFileInformation.clear();
+
             // Get the latest known configurations because the componentLogConfigurations can change if a new
             // configuration is received from the customer.
             for (ComponentLogConfiguration componentLogConfiguration : componentLogConfigurations.values()) {
@@ -648,9 +665,12 @@ public class LogManagerService extends PluginService {
                             //  to identify the file
                             LogFileInformation logFileInformation = LogFileInformation.builder()
                                     .logFile(file)
+                                    .lastModified(Instant.ofEpochMilli(file.lastModified()))
                                     .startPosition(startPosition)
                                     .fileHash(fileHash)
                                     .build();
+
+                            fileHashToFileInformation.put(fileHash, logFileInformation);
 
                             if (startPosition < fileByteChannel.size()) {
                                 componentLogFileInformation.getLogFileInformationList().add(logFileInformation);

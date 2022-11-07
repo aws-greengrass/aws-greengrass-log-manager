@@ -9,6 +9,8 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.Value;
 
+import java.time.Instant;
+
 
 @Builder
 @Value
@@ -17,4 +19,5 @@ public class LogFileInformation {
     private LogFile logFile;
     private long startPosition;
     private String fileHash;
+    private Instant lastModified;
 }

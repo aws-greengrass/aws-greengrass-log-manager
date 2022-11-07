@@ -579,7 +579,7 @@ public class LogManagerService extends PluginService {
     @SuppressWarnings("PMD.CollapsibleIfStatements")
     private void processLogsAndUpload() throws InterruptedException {
         while (true) {
-            //TODO: this is only done for passing the current text. But in practise, we don`t need to intentionally
+            //TODO: this is only done for passing the current tests. But in practise, we don't need to intentionally
             // sleep here.
             if (!isCurrentlyUploading.compareAndSet(false, true)) {
                 TimeUnit.SECONDS.sleep(periodicUpdateIntervalSec);
@@ -618,7 +618,6 @@ public class LogManagerService extends PluginService {
                     CloudWatchAttempt groupAttempt = new CloudWatchAttempt();
                     groupAttempt.setLogGroupName(
                             logsProcessor.getLogGroupName(componentLogConfiguration.getComponentType(), componentName));
-                    HashSet<String> processedFileHashes = new HashSet<>();
 
                     for (LogFile file : logFileGroup.getLogFiles()) {
 
@@ -645,19 +644,19 @@ public class LogManagerService extends PluginService {
                                 }
                             }
 
+                            // TODO: file might not be accurate by the time it is read. Rely on the file hash
+                            //  to identify the file
                             LogFileInformation logFileInformation = LogFileInformation.builder()
                                     .logFile(file)
                                     .startPosition(startPosition)
                                     .fileHash(fileHash)
                                     .build();
 
-                            if (startPosition < file.length()) {
+                            if (startPosition < fileByteChannel.size()) {
                                 componentLogFileInformation.getLogFileInformationList().add(logFileInformation);
                                 logsProcessor.processSingleLogFile(
                                         groupAttempt, componentLogFileInformation, logFileInformation, fileByteChannel);
                             }
-
-                            processedFileHashes.add(fileHash);
                         } catch (IOException e) {
                             logger.atDebug().kv("path", file.getAbsolutePath()).cause(e)
                                 .log("Failed to process file contents. "

@@ -22,6 +22,7 @@ import org.hamcrest.collection.IsEmptyCollection;
 import org.hamcrest.core.IsNot;
 import org.hamcrest.core.StringContains;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.extension.ExtensionContext;
@@ -368,7 +369,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
             assertTrue(file.delete());
         }
     }
-
+    
     @Test
     void GIVEN_one_components_two_file_less_than_max_WHEN_merge_THEN_reads_and_merges_both_files(ExtensionContext ec)
             throws URISyntaxException {

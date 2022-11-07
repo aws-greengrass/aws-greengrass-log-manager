@@ -1,0 +1,15 @@
+C:\Users\jaiszeen\Desktop\aws-greengrass-log-manager\src\main\java\com\aws\greengrass\logmanager\model\ComponentType.java
+C:\Users\jaiszeen\Desktop\aws-greengrass-log-manager\src\main\java\com\aws\greengrass\logmanager\model\LogFileInformation.java
+C:\Users\jaiszeen\Desktop\aws-greengrass-log-manager\src\main\java\com\aws\greengrass\logmanager\CloudWatchLogsUploader.java
+C:\Users\jaiszeen\Desktop\aws-greengrass-log-manager\src\main\java\com\aws\greengrass\logmanager\model\LogFile.java
+C:\Users\jaiszeen\Desktop\aws-greengrass-log-manager\src\main\java\com\aws\greengrass\logmanager\model\ComponentLogFileInformation.java
+C:\Users\jaiszeen\Desktop\aws-greengrass-log-manager\src\main\java\com\aws\greengrass\logmanager\CloudWatchAttemptLogsProcessor.java
+C:\Users\jaiszeen\Desktop\aws-greengrass-log-manager\src\main\java\com\aws\greengrass\logmanager\model\CloudWatchAttempt.java
+C:\Users\jaiszeen\Desktop\aws-greengrass-log-manager\src\main\java\com\aws\greengrass\logmanager\LogManagerService.java
+C:\Users\jaiszeen\Desktop\aws-greengrass-log-manager\src\main\java\com\aws\greengrass\logmanager\model\CloudWatchAttemptLogFileInformation.java
+C:\Users\jaiszeen\Desktop\aws-greengrass-log-manager\src\main\java\com\aws\greengrass\logmanager\model\ComponentLogConfiguration.java
+C:\Users\jaiszeen\Desktop\aws-greengrass-log-manager\src\main\java\com\aws\greengrass\logmanager\model\LogFileGroup.java
+C:\Users\jaiszeen\Desktop\aws-greengrass-log-manager\src\main\java\com\aws\greengrass\logmanager\util\CloudWatchClientFactory.java
+C:\Users\jaiszeen\Desktop\aws-greengrass-log-manager\src\main\java\com\aws\greengrass\logmanager\exceptions\InvalidLogGroupException.java
+C:\Users\jaiszeen\Desktop\aws-greengrass-log-manager\src\main\java\com\aws\greengrass\logmanager\PositionTrackingBufferedReader.java
+C:\Users\jaiszeen\Desktop\aws-greengrass-log-manager\src\main\java\com\aws\greengrass\logmanager\model\CloudWatchAttemptLogInformation.java

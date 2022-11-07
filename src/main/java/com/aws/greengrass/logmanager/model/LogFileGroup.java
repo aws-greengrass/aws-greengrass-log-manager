@@ -1,31 +1,32 @@
 package com.aws.greengrass.logmanager.model;
 
 import com.aws.greengrass.logmanager.exceptions.InvalidLogGroupException;
-import com.aws.greengrass.util.Utils;
 import lombok.Getter;
 
 import java.io.File;
+import java.io.IOException;
 import java.net.URI;
+import java.nio.channels.SeekableByteChannel;
+import java.nio.file.Files;
+import java.nio.file.StandardOpenOption;
 import java.time.Instant;
-import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 
 public final class LogFileGroup {
-    @Getter
-    private List<LogFile> logFiles;
-    private static Map<String, LogFile> fileHashToLogFile;
     @Getter
     private final Pattern filePattern;
     private final URI directoryURI;
     private final Instant lastUpdated;
 
-    private LogFileGroup(List<LogFile> files, Pattern filePattern, URI directoryURI, Instant lastUpdated) {
-        this.logFiles = files;
+    private LogFileGroup(Pattern filePattern, URI directoryURI, Instant lastUpdated) {
         this.filePattern = filePattern;
         this.directoryURI = directoryURI;
         this.lastUpdated = lastUpdated;
@@ -42,67 +43,55 @@ public final class LogFileGroup {
     public static LogFileGroup create(Pattern filePattern, URI directoryURI, Instant lastUpdated)
             throws InvalidLogGroupException {
         File folder = new File(directoryURI);
-        fileHashToLogFile = new ConcurrentHashMap<>();
 
         if (!folder.isDirectory()) {
             throw new InvalidLogGroupException(String.format("%s must be a directory", directoryURI));
         }
 
-        LogFile[] files = LogFile.of(folder.listFiles());
-        List<LogFile> allFiles = new ArrayList<>();
-        if (files.length != 0) {
-            for (LogFile file: files) {
-                String fileHash = file.hashString();
-                boolean isModifiedAfterLastUpdatedFile =
-                        lastUpdated.isBefore(Instant.ofEpochMilli(file.lastModified()));
-                boolean isNameMatchPattern = filePattern.matcher(file.getName()).find();
-                boolean isEmptyFileHash = Utils.isEmpty(fileHash);
+        return new LogFileGroup(filePattern, directoryURI, lastUpdated);
+    }
 
-                if (file.isFile()
-                        && isModifiedAfterLastUpdatedFile
-                        && isNameMatchPattern
-                        && !isEmptyFileHash) {
-                    allFiles.add(file);
-                    fileHashToLogFile.put(fileHash, file);
-                }
-            }
+    /**
+     * Returns a list of log files associated that match the patter and path of the log group.
+     */
+    public List<LogFile> getLogFiles() {
+       return getFileMatchingPattern(directoryURI, filePattern)
+               .filter(file -> lastUpdated.isBefore(Instant.ofEpochMilli(file.lastModified())))
+               .map(LogFile::of)
+               .sorted(Comparator.comparingLong(LogFile::lastModified))
+               .collect(Collectors.toList());
+    }
+
+    private static Stream<File> getFileMatchingPattern(URI directoryURI, Pattern filePattern) {
+        File folder = new File(directoryURI);
+
+        File[] files = folder.listFiles();
+
+        if (files == null) {
+            return Stream.empty();
         }
-        allFiles.sort(Comparator.comparingLong(LogFile::lastModified));
-        return new LogFileGroup(allFiles, filePattern, directoryURI, lastUpdated);
+
+        return Arrays.stream(files).filter(file -> filePattern.matcher(file.getName()).find());
     }
 
     public boolean isEmpty() {
-        return this.logFiles.isEmpty();
+        List<LogFile> logFiles = getLogFiles();
+        return logFiles.isEmpty();
     }
 
     /**
      * Get the LogFile object from the fileHash.
      * @param fileHash the fileHash obtained from uploader.
-     * @return the logFile.
      */
-    public LogFile getFile(String fileHash) {
-        return fileHashToLogFile.get(fileHash);
-    }
-
-    /**
-     * Validate if the hash exists in the current logFileGroup.
-     * @param fileHash the hash of the file.
-     * @return boolean.
-     */
-    public boolean isHashExist(String fileHash) {
-        return fileHashToLogFile.containsKey(fileHash);
-    }
-
-    /**
-     * In case of file rotation happen between the processing files and handling upload results, the logFileGroup
-     * uses the (Pattern filePattern, URI directoryURI, Instant lastUpdated) when created to take the latest snapshot
-     * of the same directory. This can guarantee if the active file get rotated during the file processing, it will be
-     * deleted because it is a rotated file now.
-     * @return the LogFileGroup created by the current directory.
-     * @throws InvalidLogGroupException when directory path is not pointing to a valid directory.
-     */
-    public LogFileGroup syncDirectory() throws InvalidLogGroupException {
-        return create(this.filePattern, this.directoryURI, this.lastUpdated);
+    public Optional<LogFile> getFile(String fileHash) {
+        return getFileMatchingPattern(directoryURI, filePattern)
+            .map(LogFile::of).filter(file -> {
+                try (SeekableByteChannel channel = Files.newByteChannel(file.toPath(), StandardOpenOption.READ)) {
+                   return Objects.equals(file.hashString(channel), fileHash);
+                } catch (IOException e) {
+                    return false;
+                }
+            }).findFirst();
     }
 
     /**
@@ -110,7 +99,7 @@ public final class LogFileGroup {
      */
     public long totalSizeInBytes() {
         long bytes = 0;
-        for (LogFile log : logFiles) {
+        for (LogFile log : getLogFiles()) {
             bytes += log.length();
         }
         return bytes;
@@ -122,6 +111,8 @@ public final class LogFileGroup {
      * @return boolean.
      */
     public boolean isActiveFile(LogFile file) {
+        List<LogFile> logFiles = getLogFiles();
+
         if (logFiles.isEmpty()) {
             return false;
         }

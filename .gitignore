@@ -5,7 +5,7 @@
 **/*.jar
 *~
 *.metrics
-.idea
+.idea/
 coverage
 *.iml
 bin

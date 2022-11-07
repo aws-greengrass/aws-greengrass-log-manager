@@ -368,7 +368,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
             assertTrue(file.delete());
         }
     }
-
+    
     @Test
     void GIVEN_one_components_two_file_less_than_max_WHEN_merge_THEN_reads_and_merges_both_files(ExtensionContext ec)
             throws URISyntaxException {

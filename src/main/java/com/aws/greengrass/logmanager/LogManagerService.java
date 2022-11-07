@@ -138,6 +138,7 @@ public class LogManagerService extends PluginService {
      * @param executorService {@link ExecutorService}
      */
     @Inject
+
     LogManagerService(Topics topics, CloudWatchLogsUploader uploader, CloudWatchAttemptLogsProcessor logProcessor,
                       ExecutorService executorService, NucleusPaths nucleusPaths) throws IOException {
         super(topics);

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="maven-antrun-" default="copy only uat jar">
+  <target name="copy only uat jar">
+    <copy file="C:\Users\jaiszeen\Desktop\aws-greengrass-log-manager\uat/target/uat-1.0-SNAPSHOT.jar" tofile="C:\Users\jaiszeen\Desktop\aws-greengrass-log-manager\uat/target/classes/greengrass/artifacts/componentArtifact.jar" />
+  </target>
+</project>

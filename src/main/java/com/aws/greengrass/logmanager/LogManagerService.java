@@ -628,26 +628,6 @@ public class LogManagerService extends PluginService {
                                      Files.newByteChannel(file.toPath(), StandardOpenOption.READ)) {
                             String fileHash = file.hashString(fileByteChannel);
 
-                            // While we are looping through the files they can get rotated and the file that we have in
-                            // memory can point to one that has already been processed. In the scenario that happens we
-                            // will skip processing that file, and it would get processed on the next run. For example
-                            //
-                            //  Given: test.log (hash = a) test.log.1 (hash = b) where test.log is the active file
-                            //
-                            //  While processing test.log.1 (hash b) file first, test.log (hash a) might be rotated so
-                            //  that the files on the file system would be test.log (hash = c) test.log.1 (hash = a)
-                            //  test.log.2 (hash = b). This would result in the code pointing to then new active log
-                            //  file, (hash c) rather than the one the file that was previously active (hash a)
-                            //
-                            //  We are skipping processing any more files to avoid hash c (new active log
-                            //  file after rotation) from uploading the contents it has, given it would result in a
-                            //  potential situation in which cloudwatch can have active file logs (hash c), then
-                            //  rotated file logs (hash a) and then more active file logs (hash c), cause the log to
-                            //  display out of order in cloudwatch
-                            //
-                            if (processedFileHashes.contains(fileHash)) {
-                                continue;
-                            }
 
                             if (HASH_VALUE_OF_EMPTY_STRING.equals(fileHash)) {
                                 continue;

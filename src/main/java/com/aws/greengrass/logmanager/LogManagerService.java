@@ -646,7 +646,7 @@ public class LogManagerService extends PluginService {
                             //  display out of order in cloudwatch
                             //
                             if (processedFileHashes.contains(fileHash)) {
-                                break;
+                                continue;
                             }
 
                             if (HASH_VALUE_OF_EMPTY_STRING.equals(fileHash)) {

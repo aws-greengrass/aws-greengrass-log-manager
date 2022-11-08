@@ -8,27 +8,93 @@ import java.io.File;
 import java.net.URI;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 
 public final class LogFileGroup {
-    @Getter
-    private List<LogFile> logFiles;
+    private final List<LogFile> logFiles;
     private static Map<String, LogFile> fileHashToLogFile;
     @Getter
     private final Pattern filePattern;
     private final URI directoryURI;
     private final Instant lastUpdated;
 
-    private LogFileGroup(List<LogFile> files, Pattern filePattern, URI directoryURI, Instant lastUpdated) {
-        this.logFiles = files;
+    /**
+     * Creates a log file group without initializing the logFiles. To initialize them you must call
+     * getLogFiles.
+     * @param logFiles - the log group log files
+     * @param filePattern - the pattern use to match files on the provided directoryURI
+     * @param directoryURI - the directory where log files are located
+     * @param lastUpdated - instant used to filter out log files last modified after its value
+     */
+    public LogFileGroup(List<LogFile> logFiles, Pattern filePattern, URI directoryURI, Instant lastUpdated) {
+        this.logFiles = logFiles;
         this.filePattern = filePattern;
         this.directoryURI = directoryURI;
         this.lastUpdated = lastUpdated;
+    }
+
+    public List<LogFile> getLogFiles() {
+        return this.logFiles;
+    }
+
+    /**
+     * Gets the log files for the component, by listing all the files in the directory and filtering out the ones
+     * that do not match the log group pattern and have been last modified after the provided lastUpdated value.
+     * @param allDirectoryLogFiles - files in a directory
+     */
+    public List<LogFile> getLogFiles(File... allDirectoryLogFiles) {
+        List<LogFile> files = getLogFilesInternal(allDirectoryLogFiles);
+
+        if (haveRotated(files)) {
+           return getLogFiles(listDirectory());
+        }
+
+        return files;
+    }
+
+    private File[] listDirectory() {
+        File[] allDirectoryFiles = new File(directoryURI).listFiles();
+
+        if (allDirectoryFiles == null) {
+            return new LogFile[]{};
+        }
+
+        return allDirectoryFiles;
+    }
+
+    private List<LogFile> getLogFilesInternal(File... allDirectoryLogFiles) {
+       return Arrays.stream(allDirectoryLogFiles)
+               .filter(logFile ->  filePattern.matcher(logFile.getName()).find())
+               .filter(logFile -> lastUpdated.isBefore(Instant.ofEpochMilli(logFile.lastModified())))
+               .map(LogFile::of)
+               .sorted(Comparator.comparingLong(File::lastModified))
+               .collect(Collectors.toList());
+    }
+
+    private boolean haveRotated(List<LogFile> computedFiles) {
+       List<LogFile> currentFiles = getLogFilesInternal(listDirectory());
+
+       if (currentFiles.size() != computedFiles.size()) {
+           return true;
+       }
+
+       for (int i = 0; i < currentFiles.size(); i++) {
+           LogFile fileToVerify = computedFiles.get(i);
+           LogFile currentFile = computedFiles.get(i);
+
+           if (!fileToVerify.toPath().equals(currentFile.toPath())) {
+               return true;
+           }
+       }
+
+       return false;
     }
 
     /**

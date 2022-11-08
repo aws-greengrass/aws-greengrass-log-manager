@@ -20,17 +20,17 @@ import java.util.ArrayList;
 import java.util.List;
 
 @ScenarioScoped
-public class LogManagerSteps2 {
+public class FileSteps {
 
     private final Platform platform;
     private final TestContext testContext;
 
-    private static Logger LOGGER = LogManager.getLogger(LogManagerSteps2.class);
+    private static Logger LOGGER = LogManager.getLogger(FileSteps.class);
     private static final RandomStringGenerator RANDOM_STRING_GENERATOR =
             new RandomStringGenerator.Builder().withinRange('a', 'z').build();
 
     @Inject
-    public LogManagerSteps2(Platform platform, TestContext testContext) {
+    public FileSteps(Platform platform, TestContext testContext) {
         this.platform = platform;
         this.testContext = testContext;
     }
@@ -53,13 +53,13 @@ public class LogManagerSteps2 {
 
         if (componentName.equals("aws.greengrass.Nucleus")) {
             for (int i = 0; i < numFiles; i++) {
-                String fileName = String.format("greengrass_%s.log", i);
+                String fileName = String.format("greengrass_%d.log", i);
                 createFileAndWriteData(logsDirectory, fileName, false);
             }
             return;
         }
 
-        String message = String.format("Generating log files for %s not yet implemented", componentName);
+        String message = String.format("Generating log files for %d not yet implemented", componentName);
         throw new UnsupportedOperationException(message);
     }
 
@@ -93,8 +93,4 @@ public class LogManagerSteps2 {
         }
     }
 
-    @Then("it works")
-    public void itWorks() {
-        System.out.println("It works");
-    }
 }

@@ -11,7 +11,7 @@ Feature: Greengrass V2 LogManager
 
   Scenario: configure the log manager component using a componentLogsConfiguration list and logs are uploaded to
   CloudWatch
-    Then it works
+
     Given I create a Greengrass deployment with components
       | aws.greengrass.Cli | LATEST |
       | aws.greengrass.LogManager | LATEST |

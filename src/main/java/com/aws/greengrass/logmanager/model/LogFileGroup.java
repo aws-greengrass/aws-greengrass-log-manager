@@ -25,16 +25,8 @@ public final class LogFileGroup {
     private final URI directoryURI;
     private final Instant lastUpdated;
 
-    /**
-     * Creates a log file group without initializing the logFiles. To initialize them you must call
-     * getLogFiles.
-     * @param logFiles - the log group log files
-     * @param filePattern - the pattern use to match files on the provided directoryURI
-     * @param directoryURI - the directory where log files are located
-     * @param lastUpdated - instant used to filter out log files last modified after its value
-     */
-    public LogFileGroup(List<LogFile> logFiles, Pattern filePattern, URI directoryURI, Instant lastUpdated) {
-        this.logFiles = logFiles;
+    private LogFileGroup(List<LogFile> files, Pattern filePattern, URI directoryURI, Instant lastUpdated) {
+        this.logFiles = files;
         this.filePattern = filePattern;
         this.directoryURI = directoryURI;
         this.lastUpdated = lastUpdated;
@@ -49,7 +41,7 @@ public final class LogFileGroup {
      * that do not match the log group pattern and have been last modified after the provided lastUpdated value.
      * @param allDirectoryLogFiles - files in a directory
      */
-    public List<LogFile> getLogFiles(File... allDirectoryLogFiles) {
+    List<LogFile> getLogFiles(File... allDirectoryLogFiles) {
         List<LogFile> files = getLogFilesInternal(allDirectoryLogFiles);
 
         if (haveRotated(files)) {

@@ -12,7 +12,6 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
@@ -58,7 +57,8 @@ public class LogFileGroupTest {
     }
 
     @Test
-    void GIVEN_logManagerGetsFiles_WHEN_fileRotateAfterRetrieved_THEN_itReturnsTheCorrectFiles() throws IOException {
+    void GIVEN_logManagerGetsFiles_WHEN_fileRotateAfterRetrieved_THEN_itReturnsTheCorrectFiles() throws IOException,
+            InvalidLogGroupException {
         // Given
 
         File rotatedFile1 = createLogFileWithSize(directoryPath.resolve("test.log.1").toUri(), 1024 * 5);
@@ -66,8 +66,7 @@ public class LogFileGroupTest {
 
         Pattern filePattern = Pattern.compile("test.log\\w*", Pattern.CASE_INSENSITIVE);
         Instant lastUploadedFileInstant = Instant.EPOCH;
-        LogFileGroup logGroup = new LogFileGroup(
-                new ArrayList<>(), filePattern, directoryPath.toUri(), lastUploadedFileInstant);
+        LogFileGroup logGroup =LogFileGroup.create(filePattern, directoryPath.toUri(), lastUploadedFileInstant);
 
         // When
 

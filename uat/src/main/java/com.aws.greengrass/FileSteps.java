@@ -1,4 +1,4 @@
-package com.aws.greengrass.testing.features;
+package com.aws.greengrass;
 
 import com.aws.greengrass.testing.model.TestContext;
 import com.aws.greengrass.testing.platform.Platform;

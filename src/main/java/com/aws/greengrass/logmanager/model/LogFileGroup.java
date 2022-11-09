@@ -63,13 +63,19 @@ public final class LogFileGroup {
                         && isModifiedAfterLastUpdatedFile
                         && isNameMatchPattern
                         && !isEmptyFileHash) {
-                    allFiles.add(file);
-                    fileHashToLogFile.put(fileHash, file);
+                    File hardLink = createHardLink(file);
+                    allFiles.add(hardLink);
+                    fileHashToLogFile.put(fileHash, hardLink);
                 }
             }
         }
         allFiles.sort(Comparator.comparingLong(LogFile::lastModified));
         return new LogFileGroup(allFiles, filePattern, directoryURI, lastUpdated);
+    }
+
+    // TODO
+    private File createHardLink(File file) {
+        return file;
     }
 
     public void forEach(Consumer<LogFile> callback) {

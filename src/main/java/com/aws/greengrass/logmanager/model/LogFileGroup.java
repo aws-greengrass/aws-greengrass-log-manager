@@ -49,7 +49,7 @@ public final class LogFileGroup {
         List<LogFile> allFiles = new ArrayList<>();
         Map<String, LogFile> fileHashToLogFileMap = new ConcurrentHashMap<>();
         if (files.length != 0) {
-            for (LogFile file: files) {
+            for (LogFile file : files) {
                 String fileHash = file.hashString();
                 boolean isModifiedAfterLastUpdatedFile =
                         lastUpdated.isBefore(Instant.ofEpochMilli(file.lastModified()));
@@ -60,13 +60,19 @@ public final class LogFileGroup {
                         && isModifiedAfterLastUpdatedFile
                         && isNameMatchPattern
                         && !isEmptyFileHash) {
-                    allFiles.add(file);
-                    fileHashToLogFileMap.put(fileHash, file);
+                    LogFile hardLink = createHardLink(file);
+                    allFiles.add(hardLink);
+                    fileHashToLogFileMap.put(fileHash, hardLink);
                 }
             }
         }
         allFiles.sort(Comparator.comparingLong(LogFile::lastModified));
         return new LogFileGroup(allFiles, filePattern, fileHashToLogFileMap);
+    }
+
+    // TODO
+    private static LogFile createHardLink(LogFile file) {
+        return file;
     }
 
     public void forEach(Consumer<LogFile> callback) {

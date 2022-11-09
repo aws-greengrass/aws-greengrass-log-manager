@@ -1,11 +1,14 @@
 package com.aws.greengrass.logmanager.model;
 
 import com.aws.greengrass.logmanager.exceptions.InvalidLogGroupException;
-import com.aws.greengrass.util.Utils;
 import lombok.Getter;
 
 import java.io.File;
+import java.io.IOException;
 import java.net.URI;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -17,6 +20,7 @@ import java.util.regex.Pattern;
 
 
 public final class LogFileGroup {
+    private static final String DEFAULT_HARDLINKS_PATH = "aws.greengrass.LogManager/hardlinks";
     @Getter
     private List<LogFile> logFiles;
     private static Map<String, LogFile> fileHashToLogFile;
@@ -42,40 +46,49 @@ public final class LogFileGroup {
      */
     public static LogFileGroup create(Pattern filePattern, URI directoryURI, Instant lastUpdated)
             throws InvalidLogGroupException {
-        File folder = new File(directoryURI);
+        File logDirectory = new File(directoryURI);
         fileHashToLogFile = new ConcurrentHashMap<>();
 
-        if (!folder.isDirectory()) {
+        if (!logDirectory.isDirectory()) {
             throw new InvalidLogGroupException(String.format("%s must be a directory", directoryURI));
         }
 
-        LogFile[] files = LogFile.of(folder.listFiles());
+        // TODO: Need to make sure hard link dir is empty
         List<LogFile> allFiles = new ArrayList<>();
-        if (files.length != 0) {
-            for (LogFile file: files) {
-                String fileHash = file.hashString();
+        File hardLinkDir = new File(Paths.get(DEFAULT_HARDLINKS_PATH).resolve(logDirectory.getName()).toUri());
+        File[] logFiles = logDirectory.listFiles();
+        if (logFiles != null && logFiles.length != 0) {
+            for (File file : logFiles) {
                 boolean isModifiedAfterLastUpdatedFile =
                         lastUpdated.isBefore(Instant.ofEpochMilli(file.lastModified()));
                 boolean isNameMatchPattern = filePattern.matcher(file.getName()).find();
-                boolean isEmptyFileHash = Utils.isEmpty(fileHash);
 
                 if (file.isFile()
                         && isModifiedAfterLastUpdatedFile
-                        && isNameMatchPattern
-                        && !isEmptyFileHash) {
-                    File hardLink = createHardLink(file);
-                    allFiles.add(hardLink);
-                    fileHashToLogFile.put(fileHash, hardLink);
+                        && isNameMatchPattern) {
+                    try {
+                        createHardLink(hardLinkDir, file);
+                    } catch (IOException e) {
+                        // TODO: This is obviously not acceptable, but we'll address it in a follow up PR
+                        //  so not spending time on error handling just yet.
+                        continue;
+                    }
                 }
+            }
+
+            // Now that we've created hard links, create LogFiles
+            LogFile[] hardLinks = LogFile.of(hardLinkDir.listFiles());
+            for (LogFile hardLink : hardLinks) {
+                allFiles.add(hardLink);
+                fileHashToLogFile.put(hardLink.hashString(), hardLink);
             }
         }
         allFiles.sort(Comparator.comparingLong(LogFile::lastModified));
         return new LogFileGroup(allFiles, filePattern, directoryURI, lastUpdated);
     }
 
-    // TODO
-    private File createHardLink(File file) {
-        return file;
+    private static Path createHardLink(File hardLinkDir, File file) throws IOException {
+        return Files.createLink(hardLinkDir.toPath().resolve(file.getName()), file.toPath());
     }
 
     public void forEach(Consumer<LogFile> callback) {

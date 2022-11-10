@@ -38,13 +38,11 @@ import org.slf4j.event.Level;
 import java.io.File;
 import java.io.IOException;
 import java.io.UncheckedIOException;
-import java.nio.channels.SeekableByteChannel;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.nio.file.StandardOpenOption;
 import java.nio.file.StandardWatchEventKinds;
 import java.nio.file.WatchEvent;
 import java.nio.file.WatchKey;
@@ -579,12 +577,13 @@ public class LogManagerService extends PluginService {
     @SuppressWarnings("PMD.CollapsibleIfStatements")
     private void processLogsAndUpload() throws InterruptedException {
         while (true) {
-            //TODO: this is only done for passing the current tests. But in practise, we don't need to intentionally
+            //TODO: this is only done for passing the current text. But in practise, we don`t need to intentionally
             // sleep here.
             if (!isCurrentlyUploading.compareAndSet(false, true)) {
                 TimeUnit.SECONDS.sleep(periodicUpdateIntervalSec);
                 continue;
             }
+            List<ComponentLogFileInformation> unitsOfWork = new ArrayList<>();
             // Get the latest known configurations because the componentLogConfigurations can change if a new
             // configuration is received from the customer.
             for (ComponentLogConfiguration componentLogConfiguration : componentLogConfigurations.values()) {
@@ -594,9 +593,6 @@ public class LogManagerService extends PluginService {
                                 Instant.EPOCH);
 
                 try {
-
-                    // 1. Collect the files for that need to be processed
-
                     LogFileGroup logFileGroup =
                             LogFileGroup.create(componentLogConfiguration.getFileNameRegex(),
                                     componentLogConfiguration.getDirectoryPath().toUri(), lastUploadedLogFileTimeMs);
@@ -605,7 +601,7 @@ public class LogManagerService extends PluginService {
                         continue;
                     }
 
-                    ComponentLogFileInformation componentLogFileInformation = ComponentLogFileInformation.builder()
+                    ComponentLogFileInformation unitOfWork = ComponentLogFileInformation.builder()
                             .name(componentName)
                             .multiLineStartPattern(componentLogConfiguration.getMultiLineStartPattern())
                             .desiredLogLevel(componentLogConfiguration.getMinimumLogLevel())
@@ -613,27 +609,13 @@ public class LogManagerService extends PluginService {
                             .logFileGroup(logFileGroup)
                             .build();
 
-                    // 2. Collect the contents from the files that need to be uploaded in a CloudWatchAttempt
+                    unitsOfWork.add(unitOfWork);
 
-                    CloudWatchAttempt groupAttempt = new CloudWatchAttempt();
-                    groupAttempt.setLogGroupName(
-                            logsProcessor.getLogGroupName(componentLogConfiguration.getComponentType(), componentName));
-
-                    for (LogFile file : logFileGroup.getLogFiles()) {
-
-                        // Open the file before file trying to process it given it might be rotated and we still
-                        // want to be able to read the correct file and match it to its correct file hash.
-                        try (SeekableByteChannel fileByteChannel =
-                                     Files.newByteChannel(file.toPath(), StandardOpenOption.READ)) {
-                            String fileHash = file.hashString(fileByteChannel);
-
-
-                            if (HASH_VALUE_OF_EMPTY_STRING.equals(fileHash)) {
-                                continue;
-                            }
-
-                            long startPosition = 0;
-
+                    logFileGroup.forEach(file -> {
+                        long startPosition = 0;
+                        String fileHash = file.hashString();
+                        // The file must contain enough lines for digest hash, otherwise fileHash is empty string
+                        if (!HASH_VALUE_OF_EMPTY_STRING.equals(fileHash)) {
                             // If the file was partially read in the previous run, then get the starting position for
                             // new log lines.
                             if (componentCurrentProcessingLogFile.containsKey(componentName)) {
@@ -644,30 +626,17 @@ public class LogManagerService extends PluginService {
                                 }
                             }
 
-                            // TODO: file might not be accurate by the time it is read. Rely on the file hash
-                            //  to identify the file
                             LogFileInformation logFileInformation = LogFileInformation.builder()
                                     .logFile(file)
                                     .startPosition(startPosition)
                                     .fileHash(fileHash)
                                     .build();
 
-                            if (startPosition < fileByteChannel.size()) {
-                                componentLogFileInformation.getLogFileInformationList().add(logFileInformation);
-                                logsProcessor.processSingleLogFile(
-                                        groupAttempt, componentLogFileInformation, logFileInformation, fileByteChannel);
+                            if (startPosition < file.length()) {
+                                unitOfWork.getLogFileInformationList().add(logFileInformation);
                             }
-                        } catch (IOException e) {
-                            logger.atDebug().kv("path", file.getAbsolutePath()).cause(e)
-                                .log("Failed to process file contents. "
-                                        + "This could happen because the file was deleted before we could read it.");
                         }
-                    }
-
-                    // 3. Upload the logs lines. If there is something to upload
-                    if (!componentLogFileInformation.getLogFileInformationList().isEmpty())  {
-                        uploader.upload(groupAttempt, 1);
-                    }
+                    });
                 } catch (SecurityException e) {
                     logger.atError().cause(e).log("Unable to get log files for {} from {}",
                             componentName, componentLogConfiguration.getDirectoryPath());
@@ -675,7 +644,15 @@ public class LogManagerService extends PluginService {
                     logger.atDebug().cause(e).log("Unable to read the directory");
                 }
             }
+            //TODO: need to refactor. This is for the case unitOfWork may be empty. This will get refactored when the
+            // logFilgeGroup won't return files that should not be processed.
+            unitsOfWork = unitsOfWork.stream().filter(unit -> !unit.getLogFileInformationList().isEmpty()).collect(
+                    Collectors.toList());
 
+            unitsOfWork.forEach((unit) -> {
+                CloudWatchAttempt cloudWatchAttempt = logsProcessor.processLogFiles(unit);
+                uploader.upload(cloudWatchAttempt, 1);
+            });
             isCurrentlyUploading.set(false);
             emitEventStatus(EventType.ALL_COMPONENTS_PROCESSED);
             // after handle one cycle, we sleep for interval to avoid seamless scanning and processing next cycle.

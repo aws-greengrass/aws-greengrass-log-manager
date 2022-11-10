@@ -57,14 +57,11 @@ public class LogFile extends File {
         return Arrays.stream(files).map(LogFile::of).toArray(LogFile[]::new);
     }
 
-    @SuppressWarnings("PMD.CloseResource")
     private String readBytesToString(SeekableByteChannel chan) {
         byte[] bytesReadArray = new byte[bytesNeeded];
         int bytesRead;
-
-        try {
-            InputStream inputStream = Channels.newInputStream(chan);
-            bytesRead = inputStream.read(bytesReadArray);
+        try (InputStream r = Channels.newInputStream(chan)) {
+            bytesRead = r.read(bytesReadArray);
             String bytesReadString = new String(bytesReadArray, StandardCharsets.UTF_8);
             // if there is an entire line before 1KB, we hash the line; Otherwise, we hash 1KB to prevent super long
             // single line.

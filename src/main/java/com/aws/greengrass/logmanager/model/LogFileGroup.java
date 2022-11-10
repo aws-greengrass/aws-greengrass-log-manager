@@ -12,6 +12,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Consumer;
 import java.util.regex.Pattern;
 
 
@@ -69,6 +70,10 @@ public final class LogFileGroup {
         }
         allFiles.sort(Comparator.comparingLong(LogFile::lastModified));
         return new LogFileGroup(allFiles, filePattern, directoryURI, lastUpdated);
+    }
+
+    public void forEach(Consumer<LogFile> callback) {
+        logFiles.forEach(callback::accept);
     }
 
     public boolean isEmpty() {

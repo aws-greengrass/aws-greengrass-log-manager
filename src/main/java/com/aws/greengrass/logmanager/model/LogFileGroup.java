@@ -93,6 +93,8 @@ public final class LogFileGroup {
         }
 
         List<LogFile> allFiles = new ArrayList<>();
+        // TODO: We have to add the rotation detection mechanism here otherwise there is a chance that while we are
+        //  looping and creating the hardlinks the files gets rotated so the path that
         for (File file : files) {
             boolean isModifiedAfterLastUpdatedFile =
                     lastUpdated.isBefore(Instant.ofEpochMilli(file.lastModified()));
@@ -152,7 +154,13 @@ public final class LogFileGroup {
         if (logFiles.isEmpty()) {
             return false;
         }
+
         LogFile activeFile = logFiles.get(logFiles.size() - 1);
+
+        if (activeFile.hasRotated()) {
+            return false;
+        }
+
         return file.hashString().equals(activeFile.hashString());
     }
 }

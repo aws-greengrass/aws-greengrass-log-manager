@@ -14,8 +14,8 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.security.NoSuchAlgorithmException;
-import java.util.Arrays;
 
 import static com.aws.greengrass.util.Digest.calculate;
 
@@ -49,29 +49,18 @@ public class LogFile extends File {
 
     /**
      * Convert the file to LogFile.
-     * @param file The file to be converted.
+     * @param sourceFile The file to be converted.
      * @param hardLinkDirectory  path where the hardlink should be stored
      * @throws IOException if can't find the source path
      */
-    public static LogFile of(File file, Path hardLinkDirectory) throws IOException {
+    public static LogFile of(File sourceFile, Path hardLinkDirectory) throws IOException {
         // Why do we need this? - Hardlinks can't get the path of their source file. We need to keep track of which path
         // it was originally created with and in case the file on that path changes we need to scan the directory to
-        // check for the inode that matches the hardlin to get the correct path.
-        Path destinationPath = hardLinkDirectory.resolve(file.getName());
-        Path sourcePath = file.toPath();
+        // check for the inode that matches the hardlink to get the correct path.
+        Path destinationPath = hardLinkDirectory.resolve(sourceFile.getName());
+        Path sourcePath = sourceFile.toPath();
         Files.createLink(destinationPath, sourcePath);
         return new LogFile(sourcePath.toString(), destinationPath);
-    }
-
-    /**
-     * Convert list of files to list of LogFiles.
-     * @param files The list of files to be converted.
-     */
-    public static LogFile[] of(File... files) {
-        if (files == null) {
-            return new LogFile[] {};
-        }
-        return Arrays.stream(files).map(LogFile::of).toArray(LogFile[]::new);
     }
 
     /**
@@ -120,6 +109,17 @@ public class LogFile extends File {
             logger.atError().cause(e).log("The digest algorithm is invalid");
         }
         return fileHash;
+    }
+
+    /**
+     * Checks if the log file has rotated.
+     */
+    public boolean hasRotated() {
+        try {
+            return !Files.isSameFile(Paths.get(sourcePath), toPath());
+        } catch (IOException e) {
+            return true;
+        }
     }
 
     /**

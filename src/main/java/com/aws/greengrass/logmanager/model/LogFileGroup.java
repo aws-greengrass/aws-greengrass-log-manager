@@ -76,12 +76,14 @@ public final class LogFileGroup {
             throw new InvalidLogGroupException(String.format("%s must be a directory", directoryURI));
         }
 
+        Path componentHardlinksDirectory = hardLinksDirectory.resolve(filePattern.toString());
+
         try {
-            Utils.deleteFileRecursively(hardLinksDirectory.toFile());
-            Utils.createPaths(hardLinksDirectory);
+            Utils.deleteFileRecursively(componentHardlinksDirectory.toFile());
+            Utils.createPaths(componentHardlinksDirectory);
         } catch (IOException e) {
             throw new InvalidLogGroupException(
-                    String.format("%s failed to create hard link directory", hardLinksDirectory), e);
+                    String.format("%s failed to create hard link directory", componentHardlinksDirectory), e);
         }
 
         File[] files = folder.listFiles();
@@ -98,7 +100,7 @@ public final class LogFileGroup {
 
             if (file.isFile() && isModifiedAfterLastUpdatedFile && isNameMatchPattern) {
                 try {
-                    LogFile logfile = LogFile.of(file, hardLinksDirectory);
+                    LogFile logfile = LogFile.of(file, componentHardlinksDirectory);
                     allFiles.add(logfile);
                     fileHashToLogFile.put(logfile.hashString(), logfile);
                 } catch (IOException e) {

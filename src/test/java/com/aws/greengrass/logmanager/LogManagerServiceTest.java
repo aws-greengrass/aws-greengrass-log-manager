@@ -47,7 +47,6 @@ import org.slf4j.event.Level;
 import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
-import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
@@ -94,6 +93,7 @@ import static com.aws.greengrass.logmanager.util.TestUtils.createLogFileWithSize
 import static com.aws.greengrass.logmanager.util.TestUtils.givenAStringOfSize;
 import static com.aws.greengrass.testcommons.testutilities.ExceptionLogProtector.ignoreExceptionOfType;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.is;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -114,7 +114,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
     @Mock
     private CloudWatchLogsUploader mockUploader;
     @Mock
-    private CloudWatchAttemptLogsProcessor mockMerger;
+    private CloudWatchAttemptLogsProcessor mockLogsProcessor;
     @Captor
     private ArgumentCaptor<ComponentLogFileInformation> componentLogsInformationCaptor;
     @Captor
@@ -267,12 +267,13 @@ class LogManagerServiceTest extends GGServiceTestUtil {
 
     @Test
     void GIVEN_system_log_files_to_be_uploaded_WHEN_merger_merges_THEN_we_get_all_log_files()
-            throws InterruptedException, UnsupportedInputTypeException {
+            throws InterruptedException {
         mockDefaultPersistedState();
         Topic periodicUpdateIntervalMsTopic = Topic.of(context, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC, "1");
         when(config.lookup(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC))
                 .thenReturn(periodicUpdateIntervalMsTopic);
-        when(mockMerger.processLogFiles(componentLogsInformationCaptor.capture())).thenReturn(new CloudWatchAttempt());
+        when(mockLogsProcessor.processLogFiles(componentLogsInformationCaptor.capture())).thenReturn(
+                new CloudWatchAttempt());
 
         Topics configTopics = Topics.of(context, CONFIGURATION_CONFIG_KEY, null);
         when(config.lookupTopics(CONFIGURATION_CONFIG_KEY)).thenReturn(configTopics);
@@ -296,7 +297,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
                 .thenReturn(logsUploaderConfigTopics);
         doNothing().when(mockUploader).registerAttemptStatus(anyString(), callbackCaptor.capture());
 
-        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor);
+        logsUploaderService = new LogManagerService(config, mockUploader, mockLogsProcessor, executor);
         startServiceOnAnotherThread();
 
         TimeUnit.SECONDS.sleep(5);
@@ -325,7 +326,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         Topic periodicUpdateIntervalMsTopic = Topic.of(context, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC, "1");
         when(config.lookup(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC))
                 .thenReturn(periodicUpdateIntervalMsTopic);
-        when(mockMerger.processLogFiles(componentLogsInformationCaptor.capture())).thenReturn(new CloudWatchAttempt());
+        when(mockLogsProcessor.processLogFiles(componentLogsInformationCaptor.capture())).thenReturn(new CloudWatchAttempt());
 
         Topics configTopics = Topics.of(context, CONFIGURATION_CONFIG_KEY, null);
         when(config.lookupTopics(CONFIGURATION_CONFIG_KEY)).thenReturn(configTopics);
@@ -351,7 +352,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
 
         doNothing().when(mockUploader).registerAttemptStatus(anyString(), callbackCaptor.capture());
 
-        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor);
+        logsUploaderService = new LogManagerService(config, mockUploader, mockLogsProcessor, executor);
         startServiceOnAnotherThread();
 
         TimeUnit.SECONDS.sleep(5);
@@ -378,7 +379,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         Topic periodicUpdateIntervalMsTopic = Topic.of(context, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC, "1");
         when(config.lookup(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC))
                 .thenReturn(periodicUpdateIntervalMsTopic);
-        when(mockMerger.processLogFiles(componentLogsInformationCaptor.capture())).thenReturn(new CloudWatchAttempt());
+        when(mockLogsProcessor.processLogFiles(componentLogsInformationCaptor.capture())).thenReturn(new CloudWatchAttempt());
 
         Topics configTopics = Topics.of(context, CONFIGURATION_CONFIG_KEY, null);
         when(config.lookupTopics(CONFIGURATION_CONFIG_KEY)).thenReturn(configTopics);
@@ -402,7 +403,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
 
         doNothing().when(mockUploader).registerAttemptStatus(anyString(), callbackCaptor.capture());
 
-        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor);
+        logsUploaderService = new LogManagerService(config, mockUploader, mockLogsProcessor, executor);
         startServiceOnAnotherThread();
 
         TimeUnit.SECONDS.sleep(5);
@@ -429,7 +430,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         Topic periodicUpdateIntervalMsTopic = Topic.of(context, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC, "1");
         when(config.lookup(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC))
                 .thenReturn(periodicUpdateIntervalMsTopic);
-        when(mockMerger.processLogFiles(componentLogsInformationCaptor.capture())).thenReturn(new CloudWatchAttempt());
+        when(mockLogsProcessor.processLogFiles(componentLogsInformationCaptor.capture())).thenReturn(new CloudWatchAttempt());
 
         Topics configTopics = Topics.of(context, CONFIGURATION_CONFIG_KEY, null);
         when(config.lookupTopics(CONFIGURATION_CONFIG_KEY)).thenReturn(configTopics);
@@ -454,7 +455,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
 
         doNothing().when(mockUploader).registerAttemptStatus(anyString(), callbackCaptor.capture());
 
-        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor);
+        logsUploaderService = new LogManagerService(config, mockUploader, mockLogsProcessor, executor);
         startServiceOnAnotherThread();
 
         TimeUnit.SECONDS.sleep(5);
@@ -481,7 +482,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         Topic periodicUpdateIntervalMsTopic = Topic.of(context, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC, "1");
         when(config.lookup(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC))
                 .thenReturn(periodicUpdateIntervalMsTopic);
-        when(mockMerger.processLogFiles(componentLogsInformationCaptor.capture())).thenReturn(new CloudWatchAttempt());
+        when(mockLogsProcessor.processLogFiles(componentLogsInformationCaptor.capture())).thenReturn(new CloudWatchAttempt());
 
         Topics configTopics = Topics.of(context, CONFIGURATION_CONFIG_KEY, null);
         when(config.lookupTopics(CONFIGURATION_CONFIG_KEY)).thenReturn(configTopics);
@@ -514,7 +515,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
 
         doNothing().when(mockUploader).registerAttemptStatus(anyString(), callbackCaptor.capture());
 
-        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor);
+        logsUploaderService = new LogManagerService(config, mockUploader, mockLogsProcessor, executor);
         startServiceOnAnotherThread();
 
         TimeUnit.SECONDS.sleep(5);
@@ -557,14 +558,14 @@ class LogManagerServiceTest extends GGServiceTestUtil {
                 .thenReturn(logsUploaderConfigTopic);
 
 
-        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor);
+        logsUploaderService = new LogManagerService(config, mockUploader, mockLogsProcessor, executor);
         startServiceOnAnotherThread();
         assertThat(logsUploaderService.componentCurrentProcessingLogFile.values(), IsEmptyCollection.empty());
     }
 
     @Test
     void GIVEN_cloud_watch_attempt_handler_WHEN_attempt_completes_THEN_successfully_updates_states_for_each_component()
-            throws URISyntaxException, IOException, InvalidLogGroupException, InterruptedException {
+            throws IOException, InvalidLogGroupException, InterruptedException {
         mockDefaultPersistedState();
         Topic periodicUpdateIntervalMsTopic = Topic.of(context, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC, "1000");
         when(config.lookup(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC))
@@ -669,9 +670,9 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         doNothing().when(mockUploader).registerAttemptStatus(anyString(), callbackCaptor.capture());
         CloudWatchAttempt attempt1 = new CloudWatchAttempt();
         ComponentLogFileInformation info1 = ComponentLogFileInformation.builder().build();
-        lenient().doReturn(attempt1).when(mockMerger).processLogFiles(info1);
+        lenient().doReturn(attempt1).when(mockLogsProcessor).processLogFiles(info1);
         lenient().doNothing().when(mockUploader).upload(attempt1, 1);
-        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor);
+        logsUploaderService = new LogManagerService(config, mockUploader, mockLogsProcessor, executor);
         startServiceOnAnotherThread();
         callbackCaptor.getValue().accept(attempt);
 
@@ -708,7 +709,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         Topic periodicUpdateIntervalMsTopic = Topic.of(context, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC, "3");
         when(config.lookup(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC))
                 .thenReturn(periodicUpdateIntervalMsTopic);
-        when(mockMerger.processLogFiles(componentLogsInformationCaptor.capture())).thenReturn(new CloudWatchAttempt());
+        when(mockLogsProcessor.processLogFiles(componentLogsInformationCaptor.capture())).thenReturn(new CloudWatchAttempt());
 
         Topics configTopics = Topics.of(context, CONFIGURATION_CONFIG_KEY, null);
         when(config.lookupTopics(CONFIGURATION_CONFIG_KEY)).thenReturn(configTopics);
@@ -722,7 +723,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         when(config.lookupTopics(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC))
                 .thenReturn(logsUploaderConfigTopics);
 
-        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor);
+        logsUploaderService = new LogManagerService(config, mockUploader, mockLogsProcessor, executor);
         // These two files are existed, and the active file is greengrass.log
         LogFile file = new LogFile(directoryPath.resolve("greengrass_test_2.log").toUri());
         LogFile currentProcessingFile = new LogFile(directoryPath.resolve("greengrass_test_3.log").toUri());
@@ -746,7 +747,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         assertEquals(Level.INFO, componentLogFileInformation.getDesiredLogLevel());
         assertNotNull(componentLogFileInformation.getLogFileInformationList());
         assertThat(componentLogFileInformation.getLogFileInformationList(), IsNot.not(IsEmptyCollection.empty()));
-        assertTrue(componentLogFileInformation.getLogFileInformationList().size() >= 2);
+        assertThat(componentLogFileInformation.getLogFileInformationList().size(), is(2));
         componentLogFileInformation.getLogFileInformationList().forEach(logFileInformation -> {
             if (logFileInformation.getLogFile().getAbsolutePath().equals(currentProcessingFile.getAbsolutePath())) {
                 assertEquals(2, logFileInformation.getStartPosition());
@@ -759,7 +760,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
 
     @Test
     void GIVEN_user_component_with_space_management_WHEN_log_file_size_exceeds_limit_THEN_deletes_excess_log_files()
-            throws InterruptedException, IOException, UnsupportedInputTypeException {
+            throws InterruptedException, IOException {
         mockDefaultPersistedState();
         Topic periodicUpdateIntervalMsTopic = Topic.of(context, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC, "3");
         when(config.lookup(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC))
@@ -786,7 +787,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         when(config.lookupTopics(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC))
                 .thenReturn(logsUploaderConfigTopics);
 
-        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor);
+        logsUploaderService = new LogManagerService(config, mockUploader, mockLogsProcessor, executor);
         startServiceOnAnotherThread();
         TimeUnit.SECONDS.sleep(5);
         List<String> fileNames = new ArrayList<>();
@@ -906,7 +907,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
                 .lookupTopics(PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP, "UserComponentA"))
                 .thenReturn(componentTopics1);
 
-        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor);
+        logsUploaderService = new LogManagerService(config, mockUploader, mockLogsProcessor, executor);
         startServiceOnAnotherThread();
 
         callbackCaptor.getValue().accept(attempt);
@@ -928,7 +929,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         Topic periodicUpdateIntervalMsTopic = Topic.of(context, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC, "3");
         when(config.lookup(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC))
                 .thenReturn(periodicUpdateIntervalMsTopic);
-        when(mockMerger.processLogFiles(componentLogsInformationCaptor.capture())).thenReturn(new CloudWatchAttempt());
+        when(mockLogsProcessor.processLogFiles(componentLogsInformationCaptor.capture())).thenReturn(new CloudWatchAttempt());
 
         Topics configTopics = Topics.of(context, CONFIGURATION_CONFIG_KEY, null);
         when(config.lookupTopics(CONFIGURATION_CONFIG_KEY)).thenReturn(configTopics);
@@ -942,7 +943,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         when(config.lookupTopics(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC))
                 .thenReturn(logsUploaderConfigTopics);
 
-        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor);
+        logsUploaderService = new LogManagerService(config, mockUploader, mockLogsProcessor, executor);
         startServiceOnAnotherThread();
 
         LogFile file = new LogFile(directoryPath.resolve("greengrass.log_test_2").toUri());
@@ -1045,7 +1046,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
                 .lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION, "UserComponentA"))
                 .thenReturn(currentProcessingComponentTopics2);
 
-        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor);
+        logsUploaderService = new LogManagerService(config, mockUploader, mockLogsProcessor, executor);
 
         assertNotNull(logsUploaderService.componentCurrentProcessingLogFile);
         assertNotNull(logsUploaderService.lastComponentUploadedLogFileInstantMap);

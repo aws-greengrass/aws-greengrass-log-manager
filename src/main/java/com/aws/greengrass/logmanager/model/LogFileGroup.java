@@ -1,6 +1,9 @@
 package com.aws.greengrass.logmanager.model;
 
+import com.aws.greengrass.logging.api.Logger;
+import com.aws.greengrass.logging.impl.LogManager;
 import com.aws.greengrass.logmanager.exceptions.InvalidLogGroupException;
+import com.aws.greengrass.util.Utils;
 import lombok.Getter;
 
 import java.io.File;
@@ -20,6 +23,7 @@ import java.util.regex.Pattern;
 
 
 public final class LogFileGroup {
+    private static final Logger logger = LogManager.getLogger(LogFileGroup.class);
     private static final String DEFAULT_HARDLINKS_PATH = "aws.greengrass.LogManager/hardlinks";
     @Getter
     private List<LogFile> logFiles;
@@ -54,15 +58,27 @@ public final class LogFileGroup {
         }
 
         // TODO: Need to make sure hard link dir is empty
+        //  in a less hacky way
+        // TODO: this needs to be in the component work dir, not cwd
         List<LogFile> allFiles = new ArrayList<>();
         File hardLinkDir = new File(Paths.get(DEFAULT_HARDLINKS_PATH).resolve(logDirectory.getName()).toUri());
+        try {
+            Utils.deleteFileRecursively(hardLinkDir);
+            Utils.createPaths(hardLinkDir.toPath());
+        } catch (IOException e) {
+            logger.atWarn().cause(e).log("Failed to create hard link directory");
+        }
         File[] logFiles = logDirectory.listFiles();
+        if (logFiles == null) {
+            logger.atWarn().log("logFiles is null");
+        }
         if (logFiles != null && logFiles.length != 0) {
             for (File file : logFiles) {
                 boolean isModifiedAfterLastUpdatedFile =
                         lastUpdated.isBefore(Instant.ofEpochMilli(file.lastModified()));
                 boolean isNameMatchPattern = filePattern.matcher(file.getName()).find();
 
+                logger.atWarn().kv("filename", file.getName()).log("processing file");
                 if (file.isFile()
                         && isModifiedAfterLastUpdatedFile
                         && isNameMatchPattern) {
@@ -71,6 +87,7 @@ public final class LogFileGroup {
                     } catch (IOException e) {
                         // TODO: This is obviously not acceptable, but we'll address it in a follow up PR
                         //  so not spending time on error handling just yet.
+                        logger.atWarn().cause(e).log("Failed to create hard link");
                         continue;
                     }
                 }
@@ -88,7 +105,8 @@ public final class LogFileGroup {
     }
 
     private static Path createHardLink(File hardLinkDir, File file) throws IOException {
-        return Files.createLink(hardLinkDir.toPath().resolve(file.getName()), file.toPath());
+        Path hardLinkPath = hardLinkDir.toPath().resolve(file.getName());
+        return Files.createLink(hardLinkPath, file.toPath());
     }
 
     public void forEach(Consumer<LogFile> callback) {

@@ -12,7 +12,6 @@ import com.aws.greengrass.integrationtests.BaseITCase;
 import com.aws.greengrass.lifecyclemanager.Kernel;
 import com.aws.greengrass.logging.impl.LogManager;
 import com.aws.greengrass.logmanager.LogManagerService;
-import com.aws.greengrass.logmanager.exceptions.InvalidLogGroupException;
 import com.aws.greengrass.logmanager.model.LogFileGroup;
 import com.aws.greengrass.testcommons.testutilities.GGExtension;
 import com.aws.greengrass.util.exceptions.TLSAuthException;

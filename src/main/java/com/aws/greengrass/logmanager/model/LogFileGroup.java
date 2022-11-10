@@ -4,12 +4,12 @@ import com.aws.greengrass.logging.api.Logger;
 import com.aws.greengrass.logging.impl.LogManager;
 import com.aws.greengrass.logmanager.exceptions.InvalidLogGroupException;
 import com.aws.greengrass.util.Utils;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import lombok.Getter;
 
 import java.io.File;
 import java.io.IOException;
 import java.net.URI;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Instant;
@@ -23,33 +23,51 @@ import java.util.function.Consumer;
 import java.util.regex.Pattern;
 
 
+@SuppressFBWarnings("DMI_HARDCODED_ABSOLUTE_FILENAME")
 public final class LogFileGroup {
     private static final Logger logger = LogManager.getLogger(LogFileGroup.class);
-    private static final String DEFAULT_HARDLINKS_PATH = "aws.greengrass.LogManager/hardlinks";
+    // TODO: Avoid hardcoding DEFAULT_HARDLINKS_PATH. Ensure we always pass the path as a parameter.
+    //  Not doing now because it will require changing a bunch of tests
+    private static final String DEFAULT_HARDLINKS_PATH = "/tmp/aws.greengrass.LogManager/hardlinks";
     @Getter
     private List<LogFile> logFiles;
     private static Map<String, LogFile> fileHashToLogFile;
     @Getter
     private final Pattern filePattern;
-    private final URI directoryURI;
-    private final Instant lastUpdated;
 
-    private LogFileGroup(List<LogFile> files, Pattern filePattern, URI directoryURI, Instant lastUpdated) {
+    private LogFileGroup(List<LogFile> files, Pattern filePattern) {
         this.logFiles = files;
         this.filePattern = filePattern;
-        this.directoryURI = directoryURI;
-        this.lastUpdated = lastUpdated;
     }
 
     /**
      * Create a list of Logfiles that are sorted based on lastModified time.
-     * @param filePattern the fileNameRegex used for each component to recognize its log files.
+     *
+     * @param filePattern  the fileNameRegex used for each component to recognize its log files.
      * @param directoryURI the directory path of the log files of component.
-     * @param lastUpdated the saved updated time of the last uploaded log of a component.
+     * @param lastUpdated  the saved updated time of the last uploaded log of a component.
      * @return list of logFile.
      * @throws InvalidLogGroupException the exception if this is not a valid directory.
      */
-    public static LogFileGroup create(Pattern filePattern, URI directoryURI, Instant lastUpdated)
+    public static LogFileGroup create(Pattern filePattern, URI directoryURI, Instant lastUpdated) throws
+            InvalidLogGroupException {
+        return LogFileGroup.create(filePattern, directoryURI, lastUpdated,
+                Paths.get(DEFAULT_HARDLINKS_PATH));
+    }
+
+
+    /**
+     * Create a list of Logfiles that are sorted based on lastModified time.
+     *
+     * @param filePattern  the fileNameRegex used for each component to recognize its log files.
+     * @param directoryURI the directory path of the log files of component.
+     * @param lastUpdated  the saved updated time of the last uploaded log of a component.
+     * @param hardLinksDirectory path to store hardlinks
+     * @return list of logFile.
+     * @throws InvalidLogGroupException the exception if this is not a valid directory.
+     */
+    public static LogFileGroup create(Pattern filePattern, URI directoryURI, Instant lastUpdated,
+                                      Path hardLinksDirectory)
             throws InvalidLogGroupException {
         File folder = new File(directoryURI);
         fileHashToLogFile = new ConcurrentHashMap<>();
@@ -58,47 +76,39 @@ public final class LogFileGroup {
             throw new InvalidLogGroupException(String.format("%s must be a directory", directoryURI));
         }
 
-        Path hardLinkPath = Paths.get(DEFAULT_HARDLINKS_PATH).resolve(folder.getName());
         try {
-            Utils.createPaths(hardLinkPath);
+            Utils.deleteFileRecursively(hardLinksDirectory.toFile());
+            Utils.createPaths(hardLinksDirectory);
         } catch (IOException e) {
-            throw new InvalidLogGroupException(String.format("%s failed to create hard link directory", hardLinkPath));
+            throw new InvalidLogGroupException(
+                    String.format("%s failed to create hard link directory", hardLinksDirectory), e);
         }
 
         File[] files = folder.listFiles();
         if (files == null) {
             logger.atWarn().log("logFiles is null");
-            return new LogFileGroup(Collections.emptyList(), filePattern, directoryURI, lastUpdated);
+            return new LogFileGroup(Collections.emptyList(), filePattern);
         }
 
         List<LogFile> allFiles = new ArrayList<>();
-        for (File file: files) {
+        for (File file : files) {
             boolean isModifiedAfterLastUpdatedFile =
                     lastUpdated.isBefore(Instant.ofEpochMilli(file.lastModified()));
             boolean isNameMatchPattern = filePattern.matcher(file.getName()).find();
 
             if (file.isFile() && isModifiedAfterLastUpdatedFile && isNameMatchPattern) {
                 try {
-                    createHardLink(hardLinkPath, file);
+                    LogFile logfile = LogFile.of(file, hardLinksDirectory);
+                    allFiles.add(logfile);
+                    fileHashToLogFile.put(logfile.hashString(), logfile);
                 } catch (IOException e) {
                     logger.atWarn().cause(e).log("Failed to create hardlink");
                 }
             }
         }
 
-        LogFile[] hardLinks = LogFile.of(hardLinkPath.toFile().listFiles());
-        for (LogFile hardLink : hardLinks) {
-            allFiles.add(hardLink);
-            fileHashToLogFile.put(hardLink.hashString(), hardLink);
-        }
-
         allFiles.sort(Comparator.comparingLong(LogFile::lastModified));
-        return new LogFileGroup(allFiles, filePattern, directoryURI, lastUpdated);
-    }
-
-    private static Path createHardLink(Path hardLinkDirPath, File file) throws IOException {
-        Path fileHardLinkPath = hardLinkDirPath.resolve(file.getName());
-        return Files.createLink(fileHardLinkPath, file.toPath());
+        return new LogFileGroup(allFiles, filePattern);
     }
 
     public void forEach(Consumer<LogFile> callback) {
@@ -111,20 +121,12 @@ public final class LogFileGroup {
 
     /**
      * Get the LogFile object from the fileHash.
+     *
      * @param fileHash the fileHash obtained from uploader.
      * @return the logFile.
      */
     public LogFile getFile(String fileHash) {
         return fileHashToLogFile.get(fileHash);
-    }
-
-    /**
-     * Validate if the hash exists in the current logFileGroup.
-     * @param fileHash the hash of the file.
-     * @return boolean.
-     */
-    public boolean isHashExist(String fileHash) {
-        return fileHashToLogFile.containsKey(fileHash);
     }
 
     /**
@@ -140,6 +142,7 @@ public final class LogFileGroup {
 
     /**
      * Validate if the logFile is the active of one logFileGroup.
+     *
      * @param file the target file.
      * @return boolean.
      */

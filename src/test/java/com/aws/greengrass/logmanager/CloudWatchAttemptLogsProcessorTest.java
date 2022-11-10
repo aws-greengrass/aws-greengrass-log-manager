@@ -58,6 +58,7 @@ import java.util.regex.Pattern;
 import static com.aws.greengrass.deployment.DeviceConfiguration.DEVICE_PARAM_AWS_REGION;
 import static com.aws.greengrass.deployment.DeviceConfiguration.DEVICE_PARAM_THING_NAME;
 import static com.aws.greengrass.logmanager.CloudWatchAttemptLogsProcessor.DEFAULT_LOG_GROUP_NAME;
+import static com.aws.greengrass.logmanager.util.TestUtils.createLogFileWithSize;
 import static com.aws.greengrass.testcommons.testutilities.ExceptionLogProtector.ignoreExceptionOfType;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.hasSize;
@@ -819,6 +820,44 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
         String thingName3 = "a:zA_Z:0-9";
         String logStream3 = logsProcessor.getLogStreamName(thingName3);
         assertEquals("/{date}/thing/a+zA_Z+0-9", logStream3);
+    }
+
+    @Test
+    void GIVEN_GIVEN_racing_condition_WHEN_file_rotates_between_creating_logFileGroup_and_setting_startPos_THEN_get_correct_files()
+            throws IOException {
+        //Given three log files
+        LogFile fileC = createLogFileWithSize(directoryPath.resolve("demo.log.2").toUri(), 2943);
+        String hashC = fileC.hashString();
+        LogFile fileB = createLogFileWithSize(directoryPath.resolve("demo.log.1").toUri(), 2943);
+        String hashB = fileB.hashString();
+        LogFile fileA = createLogFileWithSize(directoryPath.resolve("demo.log").toUri(), 1024);
+        String hashA = fileA.hashString();
+
+        List<LogFileInformation> logFileInformationSet = new ArrayList<>();
+        logFileInformationSet.add(LogFileInformation.builder().startPosition(2000).logFile(fileB).fileHash(hashB).build());
+        logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(fileA).fileHash(hashA).build());
+        ComponentLogFileInformation componentLogFileInformation = ComponentLogFileInformation.builder()
+                .name("TestComponent")
+                .desiredLogLevel(Level.INFO)
+                .componentType(ComponentType.UserComponent)
+                .logFileInformationList(logFileInformationSet)
+                .build();
+        logsProcessor = new CloudWatchAttemptLogsProcessor(mockDeviceConfiguration, defaultClock);
+
+        // rotation
+        fileB.renameTo(fileC);
+        fileA.renameTo(fileB);
+
+        CloudWatchAttempt attempt = logsProcessor.processLogFiles(componentLogFileInformation);
+        assertNotNull(attempt);
+        assertNotNull(attempt.getLogStreamsToLogEventsMap());
+        String logStream = calculateLogStreamName("testThing");
+        assertTrue(attempt.getLogStreamsToLogEventsMap().containsKey(logStream));
+        CloudWatchAttemptLogInformation logEventsForStream1 = attempt.getLogStreamsToLogEventsMap().get(logStream);
+        assertNotNull(logEventsForStream1.getLogEvents());
+        assertEquals(2, logEventsForStream1.getLogEvents().size());
+        assertTrue(logEventsForStream1.getAttemptLogFileInformationMap().containsKey(hashB));
+        assertEquals(2000, logEventsForStream1.getAttemptLogFileInformationMap().get(hashB).getStartPosition());
     }
 
     private String calculateLogGroupName(ComponentType componentType, String awsRegion, String componentName) {

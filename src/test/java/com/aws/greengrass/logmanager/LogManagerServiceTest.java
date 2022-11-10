@@ -21,6 +21,7 @@ import com.aws.greengrass.logmanager.model.CloudWatchAttemptLogFileInformation;
 import com.aws.greengrass.logmanager.model.CloudWatchAttemptLogInformation;
 import com.aws.greengrass.logmanager.model.ComponentLogFileInformation;
 import com.aws.greengrass.logmanager.model.ComponentType;
+import com.aws.greengrass.logmanager.model.EventType;
 import com.aws.greengrass.logmanager.model.LogFile;
 import com.aws.greengrass.logmanager.model.LogFileGroup;
 import com.aws.greengrass.testcommons.testutilities.GGExtension;
@@ -61,6 +62,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -1097,5 +1099,97 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         // Then
         assertEquals(processingInfo.getFileName(), rotatedLogFilePath.toAbsolutePath().toString());
         assertEquals(processingInfo.getFileHash(), rotatedLogFile.hashString());
+    }
+
+    @Test
+    void GIVEN_racing_condition_WHEN_file_rotates_between_creating_logFileGroup_and_setting_startPos_THEN_gets_correct_files()
+            throws Exception {
+
+        //Given
+        // 3 files, and currentProcessing
+        LogFile fileC = createLogFileWithSize(directoryPath.resolve("demo.log.2").toUri(), 2943);
+        String hashC = fileC.hashString();
+        LogFile fileB = createLogFileWithSize(directoryPath.resolve("demo.log.1").toUri(), 2943);
+        String hashB = fileB.hashString();
+        LogFile fileA = createLogFileWithSize(directoryPath.resolve("demo.log").toUri(), 1024);
+        String hashA = fileA.hashString();
+
+        // configuration
+        mockDefaultPersistedState();
+        Topic periodicUpdateIntervalMsTopic = Topic.of(context, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC, "3");
+        when(config.lookup(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC))
+                .thenReturn(periodicUpdateIntervalMsTopic);
+        when(mockLogsProcessor.processLogFiles(componentLogsInformationCaptor.capture())).thenReturn(new CloudWatchAttempt());
+
+        Topics configTopics = Topics.of(context, CONFIGURATION_CONFIG_KEY, null);
+        when(config.lookupTopics(CONFIGURATION_CONFIG_KEY)).thenReturn(configTopics);
+        Topics logsUploaderConfigTopics = Topics.of(context, LOGS_UPLOADER_CONFIGURATION_TOPIC, null);
+
+        Topics componentConfigTopics = logsUploaderConfigTopics.createInteriorChild(COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME);
+        Topics componentATopic = componentConfigTopics.createInteriorChild("UserComponentA");
+        componentATopic.createLeafChild(FILE_REGEX_CONFIG_TOPIC_NAME).withValue("^demo.log\\w*");
+        componentATopic.createLeafChild(FILE_DIRECTORY_PATH_CONFIG_TOPIC_NAME).withValue(directoryPath.toAbsolutePath().toString());
+        componentATopic.createLeafChild(MIN_LOG_LEVEL_CONFIG_TOPIC_NAME).withValue("DEBUG");
+        componentATopic.createLeafChild(DISK_SPACE_LIMIT_CONFIG_TOPIC_NAME).withValue("25");
+        componentATopic.createLeafChild(DISK_SPACE_LIMIT_UNIT_CONFIG_TOPIC_NAME).withValue("KB");
+        componentATopic.createLeafChild(DELETE_LOG_FILES_AFTER_UPLOAD_CONFIG_TOPIC_NAME).withValue("false");
+
+        Topics systemConfigTopics = logsUploaderConfigTopics.createInteriorChild(SYSTEM_LOGS_CONFIG_TOPIC_NAME);
+        systemConfigTopics.createLeafChild(UPLOAD_TO_CW_CONFIG_TOPIC_NAME).withValue("false");
+        systemConfigTopics.createLeafChild(MIN_LOG_LEVEL_CONFIG_TOPIC_NAME).withValue("INFO");
+        systemConfigTopics.createLeafChild(DISK_SPACE_LIMIT_CONFIG_TOPIC_NAME).withValue("25");
+        systemConfigTopics.createLeafChild(DISK_SPACE_LIMIT_UNIT_CONFIG_TOPIC_NAME).withValue("KB");
+        when(config.lookupTopics(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC))
+                .thenReturn(logsUploaderConfigTopics);
+
+        // start logManager service, and set the current processing info
+        logsUploaderService = new LogManagerService(config, mockUploader, mockLogsProcessor, executor);
+        startServiceOnAnotherThread();
+
+        logsUploaderService.lastComponentUploadedLogFileInstantMap.put("UserComponentA",
+                Instant.ofEpochMilli(fileC.lastModified()));
+        logsUploaderService.componentCurrentProcessingLogFile.put("UserComponentA",
+                LogManagerService.CurrentProcessingFileInformation.builder()
+                        .fileHash(hashB)
+                        .lastModifiedTime(fileB.lastModified())
+                        .startPosition(2000)
+                        .build());
+
+        Runnable waitForFileInfoToBeCreated = subscribeToCreateLogFileInfo(logsUploaderService, 5);
+        waitForFileInfoToBeCreated.run();
+
+        // rotation
+        fileB.renameTo(fileC);
+        fileA.renameTo(fileB);
+
+        assertNotNull(componentLogsInformationCaptor.getValue());
+        ComponentLogFileInformation componentLogFileInformation = componentLogsInformationCaptor.getValue();
+        assertNotNull(componentLogFileInformation);
+        assertEquals("UserComponentA", componentLogFileInformation.getName());
+        assertNotNull(componentLogFileInformation.getLogFileInformationList());
+        assertThat(componentLogFileInformation.getLogFileInformationList(), IsNot.not(IsEmptyCollection.empty()));
+        assertTrue(componentLogFileInformation.getLogFileInformationList().size() >= 2);
+        assertEquals(hashB, componentLogFileInformation.getLogFileInformationList().get(0).getFileHash());
+        assertEquals(2000, componentLogFileInformation.getLogFileInformationList().get(0).getStartPosition());
+        assertEquals(hashA, componentLogFileInformation.getLogFileInformationList().get(0).getFileHash());
+        assertEquals(0, componentLogFileInformation.getLogFileInformationList().get(1).getStartPosition());
+
+    }
+
+    private Runnable subscribeToCreateLogFileInfo(LogManagerService service, int waitTime) throws InterruptedException {
+        CountDownLatch latch = new CountDownLatch(1);
+        service.registerEventStatusListener((EventType event) -> {
+            if (event == EventType.FILE_INFO_CREATED) {
+                latch.countDown();
+            }
+        });
+
+        return () -> {
+            try {
+                latch.await(waitTime, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                //do nothing
+            }
+        };
     }
 }

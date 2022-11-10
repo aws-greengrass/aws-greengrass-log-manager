@@ -1,13 +1,20 @@
 package com.aws.greengrass.logmanager.model;
 
+import com.aws.greengrass.logging.api.Logger;
+import com.aws.greengrass.logging.impl.LogManager;
 import com.aws.greengrass.logmanager.exceptions.InvalidLogGroupException;
 import com.aws.greengrass.util.Utils;
 import lombok.Getter;
 
 import java.io.File;
+import java.io.IOException;
 import java.net.URI;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -17,6 +24,8 @@ import java.util.regex.Pattern;
 
 
 public final class LogFileGroup {
+    private static final Logger logger = LogManager.getLogger(LogFileGroup.class);
+    private static final String DEFAULT_HARDLINKS_PATH = "aws.greengrass.LogManager/hardlinks";
     @Getter
     private List<LogFile> logFiles;
     private static Map<String, LogFile> fileHashToLogFile;
@@ -49,27 +58,47 @@ public final class LogFileGroup {
             throw new InvalidLogGroupException(String.format("%s must be a directory", directoryURI));
         }
 
-        LogFile[] files = LogFile.of(folder.listFiles());
-        List<LogFile> allFiles = new ArrayList<>();
-        if (files.length != 0) {
-            for (LogFile file: files) {
-                String fileHash = file.hashString();
-                boolean isModifiedAfterLastUpdatedFile =
-                        lastUpdated.isBefore(Instant.ofEpochMilli(file.lastModified()));
-                boolean isNameMatchPattern = filePattern.matcher(file.getName()).find();
-                boolean isEmptyFileHash = Utils.isEmpty(fileHash);
+        Path hardLinkPath = Paths.get(DEFAULT_HARDLINKS_PATH).resolve(folder.getName());
+        try {
+            Utils.createPaths(hardLinkPath);
+        } catch (IOException e) {
+            throw new InvalidLogGroupException(String.format("%s failed to create hard link directory", hardLinkPath));
+        }
 
-                if (file.isFile()
-                        && isModifiedAfterLastUpdatedFile
-                        && isNameMatchPattern
-                        && !isEmptyFileHash) {
-                    allFiles.add(file);
-                    fileHashToLogFile.put(fileHash, file);
+        File[] files = folder.listFiles();
+        if (files == null) {
+            logger.atWarn().log("logFiles is null");
+            return new LogFileGroup(Collections.emptyList(), filePattern, directoryURI, lastUpdated);
+        }
+
+        List<LogFile> allFiles = new ArrayList<>();
+        for (File file: files) {
+            boolean isModifiedAfterLastUpdatedFile =
+                    lastUpdated.isBefore(Instant.ofEpochMilli(file.lastModified()));
+            boolean isNameMatchPattern = filePattern.matcher(file.getName()).find();
+
+            if (file.isFile() && isModifiedAfterLastUpdatedFile && isNameMatchPattern) {
+                try {
+                    createHardLink(hardLinkPath, file);
+                } catch (IOException e) {
+                    logger.atWarn().cause(e).log("Failed to create hardlink");
                 }
             }
         }
+
+        LogFile[] hardLinks = LogFile.of(hardLinkPath.toFile().listFiles());
+        for (LogFile hardLink : hardLinks) {
+            allFiles.add(hardLink);
+            fileHashToLogFile.put(hardLink.hashString(), hardLink);
+        }
+
         allFiles.sort(Comparator.comparingLong(LogFile::lastModified));
         return new LogFileGroup(allFiles, filePattern, directoryURI, lastUpdated);
+    }
+
+    private static Path createHardLink(Path hardLinkDirPath, File file) throws IOException {
+        Path fileHardLinkPath = hardLinkDirPath.resolve(file.getName());
+        return Files.createLink(fileHardLinkPath, file.toPath());
     }
 
     public void forEach(Consumer<LogFile> callback) {
@@ -96,18 +125,6 @@ public final class LogFileGroup {
      */
     public boolean isHashExist(String fileHash) {
         return fileHashToLogFile.containsKey(fileHash);
-    }
-
-    /**
-     * In case of file rotation happen between the processing files and handling upload results, the logFileGroup
-     * uses the (Pattern filePattern, URI directoryURI, Instant lastUpdated) when created to take the latest snapshot
-     * of the same directory. This can guarantee if the active file get rotated during the file processing, it will be
-     * deleted because it is a rotated file now.
-     * @return the LogFileGroup created by the current directory.
-     * @throws InvalidLogGroupException when directory path is not pointing to a valid directory.
-     */
-    public LogFileGroup syncDirectory() throws InvalidLogGroupException {
-        return create(this.filePattern, this.directoryURI, this.lastUpdated);
     }
 
     /**

@@ -141,13 +141,8 @@ class SpaceManagementTest extends BaseITCase {
         // Then
 
         assertThat("log group size should eventually be less than 105 KB",() -> {
-            try {
-                logFileGroup.syncDirectory();
-                long kb = logFileGroup.totalSizeInBytes() / 1024;
-                return kb <= 105;
-            } catch (InvalidLogGroupException e) {
-                return  false;
-            }
+            long kb = logFileGroup.totalSizeInBytes() / 1024;
+            return kb <= 105;
         }, eventuallyEval(is(true), Duration.ofSeconds(60)));
     }
 }

@@ -8,7 +8,6 @@ Feature: Greengrass V2 LogManager
     And my device is running Greengrass
     And 5 temporary rotated log files for component aws.greengrass.Nucleus
     And 5 temporary rotated log files for component aws.greengrass.StreamManager
-
   Scenario: configure the log manager component using a componentLogsConfiguration list and logs are uploaded to
   CloudWatch
     Given I create a Greengrass deployment with components

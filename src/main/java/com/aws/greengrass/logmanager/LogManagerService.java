@@ -458,12 +458,8 @@ public class LogManagerService extends PluginService {
         });
         completedLogFilePerComponent.forEach((componentName, completedFiles) -> {
             completedFiles.forEach(file -> {
-                if (!lastComponentUploadedLogFileInstantMap.containsKey(componentName)
-                        || lastComponentUploadedLogFileInstantMap.get(componentName)
-                        .isBefore(Instant.ofEpochMilli(file.lastModified()))) {
-                    lastComponentUploadedLogFileInstantMap.put(componentName,
-                            Instant.ofEpochMilli(file.lastModified()));
-                }
+                updatelastComponentUploadedLogFile(lastComponentUploadedLogFileInstantMap, componentName,
+                        file.lastModified());
             });
             if (!componentLogConfigurations.containsKey(componentName)) {
                 return;
@@ -561,6 +557,24 @@ public class LogManagerService extends PluginService {
     }
 
     /**
+     * This updates the lastComponentUploadedLogFileInstantMap if the current component has a newly uploaded file,
+     * which the lastModified time is larger than saved value of lastModified time.
+     * @param lastComponentUploadedLogFileInstantMap The instant map of all components.
+     * @param componentName componentName.
+     * @param lastModified the lastModified time of the file.
+     */
+    private void updatelastComponentUploadedLogFile(Map<String, Instant> lastComponentUploadedLogFileInstantMap,
+                                                    String componentName,
+                                                    long lastModified) {
+        if (!lastComponentUploadedLogFileInstantMap.containsKey(componentName)
+                || lastComponentUploadedLogFileInstantMap.get(componentName)
+                .isBefore(Instant.ofEpochMilli(lastModified))) {
+            lastComponentUploadedLogFileInstantMap.put(componentName,
+                    Instant.ofEpochMilli(lastModified));
+        }
+    }
+
+    /**
      * Long running process which will keep checking if there are any logs to be uploaded to the cloud.
      *
      * @implSpec : The service will first check if there was already a cloudwatch attempt in progess. If so, it will
@@ -635,6 +649,9 @@ public class LogManagerService extends PluginService {
 
                             if (startPosition < file.length()) {
                                 unitOfWork.getLogFileInformationList().add(logFileInformation);
+                            } else if (startPosition == file.length() && !logFileGroup.isActiveFile(file)) {
+                                updatelastComponentUploadedLogFile(lastComponentUploadedLogFileInstantMap,
+                                        componentName, file.lastModified());
                             }
                         }
                     });

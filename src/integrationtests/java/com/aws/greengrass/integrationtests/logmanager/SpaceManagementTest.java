@@ -21,6 +21,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.extension.ExtensionContext;
+import org.junit.jupiter.api.io.TempDir;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.slf4j.event.Level;
@@ -60,6 +61,8 @@ class SpaceManagementTest extends BaseITCase {
     private LogManagerService logManagerService;
     private Path tempDirectoryPath;
     private static final Instant mockInstant = Instant.EPOCH;
+    @TempDir
+    private Path workDir;
 
     @Mock
     private CloudWatchLogsClient cloudWatchLogsClient;
@@ -142,7 +145,7 @@ class SpaceManagementTest extends BaseITCase {
         assertThat("log group size should eventually be less than 105 KB",() -> {
             try {
                 LogFileGroup logFileGroup =
-                        LogFileGroup.create(logFileNamePattern, tempDirectoryPath.toUri(), mockInstant);
+                        LogFileGroup.create(logFileNamePattern, tempDirectoryPath.toUri(), mockInstant, workDir);
                 long kb = logFileGroup.totalSizeInBytes() / 1024;
                 return kb <= 105;
             } catch (InvalidLogGroupException e) {

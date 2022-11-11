@@ -626,7 +626,8 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         // Create another file intentionally, so that the lastProcessedFile will be processed.
         TimeUnit.SECONDS.sleep(5);
         createLogFileWithSize(directoryPath.resolve("testlogs2.log_active").toUri(), 2943);
-        LogFileGroup lastProcessedLogFileGroup = LogFileGroup.create(pattern1, lastProcessedFile.getParentFile().toURI(), mockInstant);
+        LogFileGroup lastProcessedLogFileGroup =
+                LogFileGroup.create(pattern1, lastProcessedFile.getParentFile().toURI(), mockInstant, workdirectory);
         assertEquals(2, lastProcessedLogFileGroup.getLogFiles().size());
         assertFalse(lastProcessedLogFileGroup.isActiveFile(lastProcessedFile));
 
@@ -636,7 +637,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         LogFile processingFile = createLogFileWithSize(directoryPath.resolve("testlogs1.log").toUri(), 1061);
         Pattern pattern2 = Pattern.compile("^testlogs1.log$");
         LogFileGroup processingLogFileGroup = LogFileGroup.create(pattern2, processingFile.getParentFile().toURI(),
-                Instant.ofEpochMilli(processingFile.lastModified() - 1));
+                Instant.ofEpochMilli(processingFile.lastModified() - 1), workdirectory);
         assertEquals(1, processingLogFileGroup.getLogFiles().size());
         assertTrue(processingLogFileGroup.isActiveFile(processingFile));
 
@@ -878,7 +879,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         LogFile file2 = new LogFile(directoryPath.resolve(fileNames.get(1)).toUri());
 
         Pattern pattern = Pattern.compile("^log2.txt\\w*");
-        LogFileGroup logFileGroup = LogFileGroup.create(pattern, file1.getParentFile().toURI(), instant);
+        LogFileGroup logFileGroup = LogFileGroup.create(pattern, file1.getParentFile().toURI(), instant, workdirectory);
         Map<String, CloudWatchAttemptLogFileInformation> attemptLogFileInformationMap1 = new HashMap<>();
         attemptLogFileInformationMap1.put(file1.hashString(), CloudWatchAttemptLogFileInformation.builder()
                 .startPosition(0)

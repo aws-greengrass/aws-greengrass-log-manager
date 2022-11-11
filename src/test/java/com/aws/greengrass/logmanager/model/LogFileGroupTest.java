@@ -24,6 +24,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 public class LogFileGroupTest {
     @TempDir
     static Path directoryPath;
+    @TempDir
+    private Path workDir;
 
     @Test
     void GIVEN_log_files_THEN_find_the_active_file() throws IOException, InterruptedException,
@@ -41,7 +43,7 @@ public class LogFileGroupTest {
 
         Pattern pattern = Pattern.compile("^greengrass_test.log\\w*$");
         Instant instant = Instant.EPOCH;
-        LogFileGroup logFileGroup = LogFileGroup.create(pattern, file.getParentFile().toURI(), instant);
+        LogFileGroup logFileGroup = LogFileGroup.create(pattern, file.getParentFile().toURI(), instant, workDir);
 
         assertEquals(2, logFileGroup.getLogFiles().size());
         assertFalse(logFileGroup.isActiveFile(file));

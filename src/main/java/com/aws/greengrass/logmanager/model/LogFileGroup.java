@@ -101,18 +101,6 @@ public final class LogFileGroup {
     }
 
     /**
-     * In case of file rotation happen between the processing files and handling upload results, the logFileGroup
-     * uses the (Pattern filePattern, URI directoryURI, Instant lastUpdated) when created to take the latest snapshot
-     * of the same directory. This can guarantee if the active file get rotated during the file processing, it will be
-     * deleted because it is a rotated file now.
-     * @return the LogFileGroup created by the current directory.
-     * @throws InvalidLogGroupException when directory path is not pointing to a valid directory.
-     */
-    public LogFileGroup syncDirectory() throws InvalidLogGroupException {
-        return create(this.filePattern, this.directoryURI, this.lastUpdated);
-    }
-
-    /**
      * Returns the size in bytes of all the contents being tracked on by the log group.
      */
     public long totalSizeInBytes() {

@@ -11,7 +11,6 @@ import com.aws.greengrass.config.Topics;
 import com.aws.greengrass.config.UpdateBehaviorTree;
 import com.aws.greengrass.config.WhatHappened;
 import com.aws.greengrass.dependency.ImplementsService;
-import com.aws.greengrass.lifecyclemanager.Kernel;
 import com.aws.greengrass.lifecyclemanager.PluginService;
 import com.aws.greengrass.logging.api.Logger;
 import com.aws.greengrass.logging.impl.LogManager;
@@ -28,6 +27,7 @@ import com.aws.greengrass.logmanager.model.LogFile;
 import com.aws.greengrass.logmanager.model.LogFileGroup;
 import com.aws.greengrass.logmanager.model.LogFileInformation;
 import com.aws.greengrass.util.Coerce;
+import com.aws.greengrass.util.NucleusPaths;
 import com.aws.greengrass.util.Utils;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Builder;
@@ -141,13 +141,12 @@ public class LogManagerService extends PluginService {
      */
     @Inject
     LogManagerService(Topics topics, CloudWatchLogsUploader uploader, CloudWatchAttemptLogsProcessor logProcessor,
-                      ExecutorService executorService, Kernel kernel) throws IOException {
+                      ExecutorService executorService, NucleusPaths nucleusPaths) throws IOException {
         super(topics);
         this.uploader = uploader;
         this.logsProcessor = logProcessor;
         this.executorService = executorService;
-        this.hardlinksDirectoryPath = kernel.getNucleusPaths().workPath(LOGS_UPLOADER_SERVICE_TOPICS)
-                .resolve(HARDLINK_DIRECTORY);
+        this.hardlinksDirectoryPath = nucleusPaths.workPath(LOGS_UPLOADER_SERVICE_TOPICS).resolve(HARDLINK_DIRECTORY);
 
         topics.lookupTopics(CONFIGURATION_CONFIG_KEY).subscribe((why, newv) -> {
             if (why == WhatHappened.timestampUpdated) {

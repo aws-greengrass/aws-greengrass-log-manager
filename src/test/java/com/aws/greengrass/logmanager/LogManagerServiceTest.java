@@ -11,7 +11,6 @@ import com.aws.greengrass.config.UnsupportedInputTypeException;
 import com.aws.greengrass.config.UpdateBehaviorTree;
 import com.aws.greengrass.dependency.Context;
 import com.aws.greengrass.dependency.Crashable;
-import com.aws.greengrass.lifecyclemanager.Kernel;
 import com.aws.greengrass.logging.impl.LogManager;
 import com.aws.greengrass.logging.impl.config.LogConfig;
 import com.aws.greengrass.logging.impl.config.LogStore;
@@ -36,7 +35,6 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.extension.ExtensionContext;
@@ -125,20 +123,20 @@ class LogManagerServiceTest extends GGServiceTestUtil {
     private ArgumentCaptor<Map<String, Object>> updateFromMapCaptor;
     @Captor
     private ArgumentCaptor<Number> numberObjectCaptor;
-    private static Kernel kernel;
+    private static NucleusPaths nucleusPaths;
 
     @TempDir
     static Path directoryPath;
+    @TempDir
+    static Path workdirectory;
     private LogManagerService logsUploaderService;
     private final ExecutorService executor = Executors.newCachedThreadPool();
     private final Instant mockInstant = Instant.EPOCH;
 
     @BeforeAll
     static void setupBefore() throws IOException, InterruptedException {
-        kernel = mock(Kernel.class);
-        NucleusPaths paths = mock(NucleusPaths.class);
-        lenient().when(kernel.getNucleusPaths()).thenReturn(paths);
-        lenient().when(paths.workPath("aws.greengrass.LogManager")).thenReturn(directoryPath);
+        nucleusPaths = mock(NucleusPaths.class);
+        lenient().when(nucleusPaths.workPath("aws.greengrass.LogManager")).thenReturn(workdirectory);
         LogConfig.getRootLogConfig().setLevel(Level.TRACE);
         LogConfig.getRootLogConfig().setStore(LogStore.FILE);
         LogConfig.getRootLogConfig().setStoreDirectory(directoryPath);
@@ -216,7 +214,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         serviceFullName = "aws.greengrass.LogManager";
         initializeMockedConfig();
         lenient().when(context.runOnPublishQueueAndWait(any())).thenAnswer((s) -> {
-            ((Crashable)s.getArgument(0)).run();
+            ((Crashable) s.getArgument(0)).run();
             return null;
         });
     }
@@ -303,7 +301,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
                 .thenReturn(logsUploaderConfigTopics);
         doNothing().when(mockUploader).registerAttemptStatus(anyString(), callbackCaptor.capture());
 
-        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor, kernel);
+        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor, nucleusPaths);
         startServiceOnAnotherThread();
 
         TimeUnit.SECONDS.sleep(5);
@@ -358,7 +356,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
 
         doNothing().when(mockUploader).registerAttemptStatus(anyString(), callbackCaptor.capture());
 
-        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor, kernel);
+        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor, nucleusPaths);
         startServiceOnAnotherThread();
 
         TimeUnit.SECONDS.sleep(5);
@@ -409,7 +407,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
 
         doNothing().when(mockUploader).registerAttemptStatus(anyString(), callbackCaptor.capture());
 
-        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor, kernel);
+        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor, nucleusPaths);
         startServiceOnAnotherThread();
 
         TimeUnit.SECONDS.sleep(5);
@@ -461,7 +459,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
 
         doNothing().when(mockUploader).registerAttemptStatus(anyString(), callbackCaptor.capture());
 
-        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor, kernel);
+        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor, nucleusPaths);
         startServiceOnAnotherThread();
 
         TimeUnit.SECONDS.sleep(5);
@@ -521,7 +519,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
 
         doNothing().when(mockUploader).registerAttemptStatus(anyString(), callbackCaptor.capture());
 
-        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor, kernel);
+        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor, nucleusPaths);
         startServiceOnAnotherThread();
 
         TimeUnit.SECONDS.sleep(5);
@@ -564,13 +562,12 @@ class LogManagerServiceTest extends GGServiceTestUtil {
                 .thenReturn(logsUploaderConfigTopic);
 
 
-        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor, kernel);
+        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor, nucleusPaths);
         startServiceOnAnotherThread();
         assertThat(logsUploaderService.componentCurrentProcessingLogFile.values(), IsEmptyCollection.empty());
     }
 
     @Test
-    @Disabled("Can be re-enabled once hard links are ready")
     void GIVEN_cloud_watch_attempt_handler_WHEN_attempt_completes_THEN_successfully_updates_states_for_each_component()
             throws IOException, InvalidLogGroupException, InterruptedException {
         mockDefaultPersistedState();
@@ -611,7 +608,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
                 .thenReturn(runtimeConfig);
 
         lenient().when(runtimeConfig.lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION,
-                        "TestComponent2")).thenReturn(component2ProcessingTopics);
+                "TestComponent2")).thenReturn(component2ProcessingTopics);
         lenient().when(runtimeConfig.lookupTopics(PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP, "TestComponent"))
                 .thenReturn(component1ProcessedTopics);
 
@@ -646,11 +643,11 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         Map<String, CloudWatchAttemptLogFileInformation> LastProcessedAttemptLogFileInformationMap = new HashMap<>();
         LastProcessedAttemptLogFileInformationMap.put(lastProcessedFile.hashString(),
                 CloudWatchAttemptLogFileInformation.builder()
-                .startPosition(0)
-                .bytesRead(2943)
-                .lastModifiedTime(lastProcessedFile.lastModified())
-                .fileHash(lastProcessedFile.hashString())
-                .build());
+                        .startPosition(0)
+                        .bytesRead(2943)
+                        .lastModifiedTime(lastProcessedFile.lastModified())
+                        .fileHash(lastProcessedFile.hashString())
+                        .build());
 
         Map<String, CloudWatchAttemptLogFileInformation> processingAttemptLogFileInformationMap2 = new HashMap<>();
         processingAttemptLogFileInformationMap2.put(processingFile.hashString(), CloudWatchAttemptLogFileInformation.builder()
@@ -679,7 +676,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         ComponentLogFileInformation info1 = ComponentLogFileInformation.builder().build();
         lenient().doReturn(attempt1).when(mockMerger).processLogFiles(info1);
         lenient().doNothing().when(mockUploader).upload(attempt1, 1);
-        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor, kernel);
+        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor, nucleusPaths);
         startServiceOnAnotherThread();
         callbackCaptor.getValue().accept(attempt);
 
@@ -730,7 +727,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         when(config.lookupTopics(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC))
                 .thenReturn(logsUploaderConfigTopics);
 
-        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor, kernel);
+        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor, nucleusPaths);
         // These two files are existed, and the active file is greengrass.log
         LogFile file = new LogFile(directoryPath.resolve("greengrass_test_2.log").toUri());
         LogFile currentProcessingFile = new LogFile(directoryPath.resolve("greengrass_test_3.log").toUri());
@@ -794,12 +791,12 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         when(config.lookupTopics(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC))
                 .thenReturn(logsUploaderConfigTopics);
 
-        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor, kernel);
+        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor, nucleusPaths);
         startServiceOnAnotherThread();
         TimeUnit.SECONDS.sleep(5);
         List<String> fileNames = new ArrayList<>();
         for (int i = 0; i < 5; i++) {
-            Path fileNamePath = directoryPath.resolve("log.txt_" + UUID.randomUUID().toString());
+            Path fileNamePath = directoryPath.resolve("log.txt_" + UUID.randomUUID());
             fileNames.add(fileNamePath.toAbsolutePath().toString());
             File file1 = new File(fileNamePath.toUri());
             assertTrue(file1.createNewFile());
@@ -820,7 +817,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
 
         for (int i = 3; i < 5; i++) {
             assertTrue(Files.exists(Paths.get(fileNames.get(i))));
-            assertEquals(1024 ,new File(Paths.get(fileNames.get(i)).toUri()).length());
+            assertEquals(1024, new File(Paths.get(fileNames.get(i)).toUri()).length());
         }
     }
 
@@ -858,7 +855,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         List<String> fileNames = new ArrayList<>();
         Instant instant = Instant.EPOCH;
         for (int i = 0; i < 5; i++) {
-            Path fileNamePath = directoryPath.resolve("log2.txt_" + UUID.randomUUID().toString());
+            Path fileNamePath = directoryPath.resolve("log2.txt_" + UUID.randomUUID());
             fileNames.add(fileNamePath.toAbsolutePath().toString());
             File file1 = new File(fileNamePath.toUri());
 
@@ -914,7 +911,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
                 .lookupTopics(PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP, "UserComponentA"))
                 .thenReturn(componentTopics1);
 
-        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor, kernel);
+        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor, nucleusPaths);
         startServiceOnAnotherThread();
 
         callbackCaptor.getValue().accept(attempt);
@@ -950,7 +947,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         when(config.lookupTopics(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC))
                 .thenReturn(logsUploaderConfigTopics);
 
-        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor, kernel);
+        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor, nucleusPaths);
         startServiceOnAnotherThread();
 
         LogFile file = new LogFile(directoryPath.resolve("greengrass.log_test_2").toUri());
@@ -1053,7 +1050,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
                 .lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION, "UserComponentA"))
                 .thenReturn(currentProcessingComponentTopics2);
 
-        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor, kernel);
+        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor, nucleusPaths);
 
         assertNotNull(logsUploaderService.componentCurrentProcessingLogFile);
         assertNotNull(logsUploaderService.lastComponentUploadedLogFileInstantMap);
@@ -1082,7 +1079,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         // Given
 
         // A rotated log file
-        Path rotatedLogFilePath  = directoryPath.resolve("testlogs1.log");
+        Path rotatedLogFilePath = directoryPath.resolve("testlogs1.log");
         LogFile rotatedLogFile = new LogFile(rotatedLogFilePath.toUri());
         createLogFileWithSize(rotatedLogFilePath.toUri(), 1061);
 

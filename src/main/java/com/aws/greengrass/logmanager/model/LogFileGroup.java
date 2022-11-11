@@ -16,6 +16,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -31,13 +32,14 @@ public final class LogFileGroup {
     private static final String DEFAULT_HARDLINKS_PATH = "/tmp/aws.greengrass.LogManager/hardlinks";
     @Getter
     private List<LogFile> logFiles;
-    private static Map<String, LogFile> fileHashToLogFile;
+    private final Map<String, LogFile> fileHashToLogFile;
     @Getter
     private final Pattern filePattern;
 
-    private LogFileGroup(List<LogFile> files, Pattern filePattern) {
+    private LogFileGroup(List<LogFile> files, Pattern filePattern, Map<String, LogFile> hashToFileIndex) {
         this.logFiles = files;
         this.filePattern = filePattern;
+        this.fileHashToLogFile = hashToFileIndex;
     }
 
     /**
@@ -70,7 +72,6 @@ public final class LogFileGroup {
                                       Path hardLinksDirectory)
             throws InvalidLogGroupException {
         File folder = new File(directoryURI);
-        fileHashToLogFile = new ConcurrentHashMap<>();
 
         if (!folder.isDirectory()) {
             throw new InvalidLogGroupException(String.format("%s must be a directory", directoryURI));
@@ -89,9 +90,10 @@ public final class LogFileGroup {
         File[] files = folder.listFiles();
         if (files == null) {
             logger.atWarn().log("logFiles is null");
-            return new LogFileGroup(Collections.emptyList(), filePattern);
+            return new LogFileGroup(Collections.emptyList(), filePattern, new HashMap<>());
         }
 
+        Map<String, LogFile> fileHashToLogFile = new ConcurrentHashMap<>();
         List<LogFile> allFiles = new ArrayList<>();
         // TODO: We have to add the rotation detection mechanism here otherwise there is a chance that while we are
         //  looping and creating the hardlinks the files gets rotated so the path that
@@ -112,7 +114,7 @@ public final class LogFileGroup {
         }
 
         allFiles.sort(Comparator.comparingLong(LogFile::lastModified));
-        return new LogFileGroup(allFiles, filePattern);
+        return new LogFileGroup(allFiles, filePattern, fileHashToLogFile);
     }
 
     public void forEach(Consumer<LogFile> callback) {

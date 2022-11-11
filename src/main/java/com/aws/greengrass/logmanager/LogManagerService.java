@@ -652,7 +652,6 @@ public class LogManagerService extends PluginService {
 
             unitsOfWork.forEach((unit) -> {
                 CloudWatchAttempt cloudWatchAttempt = logsProcessor.processLogFiles(unit);
-                logger.info("attempting to upload {} {}", cloudWatchAttempt.getLogGroupName(), cloudWatchAttempt);
                 uploader.upload(cloudWatchAttempt, 1);
             });
             isCurrentlyUploading.set(false);

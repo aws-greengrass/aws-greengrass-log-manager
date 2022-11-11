@@ -19,17 +19,19 @@ import java.util.regex.Pattern;
 public final class LogFileGroup {
     @Getter
     private List<LogFile> logFiles;
-    private static Map<String, LogFile> fileHashToLogFile;
+    private final Map<String, LogFile> fileHashToLogFile;
     @Getter
     private final Pattern filePattern;
     private final URI directoryURI;
     private final Instant lastUpdated;
 
-    private LogFileGroup(List<LogFile> files, Pattern filePattern, URI directoryURI, Instant lastUpdated) {
+    private LogFileGroup(List<LogFile> files, Pattern filePattern, URI directoryURI, Instant lastUpdated,
+                         Map<String, LogFile> fileHashToLogFile) {
         this.logFiles = files;
         this.filePattern = filePattern;
         this.directoryURI = directoryURI;
         this.lastUpdated = lastUpdated;
+        this.fileHashToLogFile = fileHashToLogFile;
     }
 
     /**
@@ -43,7 +45,6 @@ public final class LogFileGroup {
     public static LogFileGroup create(Pattern filePattern, URI directoryURI, Instant lastUpdated)
             throws InvalidLogGroupException {
         File folder = new File(directoryURI);
-        fileHashToLogFile = new ConcurrentHashMap<>();
 
         if (!folder.isDirectory()) {
             throw new InvalidLogGroupException(String.format("%s must be a directory", directoryURI));
@@ -51,6 +52,7 @@ public final class LogFileGroup {
 
         LogFile[] files = LogFile.of(folder.listFiles());
         List<LogFile> allFiles = new ArrayList<>();
+        Map<String, LogFile> fileHashToLogFileMap = new ConcurrentHashMap<>();
         if (files.length != 0) {
             for (LogFile file: files) {
                 String fileHash = file.hashString();
@@ -64,12 +66,12 @@ public final class LogFileGroup {
                         && isNameMatchPattern
                         && !isEmptyFileHash) {
                     allFiles.add(file);
-                    fileHashToLogFile.put(fileHash, file);
+                    fileHashToLogFileMap.put(fileHash, file);
                 }
             }
         }
         allFiles.sort(Comparator.comparingLong(LogFile::lastModified));
-        return new LogFileGroup(allFiles, filePattern, directoryURI, lastUpdated);
+        return new LogFileGroup(allFiles, filePattern, directoryURI, lastUpdated, fileHashToLogFileMap);
     }
 
     public void forEach(Consumer<LogFile> callback) {

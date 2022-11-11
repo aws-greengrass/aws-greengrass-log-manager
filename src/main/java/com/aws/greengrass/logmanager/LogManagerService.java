@@ -27,6 +27,7 @@ import com.aws.greengrass.logmanager.model.LogFile;
 import com.aws.greengrass.logmanager.model.LogFileGroup;
 import com.aws.greengrass.logmanager.model.LogFileInformation;
 import com.aws.greengrass.util.Coerce;
+import com.aws.greengrass.util.NucleusPaths;
 import com.aws.greengrass.util.Utils;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Builder;
@@ -108,6 +109,7 @@ public class LogManagerService extends PluginService {
     public static final String UPLOAD_TO_CW_CONFIG_TOPIC_NAME = "uploadToCloudWatch";
     public static final String MULTILINE_PATTERN_CONFIG_TOPIC_NAME = "multiLineStartPattern";
     public static final int DEFAULT_PERIODIC_UPDATE_INTERVAL_SEC = 300;
+    public static final String HARDLINK_DIRECTORY = "hardlinks";
     private final Object spaceManagementLock = new Object();
     private final List<Consumer<EventType>> serviceStatusListeners = new ArrayList<>();
 
@@ -126,6 +128,8 @@ public class LogManagerService extends PluginService {
     @Getter
     private int periodicUpdateIntervalSec;
     private Future<?> spaceManagementThread;
+    @SuppressWarnings("PMD.UnusedPrivateField")
+    private final Path hardlinksDirectoryPath;
 
     /**
      * Constructor.
@@ -137,11 +141,12 @@ public class LogManagerService extends PluginService {
      */
     @Inject
     LogManagerService(Topics topics, CloudWatchLogsUploader uploader, CloudWatchAttemptLogsProcessor logProcessor,
-                      ExecutorService executorService) {
+                      ExecutorService executorService, NucleusPaths nucleusPaths) throws IOException {
         super(topics);
         this.uploader = uploader;
         this.logsProcessor = logProcessor;
         this.executorService = executorService;
+        this.hardlinksDirectoryPath = nucleusPaths.workPath(LOGS_UPLOADER_SERVICE_TOPICS).resolve(HARDLINK_DIRECTORY);
 
         topics.lookupTopics(CONFIGURATION_CONFIG_KEY).subscribe((why, newv) -> {
             if (why == WhatHappened.timestampUpdated) {

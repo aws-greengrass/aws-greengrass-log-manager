@@ -11,6 +11,7 @@ import com.aws.greengrass.config.Topics;
 import com.aws.greengrass.config.UpdateBehaviorTree;
 import com.aws.greengrass.config.WhatHappened;
 import com.aws.greengrass.dependency.ImplementsService;
+import com.aws.greengrass.lifecyclemanager.Kernel;
 import com.aws.greengrass.lifecyclemanager.PluginService;
 import com.aws.greengrass.logging.api.Logger;
 import com.aws.greengrass.logging.impl.LogManager;
@@ -108,6 +109,7 @@ public class LogManagerService extends PluginService {
     public static final String UPLOAD_TO_CW_CONFIG_TOPIC_NAME = "uploadToCloudWatch";
     public static final String MULTILINE_PATTERN_CONFIG_TOPIC_NAME = "multiLineStartPattern";
     public static final int DEFAULT_PERIODIC_UPDATE_INTERVAL_SEC = 300;
+    public static final String HARDLINK_DIRECTORY = "hardlinks";
     private final Object spaceManagementLock = new Object();
     private final List<Consumer<EventType>> serviceStatusListeners = new ArrayList<>();
 
@@ -126,6 +128,8 @@ public class LogManagerService extends PluginService {
     @Getter
     private int periodicUpdateIntervalSec;
     private Future<?> spaceManagementThread;
+    @SuppressWarnings("PMD.UnusedPrivateField")
+    private final Path hardlinksDirectoryPath;
 
     /**
      * Constructor.
@@ -137,11 +141,13 @@ public class LogManagerService extends PluginService {
      */
     @Inject
     LogManagerService(Topics topics, CloudWatchLogsUploader uploader, CloudWatchAttemptLogsProcessor logProcessor,
-                      ExecutorService executorService) {
+                      ExecutorService executorService, Kernel kernel) throws IOException {
         super(topics);
         this.uploader = uploader;
         this.logsProcessor = logProcessor;
         this.executorService = executorService;
+        this.hardlinksDirectoryPath = kernel.getNucleusPaths().workPath(LOGS_UPLOADER_SERVICE_TOPICS)
+                .resolve(HARDLINK_DIRECTORY);
 
         topics.lookupTopics(CONFIGURATION_CONFIG_KEY).subscribe((why, newv) -> {
             if (why == WhatHappened.timestampUpdated) {

@@ -22,15 +22,10 @@ public final class LogFileGroup {
     private final Map<String, LogFile> fileHashToLogFile;
     @Getter
     private final Pattern filePattern;
-    private final URI directoryURI;
-    private final Instant lastUpdated;
 
-    private LogFileGroup(List<LogFile> files, Pattern filePattern, URI directoryURI, Instant lastUpdated,
-                         Map<String, LogFile> fileHashToLogFile) {
+    private LogFileGroup(List<LogFile> files, Pattern filePattern, Map<String, LogFile> fileHashToLogFile) {
         this.logFiles = files;
         this.filePattern = filePattern;
-        this.directoryURI = directoryURI;
-        this.lastUpdated = lastUpdated;
         this.fileHashToLogFile = fileHashToLogFile;
     }
 
@@ -71,7 +66,7 @@ public final class LogFileGroup {
             }
         }
         allFiles.sort(Comparator.comparingLong(LogFile::lastModified));
-        return new LogFileGroup(allFiles, filePattern, directoryURI, lastUpdated, fileHashToLogFileMap);
+        return new LogFileGroup(allFiles, filePattern, fileHashToLogFileMap);
     }
 
     public void forEach(Consumer<LogFile> callback) {
@@ -98,18 +93,6 @@ public final class LogFileGroup {
      */
     public boolean isHashExist(String fileHash) {
         return fileHashToLogFile.containsKey(fileHash);
-    }
-
-    /**
-     * In case of file rotation happen between the processing files and handling upload results, the logFileGroup
-     * uses the (Pattern filePattern, URI directoryURI, Instant lastUpdated) when created to take the latest snapshot
-     * of the same directory. This can guarantee if the active file get rotated during the file processing, it will be
-     * deleted because it is a rotated file now.
-     * @return the LogFileGroup created by the current directory.
-     * @throws InvalidLogGroupException when directory path is not pointing to a valid directory.
-     */
-    public LogFileGroup syncDirectory() throws InvalidLogGroupException {
-        return create(this.filePattern, this.directoryURI, this.lastUpdated);
     }
 
     /**

@@ -510,51 +510,47 @@ public class LogManagerService extends PluginService {
                                                         String fileHash,
                                                         CloudWatchAttemptLogFileInformation
                                                                 cloudWatchAttemptLogFileInformation) {
-        try {
-            LogFileGroup logFileGroup = attemptLogInformation.getLogFileGroup().syncDirectory();
-            if (!logFileGroup.isHashExist(fileHash)) {
-                logger.atTrace().kv("fileHash", fileHash).log("component",
-                        logFileGroup.getFilePattern(), "File not found in directory");
-                return;
-            }
-            LogFile file = logFileGroup.getFile(fileHash);
-            // @deprecated  This is deprecated value in versions greater than 2.2, but keep it here to avoid
-            // upgrade-downgrade issues.
-            String fileName = file.getAbsolutePath();
-            // If we have completely read the file, then we need add it to the completed files list and remove it
-            // it (if necessary) for the current processing list.
-            String componentName = attemptLogInformation.getComponentName();
-            if (!logFileGroup.isActiveFile(file) && file.length() == cloudWatchAttemptLogFileInformation.getBytesRead()
-                    + cloudWatchAttemptLogFileInformation.getStartPosition()) {
-                Set<LogFile> completedFiles = completedLogFilePerComponent.getOrDefault(componentName,
-                        new HashSet<>());
-                completedFiles.add(file);
-                completedLogFilePerComponent.put(componentName, completedFiles);
-                if (currentProcessingLogFilePerComponent.containsKey(componentName)) {
-                    CurrentProcessingFileInformation fileInformation = currentProcessingLogFilePerComponent
-                            .get(componentName);
-                    if (fileInformation.fileHash.equals(fileHash)) {
-                        currentProcessingLogFilePerComponent.remove(componentName);
-                    }
+        LogFileGroup logFileGroup = attemptLogInformation.getLogFileGroup();
+        if (!logFileGroup.isHashExist(fileHash)) {
+            logger.atTrace().kv("fileHash", fileHash).log("component",
+                    logFileGroup.getFilePattern(), "File not found in directory");
+            return;
+        }
+        LogFile file = logFileGroup.getFile(fileHash);
+        // @deprecated  This is deprecated value in versions greater than 2.2, but keep it here to avoid
+        // upgrade-downgrade issues.
+        String fileName = file.getAbsolutePath();
+        // If we have completely read the file, then we need add it to the completed files list and remove it
+        // it (if necessary) for the current processing list.
+        String componentName = attemptLogInformation.getComponentName();
+        if (!logFileGroup.isActiveFile(file) && file.length() == cloudWatchAttemptLogFileInformation.getBytesRead()
+                + cloudWatchAttemptLogFileInformation.getStartPosition()) {
+            Set<LogFile> completedFiles = completedLogFilePerComponent.getOrDefault(componentName,
+                    new HashSet<>());
+            completedFiles.add(file);
+            completedLogFilePerComponent.put(componentName, completedFiles);
+            if (currentProcessingLogFilePerComponent.containsKey(componentName)) {
+                CurrentProcessingFileInformation fileInformation = currentProcessingLogFilePerComponent
+                        .get(componentName);
+                if (fileInformation.fileHash.equals(fileHash)) {
+                    currentProcessingLogFilePerComponent.remove(componentName);
                 }
-            } else {
-                // Add the file to the current processing list for the component.
-                // Note: There should always be only 1 file which will be in progress at any given time.
-                // @deprecated The fileName is deprecated value in versions greater than 2.2, but keep it here to avoid
-                // upgrade-downgrade issues.
-                CurrentProcessingFileInformation processingFileInformation =
-                        CurrentProcessingFileInformation.builder()
-                                .fileName(fileName)
-                                .startPosition(cloudWatchAttemptLogFileInformation.getStartPosition()
-                                        + cloudWatchAttemptLogFileInformation.getBytesRead())
-                                .lastModifiedTime(cloudWatchAttemptLogFileInformation.getLastModifiedTime())
-                                .fileHash(fileHash)
-                                .build();
-                currentProcessingLogFilePerComponent.put(attemptLogInformation.getComponentName(),
-                        processingFileInformation);
             }
-        } catch (InvalidLogGroupException e) {
-            logger.atDebug().cause(e).log("Invalid log group");
+        } else {
+            // Add the file to the current processing list for the component.
+            // Note: There should always be only 1 file which will be in progress at any given time.
+            // @deprecated The fileName is deprecated value in versions greater than 2.2, but keep it here to avoid
+            // upgrade-downgrade issues.
+            CurrentProcessingFileInformation processingFileInformation =
+                    CurrentProcessingFileInformation.builder()
+                            .fileName(fileName)
+                            .startPosition(cloudWatchAttemptLogFileInformation.getStartPosition()
+                                    + cloudWatchAttemptLogFileInformation.getBytesRead())
+                            .lastModifiedTime(cloudWatchAttemptLogFileInformation.getLastModifiedTime())
+                            .fileHash(fileHash)
+                            .build();
+            currentProcessingLogFilePerComponent.put(attemptLogInformation.getComponentName(),
+                    processingFileInformation);
         }
     }
 

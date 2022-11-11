@@ -137,16 +137,16 @@ class SpaceManagementTest extends BaseITCase {
         }
 
         Pattern logFileNamePattern = Pattern.compile("^integTestRandomLogFiles.log\\w*");
-        LogFileGroup logFileGroup = LogFileGroup.create(logFileNamePattern, tempDirectoryPath.toUri(), mockInstant);
         // Then
 
         assertThat("log group size should eventually be less than 105 KB",() -> {
             try {
-                logFileGroup.syncDirectory();
+                LogFileGroup logFileGroup =
+                        LogFileGroup.create(logFileNamePattern, tempDirectoryPath.toUri(), mockInstant);
                 long kb = logFileGroup.totalSizeInBytes() / 1024;
                 return kb <= 105;
             } catch (InvalidLogGroupException e) {
-                return  false;
+                return false;
             }
         }, eventuallyEval(is(true), Duration.ofSeconds(60)));
     }

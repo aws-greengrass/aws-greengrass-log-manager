@@ -27,6 +27,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.extension.ExtensionContext;
+import org.junit.jupiter.api.io.TempDir;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
 import org.mockito.Mock;
@@ -79,6 +80,8 @@ import static org.mockito.Mockito.when;
 @SuppressWarnings("PMD.UnsynchronizedStaticFormatter")
 @ExtendWith({GGExtension.class, MockitoExtension.class})
 class LogManagerTest extends BaseITCase {
+    @TempDir
+    private Path workDir;
     private static final String THING_NAME = "ThingName";
     private static final String AWS_REGION = "us-east-1";
     private static Kernel kernel;
@@ -189,7 +192,8 @@ class LogManagerTest extends BaseITCase {
                 request.logEvents().stream().mapToLong(value -> value.message().length()).sum());
 
         Pattern logFileNamePattern = Pattern.compile("^integTestRandomLogFiles.log\\w*");
-        LogFileGroup logFileGroup = LogFileGroup.create(logFileNamePattern, tempDirectoryPath.toUri(), mockInstant);
+        LogFileGroup logFileGroup =
+                LogFileGroup.create(logFileNamePattern, tempDirectoryPath.toUri(), mockInstant, workDir);
         assertEquals(1, logFileGroup.getLogFiles().size());
     }
 
@@ -226,7 +230,8 @@ class LogManagerTest extends BaseITCase {
         assertEquals(DEFAULT_FILE_SIZE * testFileNumber,
                 request.logEvents().stream().mapToLong(value -> value.message().length()).sum());
         Pattern logFileNamePattern = Pattern.compile("^UserComponentB\\w*.log");
-        LogFileGroup logFileGroup = LogFileGroup.create(logFileNamePattern, tempDirectoryPath.toUri(), mockInstant);
+        LogFileGroup logFileGroup =
+                LogFileGroup.create(logFileNamePattern, tempDirectoryPath.toUri(), mockInstant, workDir);
         assertEquals(1, logFileGroup.getLogFiles().size());
     }
 
@@ -263,7 +268,8 @@ class LogManagerTest extends BaseITCase {
                 >= DEFAULT_FILE_SIZE * testFileNumber);
 
         Pattern logFileNamePattern = Pattern.compile(String.format(DEFAULT_FILE_REGEX, fileName));
-        LogFileGroup logFileGroup = LogFileGroup.create(logFileNamePattern, tempDirectoryPath.toUri(), mockInstant);
+        LogFileGroup logFileGroup =
+                LogFileGroup.create(logFileNamePattern, tempDirectoryPath.toUri(), mockInstant, workDir);
         assertEquals(1, logFileGroup.getLogFiles().size());
     }
 
@@ -313,7 +319,8 @@ class LogManagerTest extends BaseITCase {
                     request.logEvents().stream().mapToLong(value -> value.message().length()).sum());
         }
         Pattern logFileNamePattern = Pattern.compile("^integTestRandomLogFiles.log\\w*");
-        LogFileGroup logFileGroup = LogFileGroup.create(logFileNamePattern, tempDirectoryPath.toUri(), mockInstant);
+        LogFileGroup logFileGroup =
+                LogFileGroup.create(logFileNamePattern, tempDirectoryPath.toUri(), mockInstant, workDir);
         assertEquals(1, logFileGroup.getLogFiles().size());
     }
 

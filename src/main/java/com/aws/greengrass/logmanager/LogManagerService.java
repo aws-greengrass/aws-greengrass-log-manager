@@ -109,7 +109,6 @@ public class LogManagerService extends PluginService {
     public static final String UPLOAD_TO_CW_CONFIG_TOPIC_NAME = "uploadToCloudWatch";
     public static final String MULTILINE_PATTERN_CONFIG_TOPIC_NAME = "multiLineStartPattern";
     public static final int DEFAULT_PERIODIC_UPDATE_INTERVAL_SEC = 300;
-    public static final String HARDLINK_DIRECTORY = "hardlinks";
     private final Object spaceManagementLock = new Object();
     private final List<Consumer<EventType>> serviceStatusListeners = new ArrayList<>();
 
@@ -128,8 +127,7 @@ public class LogManagerService extends PluginService {
     @Getter
     private int periodicUpdateIntervalSec;
     private Future<?> spaceManagementThread;
-    @SuppressWarnings("PMD.UnusedPrivateField")
-    private final Path hardlinksDirectoryPath;
+    private final Path workDir;
 
     /**
      * Constructor.
@@ -146,7 +144,7 @@ public class LogManagerService extends PluginService {
         this.uploader = uploader;
         this.logsProcessor = logProcessor;
         this.executorService = executorService;
-        this.hardlinksDirectoryPath = nucleusPaths.workPath(LOGS_UPLOADER_SERVICE_TOPICS).resolve(HARDLINK_DIRECTORY);
+        this.workDir = nucleusPaths.workPath(LOGS_UPLOADER_SERVICE_TOPICS);
 
         topics.lookupTopics(CONFIGURATION_CONFIG_KEY).subscribe((why, newv) -> {
             if (why == WhatHappened.timestampUpdated) {
@@ -609,9 +607,8 @@ public class LogManagerService extends PluginService {
                                 Instant.EPOCH);
 
                 try {
-                    LogFileGroup logFileGroup =
-                            LogFileGroup.create(componentLogConfiguration.getFileNameRegex(),
-                                    componentLogConfiguration.getDirectoryPath().toUri(), lastUploadedLogFileTimeMs);
+                    LogFileGroup logFileGroup = LogFileGroup.create(componentLogConfiguration.getFileNameRegex(),
+                            componentLogConfiguration.getDirectoryPath().toUri(), lastUploadedLogFileTimeMs, workDir);
 
                     if (logFileGroup.isEmpty()) {
                         continue;

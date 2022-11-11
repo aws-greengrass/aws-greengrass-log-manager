@@ -6,6 +6,7 @@ import lombok.Getter;
 
 import java.io.File;
 import java.net.URI;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -34,10 +35,11 @@ public final class LogFileGroup {
      * @param filePattern the fileNameRegex used for each component to recognize its log files.
      * @param directoryURI the directory path of the log files of component.
      * @param lastUpdated the saved updated time of the last uploaded log of a component.
+     * @param workDir component work directory
      * @return list of logFile.
      * @throws InvalidLogGroupException the exception if this is not a valid directory.
      */
-    public static LogFileGroup create(Pattern filePattern, URI directoryURI, Instant lastUpdated)
+    public static LogFileGroup create(Pattern filePattern, URI directoryURI, Instant lastUpdated, Path workDir)
             throws InvalidLogGroupException {
         File folder = new File(directoryURI);
 

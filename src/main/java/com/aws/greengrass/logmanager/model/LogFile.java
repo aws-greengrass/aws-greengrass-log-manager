@@ -11,8 +11,6 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
-import java.nio.channels.Channels;
-import java.nio.channels.SeekableByteChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.security.NoSuchAlgorithmException;
@@ -57,35 +55,10 @@ public class LogFile extends File {
         return Arrays.stream(files).map(LogFile::of).toArray(LogFile[]::new);
     }
 
-    private String readBytesToString(SeekableByteChannel chan) {
-        byte[] bytesReadArray = new byte[bytesNeeded];
-        int bytesRead;
-        try (InputStream r = Channels.newInputStream(chan)) {
-            bytesRead = r.read(bytesReadArray);
-            String bytesReadString = new String(bytesReadArray, StandardCharsets.UTF_8);
-            // if there is an entire line before 1KB, we hash the line; Otherwise, we hash 1KB to prevent super long
-            // single line.
-            if (bytesReadString.indexOf('\n') > -1) {
-                return bytesReadString.substring(0, bytesReadString.indexOf('\n') + 1);
-            }
-            if (bytesRead >= bytesNeeded) {
-                return bytesReadString;
-            }
-        } catch (FileNotFoundException e) {
-            // The file may be deleted as expected.
-            logger.atDebug().cause(e).log("The file {} does not exist", this.getAbsolutePath());
-        } catch (IOException e) {
-            // File may not exist
-            logger.atError().cause(e).log("Unable to read file {}", this.getAbsolutePath());
-        }
-        return "";
-    }
-
     /**
      * Read target bytes from the file.
      * @return read byte array.
      */
-    @Deprecated
     private String readBytesToString() {
         byte[] bytesReadArray = new byte[bytesNeeded];
         int bytesRead;
@@ -112,31 +85,8 @@ public class LogFile extends File {
 
     /**
      * Get the hash of the logfile with target lines.
-     *
-     * @param chan SeekableByteChannel for a given log file
      * @return the calculated hash value of the logfile, empty string if not enough lines for digest.
      */
-    public String hashString(SeekableByteChannel chan) {
-        String fileHash = HASH_VALUE_OF_EMPTY_STRING;
-        try {
-            if (!this.exists()) {
-                return fileHash;
-            }
-            String stringToHash = readBytesToString(chan);
-            if (!stringToHash.isEmpty()) {
-                fileHash = calculate(stringToHash);
-            }
-        }  catch (NoSuchAlgorithmException e) {
-            logger.atError().cause(e).log("The digest algorithm is invalid");
-        }
-        return fileHash;
-    }
-
-    /**
-     * Get the hash of the logfile with target lines.
-     * @return the calculated hash value of the logfile, empty string if not enough lines for digest.
-     */
-    @Deprecated
     public String hashString() {
         String fileHash = HASH_VALUE_OF_EMPTY_STRING;
         try {

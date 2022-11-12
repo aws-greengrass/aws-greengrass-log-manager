@@ -44,7 +44,7 @@ public class LogFileGroupTest {
         Pattern pattern = Pattern.compile("^greengrass_test.log\\w*$");
         ComponentLogConfiguration compLogInfo = ComponentLogConfiguration.builder()
                 .directoryPath(directoryPath)
-                .fileNameRegex(pattern).build();
+                .fileNameRegex(pattern).name("greengrass_test").build();
         Instant instant = Instant.EPOCH;
         LogFileGroup logFileGroup = LogFileGroup.create(compLogInfo, instant, workDir);
 

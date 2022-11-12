@@ -622,7 +622,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         createLogFileWithSize(directoryPath.resolve("testlogs2.log_active").toUri(), 2943);
         ComponentLogConfiguration compLogInfo = ComponentLogConfiguration.builder()
                 .directoryPath(directoryPath)
-                .fileNameRegex(pattern1).build();
+                .fileNameRegex(pattern1).name("TestComponent2").build();
         LogFileGroup lastProcessedLogFileGroup =
                 LogFileGroup.create(compLogInfo, mockInstant, workdirectory);
         assertEquals(2, lastProcessedLogFileGroup.getLogFiles().size());
@@ -635,7 +635,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         Pattern pattern2 = Pattern.compile("^testlogs1.log$");
         ComponentLogConfiguration compLogInfo2 = ComponentLogConfiguration.builder()
                 .directoryPath(directoryPath)
-                .fileNameRegex(pattern2).build();
+                .fileNameRegex(pattern2).name("TestComponent1").build();
         LogFileGroup processingLogFileGroup = LogFileGroup.create(compLogInfo2,
                 Instant.ofEpochMilli(processingFile.lastModified() - 1), workdirectory);
         assertEquals(1, processingLogFileGroup.getLogFiles().size());
@@ -881,7 +881,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         Pattern pattern = Pattern.compile("^log2.txt\\w*");
         ComponentLogConfiguration compLogInfo = ComponentLogConfiguration.builder()
                 .directoryPath(directoryPath)
-                .fileNameRegex(pattern).build();
+                .fileNameRegex(pattern).name("UserComponentA").build();
         LogFileGroup logFileGroup = LogFileGroup.create( compLogInfo, instant, workdirectory);
         Map<String, CloudWatchAttemptLogFileInformation> attemptLogFileInformationMap1 = new HashMap<>();
         attemptLogFileInformationMap1.put(file1.hashString(), CloudWatchAttemptLogFileInformation.builder()

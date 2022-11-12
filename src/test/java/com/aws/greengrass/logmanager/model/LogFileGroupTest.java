@@ -42,8 +42,11 @@ public class LogFileGroupTest {
         writeFile(file2, bytesArray2);
 
         Pattern pattern = Pattern.compile("^greengrass_test.log\\w*$");
+        ComponentLogConfiguration compLogInfo = ComponentLogConfiguration.builder()
+                .directoryPath(directoryPath)
+                .fileNameRegex(pattern).build();
         Instant instant = Instant.EPOCH;
-        LogFileGroup logFileGroup = LogFileGroup.create(pattern, file.getParentFile().toURI(), instant, workDir);
+        LogFileGroup logFileGroup = LogFileGroup.create(compLogInfo, instant, workDir);
 
         assertEquals(2, logFileGroup.getLogFiles().size());
         assertFalse(logFileGroup.isActiveFile(file));

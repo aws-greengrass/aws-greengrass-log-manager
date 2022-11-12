@@ -13,6 +13,7 @@ import com.aws.greengrass.lifecyclemanager.Kernel;
 import com.aws.greengrass.logging.impl.LogManager;
 import com.aws.greengrass.logmanager.LogManagerService;
 import com.aws.greengrass.logmanager.exceptions.InvalidLogGroupException;
+import com.aws.greengrass.logmanager.model.ComponentLogConfiguration;
 import com.aws.greengrass.logmanager.model.LogFileGroup;
 import com.aws.greengrass.testcommons.testutilities.GGExtension;
 import com.aws.greengrass.util.exceptions.TLSAuthException;
@@ -141,11 +142,13 @@ class SpaceManagementTest extends BaseITCase {
 
         Pattern logFileNamePattern = Pattern.compile("^integTestRandomLogFiles.log\\w*");
         // Then
-
+        ComponentLogConfiguration compLogInfo = ComponentLogConfiguration.builder()
+                .directoryPath(tempDirectoryPath)
+                .fileNameRegex(logFileNamePattern).build();
         assertThat("log group size should eventually be less than 105 KB",() -> {
             try {
                 LogFileGroup logFileGroup =
-                        LogFileGroup.create(logFileNamePattern, tempDirectoryPath.toUri(), mockInstant, workDir);
+                        LogFileGroup.create(compLogInfo, mockInstant, workDir);
                 long kb = logFileGroup.totalSizeInBytes() / 1024;
                 return kb <= 105;
             } catch (InvalidLogGroupException e) {

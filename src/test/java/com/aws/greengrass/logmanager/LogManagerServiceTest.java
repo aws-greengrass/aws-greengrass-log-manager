@@ -16,13 +16,7 @@ import com.aws.greengrass.logging.impl.config.LogConfig;
 import com.aws.greengrass.logging.impl.config.LogStore;
 import com.aws.greengrass.logging.impl.config.model.LogConfigUpdate;
 import com.aws.greengrass.logmanager.exceptions.InvalidLogGroupException;
-import com.aws.greengrass.logmanager.model.CloudWatchAttempt;
-import com.aws.greengrass.logmanager.model.CloudWatchAttemptLogFileInformation;
-import com.aws.greengrass.logmanager.model.CloudWatchAttemptLogInformation;
-import com.aws.greengrass.logmanager.model.ComponentLogFileInformation;
-import com.aws.greengrass.logmanager.model.ComponentType;
-import com.aws.greengrass.logmanager.model.LogFile;
-import com.aws.greengrass.logmanager.model.LogFileGroup;
+import com.aws.greengrass.logmanager.model.*;
 import com.aws.greengrass.testcommons.testutilities.GGExtension;
 import com.aws.greengrass.testcommons.testutilities.GGServiceTestUtil;
 import com.aws.greengrass.util.Coerce;
@@ -626,8 +620,11 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         // Create another file intentionally, so that the lastProcessedFile will be processed.
         TimeUnit.SECONDS.sleep(5);
         createLogFileWithSize(directoryPath.resolve("testlogs2.log_active").toUri(), 2943);
+        ComponentLogConfiguration compLogInfo = ComponentLogConfiguration.builder()
+                .directoryPath(directoryPath)
+                .fileNameRegex(pattern1).build();
         LogFileGroup lastProcessedLogFileGroup =
-                LogFileGroup.create(pattern1, lastProcessedFile.getParentFile().toURI(), mockInstant, workdirectory);
+                LogFileGroup.create(compLogInfo, mockInstant, workdirectory);
         assertEquals(2, lastProcessedLogFileGroup.getLogFiles().size());
         assertFalse(lastProcessedLogFileGroup.isActiveFile(lastProcessedFile));
 
@@ -636,7 +633,10 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         TimeUnit.SECONDS.sleep(5);
         LogFile processingFile = createLogFileWithSize(directoryPath.resolve("testlogs1.log").toUri(), 1061);
         Pattern pattern2 = Pattern.compile("^testlogs1.log$");
-        LogFileGroup processingLogFileGroup = LogFileGroup.create(pattern2, processingFile.getParentFile().toURI(),
+        ComponentLogConfiguration compLogInfo2 = ComponentLogConfiguration.builder()
+                .directoryPath(directoryPath)
+                .fileNameRegex(pattern2).build();
+        LogFileGroup processingLogFileGroup = LogFileGroup.create(compLogInfo2,
                 Instant.ofEpochMilli(processingFile.lastModified() - 1), workdirectory);
         assertEquals(1, processingLogFileGroup.getLogFiles().size());
         assertTrue(processingLogFileGroup.isActiveFile(processingFile));
@@ -879,7 +879,10 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         LogFile file2 = new LogFile(directoryPath.resolve(fileNames.get(1)).toUri());
 
         Pattern pattern = Pattern.compile("^log2.txt\\w*");
-        LogFileGroup logFileGroup = LogFileGroup.create(pattern, file1.getParentFile().toURI(), instant, workdirectory);
+        ComponentLogConfiguration compLogInfo = ComponentLogConfiguration.builder()
+                .directoryPath(directoryPath)
+                .fileNameRegex(pattern).build();
+        LogFileGroup logFileGroup = LogFileGroup.create( compLogInfo, instant, workdirectory);
         Map<String, CloudWatchAttemptLogFileInformation> attemptLogFileInformationMap1 = new HashMap<>();
         attemptLogFileInformationMap1.put(file1.hashString(), CloudWatchAttemptLogFileInformation.builder()
                 .startPosition(0)

@@ -54,8 +54,8 @@ public final class LogFileGroup {
         if (!folder.isDirectory()) {
             throw new InvalidLogGroupException(String.format("%s must be a directory", directoryURI));
         }
-        Pattern filePattern = componentLogConfiguration.getFileNameRegex();
-        Path componentHardlinksDirectory = workDir.resolve(filePattern.toString());
+        String componentName = componentLogConfiguration.getName();
+        Path componentHardlinksDirectory = workDir.resolve(componentName);
         try {
             Utils.deleteFileRecursively(componentHardlinksDirectory.toFile());
             Utils.createPaths(componentHardlinksDirectory);
@@ -65,8 +65,11 @@ public final class LogFileGroup {
         }
 
         File[] files = folder.listFiles();
-        if (files == null) {
-            logger.atWarn().log("logFiles is null");
+        Pattern filePattern = componentLogConfiguration.getFileNameRegex();
+        if (files == null || files.length == 0) {
+            logger.atDebug().kv("component",componentName)
+                    .kv("directory", directoryURI)
+                    .log("No component logs are found in the directory");
             return new LogFileGroup(Collections.emptyList(), filePattern, new HashMap<>());
         }
 

@@ -32,15 +32,17 @@ public final class LogFileGroup {
 
     /**
      * Create a list of Logfiles that are sorted based on lastModified time.
-     * @param filePattern the fileNameRegex used for each component to recognize its log files.
-     * @param directoryURI the directory path of the log files of component.
-     * @param lastUpdated the saved updated time of the last uploaded log of a component.
-     * @param workDir component work directory
+     *
+     * @param componentLogConfiguration component log configuration
+     * @param lastUpdated               the saved updated time of the last uploaded log of a component.
+     * @param workDir                   component work directory
      * @return list of logFile.
      * @throws InvalidLogGroupException the exception if this is not a valid directory.
      */
-    public static LogFileGroup create(Pattern filePattern, URI directoryURI, Instant lastUpdated, Path workDir)
+    public static LogFileGroup create(ComponentLogConfiguration componentLogConfiguration,
+                                      Instant lastUpdated, Path workDir)
             throws InvalidLogGroupException {
+        URI directoryURI = componentLogConfiguration.getDirectoryPath().toUri();
         File folder = new File(directoryURI);
 
         if (!folder.isDirectory()) {
@@ -50,6 +52,7 @@ public final class LogFileGroup {
         LogFile[] files = LogFile.of(folder.listFiles());
         List<LogFile> allFiles = new ArrayList<>();
         Map<String, LogFile> fileHashToLogFileMap = new ConcurrentHashMap<>();
+        Pattern filePattern = componentLogConfiguration.getFileNameRegex();
         if (files.length != 0) {
             for (LogFile file: files) {
                 String fileHash = file.hashString();

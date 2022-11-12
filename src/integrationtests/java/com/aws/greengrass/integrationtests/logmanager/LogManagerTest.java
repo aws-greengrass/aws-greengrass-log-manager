@@ -16,6 +16,7 @@ import com.aws.greengrass.logging.impl.config.LogConfig;
 import com.aws.greengrass.logging.impl.config.LogStore;
 import com.aws.greengrass.logging.impl.config.model.LogConfigUpdate;
 import com.aws.greengrass.logmanager.LogManagerService;
+import com.aws.greengrass.logmanager.model.ComponentLogConfiguration;
 import com.aws.greengrass.logmanager.model.EventType;
 import com.aws.greengrass.logmanager.model.LogFileGroup;
 import com.aws.greengrass.testcommons.testutilities.GGExtension;
@@ -192,8 +193,11 @@ class LogManagerTest extends BaseITCase {
                 request.logEvents().stream().mapToLong(value -> value.message().length()).sum());
 
         Pattern logFileNamePattern = Pattern.compile("^integTestRandomLogFiles.log\\w*");
+        ComponentLogConfiguration compLogInfo = ComponentLogConfiguration.builder()
+                .directoryPath(tempDirectoryPath)
+                .fileNameRegex(logFileNamePattern).build();
         LogFileGroup logFileGroup =
-                LogFileGroup.create(logFileNamePattern, tempDirectoryPath.toUri(), mockInstant, workDir);
+                LogFileGroup.create(compLogInfo, mockInstant, workDir);
         assertEquals(1, logFileGroup.getLogFiles().size());
     }
 
@@ -230,8 +234,11 @@ class LogManagerTest extends BaseITCase {
         assertEquals(DEFAULT_FILE_SIZE * testFileNumber,
                 request.logEvents().stream().mapToLong(value -> value.message().length()).sum());
         Pattern logFileNamePattern = Pattern.compile("^UserComponentB\\w*.log");
+        ComponentLogConfiguration compLogInfo = ComponentLogConfiguration.builder()
+                .directoryPath(tempDirectoryPath)
+                .fileNameRegex(logFileNamePattern).build();
         LogFileGroup logFileGroup =
-                LogFileGroup.create(logFileNamePattern, tempDirectoryPath.toUri(), mockInstant, workDir);
+                LogFileGroup.create(compLogInfo, mockInstant, workDir);
         assertEquals(1, logFileGroup.getLogFiles().size());
     }
 
@@ -268,8 +275,11 @@ class LogManagerTest extends BaseITCase {
                 >= DEFAULT_FILE_SIZE * testFileNumber);
 
         Pattern logFileNamePattern = Pattern.compile(String.format(DEFAULT_FILE_REGEX, fileName));
+        ComponentLogConfiguration compLogInfo = ComponentLogConfiguration.builder()
+                .directoryPath(tempDirectoryPath)
+                .fileNameRegex(logFileNamePattern).build();
         LogFileGroup logFileGroup =
-                LogFileGroup.create(logFileNamePattern, tempDirectoryPath.toUri(), mockInstant, workDir);
+                LogFileGroup.create(compLogInfo, mockInstant, workDir);
         assertEquals(1, logFileGroup.getLogFiles().size());
     }
 
@@ -319,8 +329,11 @@ class LogManagerTest extends BaseITCase {
                     request.logEvents().stream().mapToLong(value -> value.message().length()).sum());
         }
         Pattern logFileNamePattern = Pattern.compile("^integTestRandomLogFiles.log\\w*");
+        ComponentLogConfiguration compLogInfo = ComponentLogConfiguration.builder()
+                .directoryPath(tempDirectoryPath)
+                .fileNameRegex(logFileNamePattern).build();
         LogFileGroup logFileGroup =
-                LogFileGroup.create(logFileNamePattern, tempDirectoryPath.toUri(), mockInstant, workDir);
+                LogFileGroup.create(compLogInfo, mockInstant, workDir);
         assertEquals(1, logFileGroup.getLogFiles().size());
     }
 

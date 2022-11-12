@@ -607,8 +607,8 @@ public class LogManagerService extends PluginService {
                                 Instant.EPOCH);
 
                 try {
-                    LogFileGroup logFileGroup = LogFileGroup.create(componentLogConfiguration.getFileNameRegex(),
-                            componentLogConfiguration.getDirectoryPath().toUri(), lastUploadedLogFileTimeMs, workDir);
+                    LogFileGroup logFileGroup = LogFileGroup.create(componentLogConfiguration,
+                            lastUploadedLogFileTimeMs, workDir);
 
                     if (logFileGroup.isEmpty()) {
                         continue;

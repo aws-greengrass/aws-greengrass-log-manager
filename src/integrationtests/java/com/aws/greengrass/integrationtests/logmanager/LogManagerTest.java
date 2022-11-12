@@ -195,7 +195,7 @@ class LogManagerTest extends BaseITCase {
         Pattern logFileNamePattern = Pattern.compile("^integTestRandomLogFiles.log\\w*");
         ComponentLogConfiguration compLogInfo = ComponentLogConfiguration.builder()
                 .directoryPath(tempDirectoryPath)
-                .fileNameRegex(logFileNamePattern).build();
+                .fileNameRegex(logFileNamePattern).name("UserComponentA").build();
         LogFileGroup logFileGroup =
                 LogFileGroup.create(compLogInfo, mockInstant, workDir);
         assertEquals(1, logFileGroup.getLogFiles().size());
@@ -236,7 +236,7 @@ class LogManagerTest extends BaseITCase {
         Pattern logFileNamePattern = Pattern.compile("^UserComponentB\\w*.log");
         ComponentLogConfiguration compLogInfo = ComponentLogConfiguration.builder()
                 .directoryPath(tempDirectoryPath)
-                .fileNameRegex(logFileNamePattern).build();
+                .fileNameRegex(logFileNamePattern).name("UserComponentB").build();
         LogFileGroup logFileGroup =
                 LogFileGroup.create(compLogInfo, mockInstant, workDir);
         assertEquals(1, logFileGroup.getLogFiles().size());
@@ -277,7 +277,7 @@ class LogManagerTest extends BaseITCase {
         Pattern logFileNamePattern = Pattern.compile(String.format(DEFAULT_FILE_REGEX, fileName));
         ComponentLogConfiguration compLogInfo = ComponentLogConfiguration.builder()
                 .directoryPath(tempDirectoryPath)
-                .fileNameRegex(logFileNamePattern).build();
+                .fileNameRegex(logFileNamePattern).name("System").build();
         LogFileGroup logFileGroup =
                 LogFileGroup.create(compLogInfo, mockInstant, workDir);
         assertEquals(1, logFileGroup.getLogFiles().size());
@@ -331,7 +331,7 @@ class LogManagerTest extends BaseITCase {
         Pattern logFileNamePattern = Pattern.compile("^integTestRandomLogFiles.log\\w*");
         ComponentLogConfiguration compLogInfo = ComponentLogConfiguration.builder()
                 .directoryPath(tempDirectoryPath)
-                .fileNameRegex(logFileNamePattern).build();
+                .fileNameRegex(logFileNamePattern).name("UserComponentA").build();
         LogFileGroup logFileGroup =
                 LogFileGroup.create(compLogInfo, mockInstant, workDir);
         assertEquals(1, logFileGroup.getLogFiles().size());

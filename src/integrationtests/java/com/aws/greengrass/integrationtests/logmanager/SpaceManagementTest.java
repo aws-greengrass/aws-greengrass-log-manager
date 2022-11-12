@@ -144,7 +144,7 @@ class SpaceManagementTest extends BaseITCase {
         // Then
         ComponentLogConfiguration compLogInfo = ComponentLogConfiguration.builder()
                 .directoryPath(tempDirectoryPath)
-                .fileNameRegex(logFileNamePattern).build();
+                .fileNameRegex(logFileNamePattern).name("IntegrationTestsTemporaryLogFiles").build();
         assertThat("log group size should eventually be less than 105 KB",() -> {
             try {
                 LogFileGroup logFileGroup =

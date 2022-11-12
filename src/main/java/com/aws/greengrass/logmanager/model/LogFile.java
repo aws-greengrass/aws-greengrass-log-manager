@@ -13,8 +13,8 @@ import java.io.InputStream;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.security.NoSuchAlgorithmException;
-import java.util.Arrays;
 
 import static com.aws.greengrass.util.Digest.calculate;
 
@@ -25,34 +25,42 @@ public class LogFile extends File {
     private static final Logger logger = LogManager.getLogger(LogManagerService.class);
     public static final int bytesNeeded = 1024;
     public static final String HASH_VALUE_OF_EMPTY_STRING = "";
+    @SuppressWarnings("PMD.UnusedPrivateField")
+    private final String sourcePath;
 
-    public LogFile(String pathname) {
-        super(pathname);
+    public LogFile(Path sourcePath, Path hardLinkPath) {
+        super(hardLinkPath.toString());
+        this.sourcePath = sourcePath.toString();
     }
 
     public LogFile(URI uri) {
         super(uri);
+        this.sourcePath = uri.getPath();
     }
 
     /**
      * Convert the file to LogFile.
      * @param file The file to be converted.
-     * @return
      */
     public static LogFile of(File file) {
-        return new LogFile(file.getAbsolutePath());
+        return new LogFile(file.toURI());
     }
 
     /**
-     * Convert list of files to list of LogFiles.
-     * @param files The list of files to be converted.
-     * @return
+     * Convert the file to LogFile.
+     *
+     * @param sourceFile        The file to be converted.
+     * @param hardLinkDirectory path where the hardlink should be stored
+     * @throws IOException if can't find the source path
      */
-    public static LogFile[] of(File... files) {
-        if (files == null) {
-            return new LogFile[] {};
-        }
-        return Arrays.stream(files).map(LogFile::of).toArray(LogFile[]::new);
+    public static LogFile of(File sourceFile, Path hardLinkDirectory) throws IOException {
+        // Why do we need this? - Hardlinks can't get the path of their source file. We need to keep track of which path
+        // it was originally created with and in case the file on that path changes we need to scan the directory to
+        // check for the inode that matches the hardlink to get the correct path.
+        Path destinationPath = hardLinkDirectory.resolve(sourceFile.getName());
+        Path sourcePath = sourceFile.toPath();
+        Files.createLink(destinationPath, sourcePath);
+        return new LogFile(sourcePath, destinationPath);
     }
 
     /**
@@ -97,7 +105,7 @@ public class LogFile extends File {
             if (!stringToHash.isEmpty()) {
                 fileHash = calculate(stringToHash);
             }
-        }  catch (NoSuchAlgorithmException e) {
+        } catch (NoSuchAlgorithmException e) {
             logger.atError().cause(e).log("The digest algorithm is invalid");
         }
         return fileHash;
@@ -107,4 +115,12 @@ public class LogFile extends File {
         return Utils.isEmpty(this.hashString());
     }
 
+    /**
+     * Returns the source path of the file original file.
+     */
+    public String getSourcePath() {
+        // TODO: This is wrong the file could have rotated by the time we call this and if we do that then we might
+        //  end up deleting or returning a path for a file that is no the same the hardlink INODE is tracking
+        return sourcePath;
+    }
 }

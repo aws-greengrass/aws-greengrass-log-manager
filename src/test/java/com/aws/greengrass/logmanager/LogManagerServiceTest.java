@@ -754,7 +754,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         assertThat(componentLogFileInformation.getLogFileInformationList(), IsNot.not(IsEmptyCollection.empty()));
         assertTrue(componentLogFileInformation.getLogFileInformationList().size() >= 2);
         componentLogFileInformation.getLogFileInformationList().forEach(logFileInformation -> {
-            if (logFileInformation.getLogFile().getAbsolutePath().equals(currentProcessingFile.getAbsolutePath())) {
+            if (logFileInformation.getLogFile().getSourcePath().equals(currentProcessingFile.getSourcePath())) {
                 assertEquals(2, logFileInformation.getStartPosition());
             } else {
                 assertEquals(0, logFileInformation.getStartPosition());

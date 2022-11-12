@@ -1,15 +1,20 @@
 package com.aws.greengrass.logmanager.model;
 
+import com.aws.greengrass.logging.api.Logger;
+import com.aws.greengrass.logging.impl.LogManager;
 import com.aws.greengrass.logmanager.exceptions.InvalidLogGroupException;
 import com.aws.greengrass.util.Utils;
 import lombok.Getter;
 
 import java.io.File;
+import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -18,6 +23,7 @@ import java.util.regex.Pattern;
 
 
 public final class LogFileGroup {
+    private static final Logger logger = LogManager.getLogger(LogFileGroup.class);
     @Getter
     private List<LogFile> logFiles;
     private final Map<String, LogFile> fileHashToLogFile;
@@ -48,25 +54,38 @@ public final class LogFileGroup {
         if (!folder.isDirectory()) {
             throw new InvalidLogGroupException(String.format("%s must be a directory", directoryURI));
         }
-
-        LogFile[] files = LogFile.of(folder.listFiles());
-        List<LogFile> allFiles = new ArrayList<>();
-        Map<String, LogFile> fileHashToLogFileMap = new ConcurrentHashMap<>();
         Pattern filePattern = componentLogConfiguration.getFileNameRegex();
-        if (files.length != 0) {
-            for (LogFile file: files) {
-                String fileHash = file.hashString();
-                boolean isModifiedAfterLastUpdatedFile =
-                        lastUpdated.isBefore(Instant.ofEpochMilli(file.lastModified()));
-                boolean isNameMatchPattern = filePattern.matcher(file.getName()).find();
-                boolean isEmptyFileHash = Utils.isEmpty(fileHash);
+        Path componentHardlinksDirectory = workDir.resolve(filePattern.toString());
+        try {
+            Utils.deleteFileRecursively(componentHardlinksDirectory.toFile());
+            Utils.createPaths(componentHardlinksDirectory);
+        } catch (IOException e) {
+            throw new InvalidLogGroupException(
+                    String.format("%s failed to create hard link directory", componentHardlinksDirectory), e);
+        }
 
-                if (file.isFile()
-                        && isModifiedAfterLastUpdatedFile
-                        && isNameMatchPattern
-                        && !isEmptyFileHash) {
-                    allFiles.add(file);
-                    fileHashToLogFileMap.put(fileHash, file);
+        File[] files = folder.listFiles();
+        if (files == null) {
+            logger.atWarn().log("logFiles is null");
+            return new LogFileGroup(Collections.emptyList(), filePattern, new HashMap<>());
+        }
+
+        Map<String, LogFile> fileHashToLogFileMap = new ConcurrentHashMap<>();
+        List<LogFile> allFiles = new ArrayList<>();
+        // TODO: We have to add the rotation detection mechanism here otherwise there is a chance that while we are
+        //  looping and creating the hardlinks the files gets rotated so the path that
+        for (File file : files) {
+            boolean isModifiedAfterLastUpdatedFile =
+                    lastUpdated.isBefore(Instant.ofEpochMilli(file.lastModified()));
+            boolean isNameMatchPattern = filePattern.matcher(file.getName()).find();
+
+            if (file.isFile() && isModifiedAfterLastUpdatedFile && isNameMatchPattern) {
+                try {
+                    LogFile logfile = LogFile.of(file, componentHardlinksDirectory);
+                    allFiles.add(logfile);
+                    fileHashToLogFileMap.put(logfile.hashString(), logfile);
+                } catch (IOException e) {
+                    logger.atWarn().cause(e).log("Failed to create hardlink");
                 }
             }
         }
@@ -92,15 +111,6 @@ public final class LogFileGroup {
     }
 
     /**
-     * Validate if the hash exists in the current logFileGroup.
-     * @param fileHash the hash of the file.
-     * @return boolean.
-     */
-    public boolean isHashExist(String fileHash) {
-        return fileHashToLogFile.containsKey(fileHash);
-    }
-
-    /**
      * Returns the size in bytes of all the contents being tracked on by the log group.
      */
     public long totalSizeInBytes() {
@@ -121,6 +131,7 @@ public final class LogFileGroup {
             return false;
         }
         LogFile activeFile = logFiles.get(logFiles.size() - 1);
+        // TODO: Check if rotation happened
         return file.hashString().equals(activeFile.hashString());
     }
 }

@@ -7,4 +7,8 @@ public class InvalidLogGroupException extends Exception {
     public InvalidLogGroupException(String s) {
         super(s);
     }
+
+    public InvalidLogGroupException(String s, Exception e) {
+        super(s, e);
+    }
 }

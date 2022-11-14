@@ -473,14 +473,14 @@ public class LogManagerService extends PluginService {
             }
             completedFiles.forEach(file -> {
                 try {
-                    boolean successfullyDeleted = Files.deleteIfExists(file.toPath());
+                    boolean successfullyDeleted = Files.deleteIfExists(Paths.get(file.getSourcePath()));
                     if (successfullyDeleted) {
-                        logger.atDebug().log("Successfully deleted file with name {}", file.getAbsolutePath());
+                        logger.atDebug().log("Successfully deleted file with name {}", file.getSourcePath());
                     } else {
-                        logger.atWarn().log("Unable to delete file with name {}", file.getAbsolutePath());
+                        logger.atWarn().log("Unable to delete file with name {}", file.getSourcePath());
                     }
                 } catch (IOException e) {
-                    logger.atError().cause(e).log("Unable to delete file with name: {}", file.getAbsolutePath());
+                    logger.atError().cause(e).log("Unable to delete file with name: {}", file.getSourcePath());
                 }
             });
         });
@@ -514,15 +514,17 @@ public class LogManagerService extends PluginService {
                                                         CloudWatchAttemptLogFileInformation
                                                                 cloudWatchAttemptLogFileInformation) {
         LogFileGroup logFileGroup = attemptLogInformation.getLogFileGroup();
-        if (!logFileGroup.isHashExist(fileHash)) {
+        LogFile file = logFileGroup.getFile(fileHash);
+
+        if (file == null) {
             logger.atTrace().kv("fileHash", fileHash).log("component",
                     logFileGroup.getFilePattern(), "File not found in directory");
             return;
         }
-        LogFile file = logFileGroup.getFile(fileHash);
+
         // @deprecated  This is deprecated value in versions greater than 2.2, but keep it here to avoid
         // upgrade-downgrade issues.
-        String fileName = file.getAbsolutePath();
+        String fileName = file.getSourcePath();
         // If we have completely read the file, then we need add it to the completed files list and remove it
         // it (if necessary) for the current processing list.
         String componentName = attemptLogInformation.getComponentName();

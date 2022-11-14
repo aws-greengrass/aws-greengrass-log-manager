@@ -446,6 +446,7 @@ public class LogManagerService extends PluginService {
     private void handleCloudWatchAttemptStatus(CloudWatchAttempt cloudWatchAttempt) {
         Map<String, Set<LogFile>> completedLogFilePerComponent = new ConcurrentHashMap<>();
         Map<String, CurrentProcessingFileInformation> currentProcessingLogFilePerComponent = new HashMap<>();
+        logger.info("Uploaded files --------------");
 
         cloudWatchAttempt.getLogStreamUploadedSet().forEach((streamName) -> {
             CloudWatchAttemptLogInformation attemptLogInformation =
@@ -458,12 +459,8 @@ public class LogManagerService extends PluginService {
         });
         completedLogFilePerComponent.forEach((componentName, completedFiles) -> {
             completedFiles.forEach(file -> {
-                if (!lastComponentUploadedLogFileInstantMap.containsKey(componentName)
-                        || lastComponentUploadedLogFileInstantMap.get(componentName)
-                        .isBefore(Instant.ofEpochMilli(file.lastModified()))) {
-                    lastComponentUploadedLogFileInstantMap.put(componentName,
-                            Instant.ofEpochMilli(file.lastModified()));
-                }
+                updatelastComponentUploadedLogFile(lastComponentUploadedLogFileInstantMap, componentName,
+                        file);
             });
             if (!componentLogConfigurations.containsKey(componentName)) {
                 return;
@@ -518,6 +515,7 @@ public class LogManagerService extends PluginService {
         LogFile file = logFileGroup.getFile(fileHash);
 
         if (file == null) {
+            logger.info("FAILED TO FIND FILE {}", fileHash);
             logger.atTrace().kv("fileHash", fileHash).log("component",
                     logFileGroup.getFilePattern(), "File not found in directory");
             return;
@@ -601,6 +599,7 @@ public class LogManagerService extends PluginService {
                         continue;
                     }
 
+
                     ComponentLogFileInformation unitOfWork = ComponentLogFileInformation.builder()
                             .name(componentName)
                             .multiLineStartPattern(componentLogConfiguration.getMultiLineStartPattern())
@@ -633,8 +632,13 @@ public class LogManagerService extends PluginService {
                                     .fileHash(fileHash)
                                     .build();
 
+                            logger.info("Will upload {} {} {}", file.toPath(), file.lastModified(), file.hashString());
+
                             if (startPosition < file.length()) {
                                 unitOfWork.getLogFileInformationList().add(logFileInformation);
+                            } else if (startPosition == file.length() && !logFileGroup.isActiveFile(file)) {
+                                updatelastComponentUploadedLogFile(lastComponentUploadedLogFileInstantMap,
+                                        componentName, file);
                             }
                         }
                     });
@@ -668,6 +672,26 @@ public class LogManagerService extends PluginService {
 
     private void emitEventStatus(EventType eventStatus) {
         serviceStatusListeners.forEach(callback -> callback.accept(eventStatus));
+    }
+
+    /**
+     * This updates the lastComponentUploadedLogFileInstantMap if the current component has a newly uploaded file,
+     * which the lastModified time is larger than saved value of lastModified time.
+     * @param lastComponentUploadedLogFileInstantMap The instant map of all components.
+     * @param componentName componentName.
+     * @param logFile the logFile that is going to be recorded.
+     */
+    private void updatelastComponentUploadedLogFile(Map<String, Instant> lastComponentUploadedLogFileInstantMap,
+                                                    String componentName,
+                                                    LogFile logFile) {
+        logger.info("Uploaded file {}", logFile.toPath());
+        if (!lastComponentUploadedLogFileInstantMap.containsKey(componentName)
+                || lastComponentUploadedLogFileInstantMap.get(componentName)
+                .isBefore(Instant.ofEpochMilli(logFile.lastModified()))) {
+            logger.info("Setting last modified to {} last modified {}", logFile.toPath(), logFile.toPath());
+            lastComponentUploadedLogFileInstantMap.put(componentName,
+                    Instant.ofEpochMilli(logFile.lastModified()));
+        }
     }
 
     @Override

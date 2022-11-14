@@ -37,10 +37,14 @@ public final class LogFileGroup {
     @Getter
     private final Pattern filePattern;
 
-    private LogFileGroup(List<LogFile> files, Pattern filePattern, Map<String, LogFile> hashToFileIndex) {
+    private final boolean fallBack;
+
+    private LogFileGroup(List<LogFile> files, Pattern filePattern, Map<String, LogFile> hashToFileIndex,
+                         boolean fallBack) {
         this.logFiles = files;
         this.filePattern = filePattern;
         this.fileHashToLogFile = hashToFileIndex;
+        this.fallBack = fallBack;
     }
 
     /**
@@ -91,10 +95,11 @@ public final class LogFileGroup {
         File[] files = folder.listFiles();
         if (files == null) {
             logger.atWarn().log("logFiles is null");
-            return new LogFileGroup(Collections.emptyList(), filePattern, new HashMap<>());
+            return new LogFileGroup(Collections.emptyList(), filePattern, new HashMap<>(), false);
         }
 
         Map<String, LogFile> fileHashToLogFile = new ConcurrentHashMap<>();
+        boolean fallBack = false;
         List<LogFile> allFiles;
 
         files = Arrays.stream(files).filter(File::isFile)
@@ -104,10 +109,16 @@ public final class LogFileGroup {
         try {
             allFiles = createLogFiles(files, componentHardlinksDirectory);
         } catch (IOException e) {
+            logger.info("Failed to create log group using hard links. Only uploading rotated files");
+            fallBack = true;
             allFiles = createLogFiles(files);
         }
 
-        return new LogFileGroup(allFiles, filePattern, fileHashToLogFile);
+        allFiles.forEach(logFile -> {
+            fileHashToLogFile.put(logFile.hashString(), logFile);
+        });
+
+        return new LogFileGroup(allFiles, filePattern, fileHashToLogFile, fallBack);
     }
 
     private static List<LogFile> createLogFiles(File[] files, Path hardlinksDirectory) throws
@@ -125,7 +136,7 @@ public final class LogFileGroup {
         return allFiles;
     }
 
-    private static List<LogFile> createLogFiles(File[] files) {
+    private static List<LogFile> createLogFiles(File... files) {
         List<LogFile> allFiles = new ArrayList<>();
 
         for (File file : files) {
@@ -175,6 +186,10 @@ public final class LogFileGroup {
      * @return boolean.
      */
     public boolean isActiveFile(LogFile file) {
+        if (this.fallBack) {
+            return false;
+        }
+
         if (logFiles.isEmpty()) {
             return false;
         }

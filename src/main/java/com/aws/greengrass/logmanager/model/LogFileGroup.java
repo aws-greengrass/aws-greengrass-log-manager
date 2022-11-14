@@ -80,7 +80,7 @@ public final class LogFileGroup {
         }
 
         Map<String, LogFile> fileHashToLogFileMap = new ConcurrentHashMap<>();
-        boolean isUsingHardlinks;
+        boolean isUsingHardlinks = true;
         List<LogFile> allFiles;
 
         files = Arrays.stream(files)
@@ -90,7 +90,6 @@ public final class LogFileGroup {
 
         // Convert files into log files
         try {
-            isUsingHardlinks = true;
             allFiles = convertToLogFiles(files, componentHardlinksDirectory);
         } catch (IOException e) {
             logger.atDebug().cause(e).log("Failed to create hardlinks for files. Falling back to only uploading "

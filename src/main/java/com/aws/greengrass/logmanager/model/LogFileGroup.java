@@ -133,8 +133,13 @@ public final class LogFileGroup {
         if (logFiles.isEmpty()) {
             return false;
         }
+
         LogFile activeFile = logFiles.get(logFiles.size() - 1);
-        // TODO: Check if rotation happened
+
+        if (activeFile.hasRotated()) {
+            return false;
+        }
+
         return file.hashString().equals(activeFile.hashString());
     }
 }

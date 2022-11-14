@@ -12,6 +12,7 @@ import java.net.URI;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -24,16 +25,19 @@ import java.util.regex.Pattern;
 
 public final class LogFileGroup {
     private static final Logger logger = LogManager.getLogger(LogFileGroup.class);
+    private final boolean isUsingHardlinks;
     @Getter
     private List<LogFile> logFiles;
     private final Map<String, LogFile> fileHashToLogFile;
     @Getter
     private final Pattern filePattern;
 
-    private LogFileGroup(List<LogFile> files, Pattern filePattern, Map<String, LogFile> fileHashToLogFile) {
+    private LogFileGroup(List<LogFile> files, Pattern filePattern, Map<String, LogFile> fileHashToLogFile,
+                         boolean isUsingHardlinks) {
         this.logFiles = files;
         this.filePattern = filePattern;
         this.fileHashToLogFile = fileHashToLogFile;
+        this.isUsingHardlinks = isUsingHardlinks;
     }
 
     /**
@@ -56,6 +60,7 @@ public final class LogFileGroup {
         }
         String componentName = componentLogConfiguration.getName();
         Path componentHardlinksDirectory = workDir.resolve(componentName);
+
         try {
             Utils.deleteFileRecursively(componentHardlinksDirectory.toFile());
             Utils.createPaths(componentHardlinksDirectory);
@@ -66,34 +71,88 @@ public final class LogFileGroup {
 
         File[] files = folder.listFiles();
         Pattern filePattern = componentLogConfiguration.getFileNameRegex();
+
         if (files == null || files.length == 0) {
-            logger.atDebug().kv("component",componentName)
+            logger.atDebug().kv("component", componentName)
                     .kv("directory", directoryURI)
                     .log("No component logs are found in the directory");
-            return new LogFileGroup(Collections.emptyList(), filePattern, new HashMap<>());
+            return new LogFileGroup(Collections.emptyList(), filePattern, new HashMap<>(), false);
         }
 
         Map<String, LogFile> fileHashToLogFileMap = new ConcurrentHashMap<>();
-        List<LogFile> allFiles = new ArrayList<>();
+        boolean isUsingHardlinks;
+        List<LogFile> allFiles;
+
+        files = Arrays.stream(files)
+                .filter(File::isFile)
+                .filter(file -> lastUpdated.isBefore(Instant.ofEpochMilli(file.lastModified())))
+                .filter(file -> filePattern.matcher(file.getName()).find()).toArray(File[]::new);
+
+        // Convert files into log files
+        try {
+            isUsingHardlinks = true;
+            allFiles = convertToLogFiles(files, componentHardlinksDirectory);
+        } catch (IOException e) {
+            logger.atDebug().cause(e).log("Failed to create hardlinks for files. Falling back to only uploading "
+                    + "rotated files");
+            isUsingHardlinks = false;
+            allFiles = convertToLogFiles(files);
+        }
+
+        // Cache the logFiles by hash
+        allFiles.forEach(logFile -> {
+            fileHashToLogFileMap.put(logFile.hashString(), logFile);
+        });
+
+        return new LogFileGroup(allFiles, filePattern, fileHashToLogFileMap, isUsingHardlinks);
+    }
+
+    /**
+     * Transform the files into log files that track the file through a hardlink that is created on the
+     * hardLinkDirectory.
+     * Files created this way can be tracked regardless of whether the underlying file rotates.
+     *
+     * @param files             - A array of files
+     * @param hardLinkDirectory - A Path to the hardlink directory. Must be on the same volume the files are being
+     *                          created
+     * @throws IOException - If it fails to create the hard link
+     */
+    private static List<LogFile> convertToLogFiles(File[] files, Path hardLinkDirectory) throws IOException {
+        List<LogFile> logFiles = new ArrayList<>(files.length);
+
         // TODO: We have to add the rotation detection mechanism here otherwise there is a chance that while we are
         //  looping and creating the hardlinks the files gets rotated so the path that
-        for (File file : files) {
-            boolean isModifiedAfterLastUpdatedFile =
-                    lastUpdated.isBefore(Instant.ofEpochMilli(file.lastModified()));
-            boolean isNameMatchPattern = filePattern.matcher(file.getName()).find();
 
-            if (file.isFile() && isModifiedAfterLastUpdatedFile && isNameMatchPattern) {
-                try {
-                    LogFile logfile = LogFile.of(file, componentHardlinksDirectory);
-                    allFiles.add(logfile);
-                    fileHashToLogFileMap.put(logfile.hashString(), logfile);
-                } catch (IOException e) {
-                    logger.atWarn().cause(e).log("Failed to create hardlink");
-                }
-            }
+        // TODO: Retry on NoSuchFileException
+
+        for (File file : files) {
+            logFiles.add(LogFile.of(file, hardLinkDirectory));
         }
-        allFiles.sort(Comparator.comparingLong(LogFile::lastModified));
-        return new LogFileGroup(allFiles, filePattern, fileHashToLogFileMap);
+
+        logFiles.sort(Comparator.comparingLong(LogFile::lastModified));
+
+        return logFiles;
+    }
+
+    /**
+     * Transform the files into log files that point to the path of the file that is being passed in. It behaves the
+     * same
+     * as a java File. It is not resilient to file rotations. Meaning that if the underlying file rotates it will
+     * get a reference to a different file than the one it was originally created with.
+     *
+     * @param files - An array of files
+     */
+    private static List<LogFile> convertToLogFiles(File... files) {
+        List<LogFile> logFiles = new ArrayList<>(files.length);
+
+        for (File file : files) {
+            logFiles.add(LogFile.of(file));
+        }
+
+        logFiles.sort(Comparator.comparingLong(LogFile::lastModified));
+        logFiles.remove(logFiles.size() - 1); // remove the active file
+
+        return logFiles;
     }
 
     public void forEach(Consumer<LogFile> callback) {
@@ -106,6 +165,7 @@ public final class LogFileGroup {
 
     /**
      * Get the LogFile object from the fileHash.
+     *
      * @param fileHash the fileHash obtained from uploader.
      * @return the logFile.
      */
@@ -126,10 +186,15 @@ public final class LogFileGroup {
 
     /**
      * Validate if the logFile is the active of one logFileGroup.
+     *
      * @param file the target file.
      * @return boolean.
      */
     public boolean isActiveFile(LogFile file) {
+        if (!isUsingHardlinks) {
+            return false;
+        }
+
         if (logFiles.isEmpty()) {
             return false;
         }

@@ -16,6 +16,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.security.NoSuchAlgorithmException;
+import java.util.Objects;
 
 import static com.aws.greengrass.util.Digest.calculate;
 
@@ -27,6 +28,7 @@ public class LogFile extends File {
     public static final int bytesNeeded = 1024;
     public static final String HASH_VALUE_OF_EMPTY_STRING = "";
     private final String sourcePath;
+    private String hash = HASH_VALUE_OF_EMPTY_STRING;
 
     public LogFile(Path sourcePath, Path hardLinkPath) {
         super(hardLinkPath.toString());
@@ -96,19 +98,24 @@ public class LogFile extends File {
      * @return the calculated hash value of the logfile, empty string if not enough lines for digest.
      */
     public String hashString() {
-        String fileHash = HASH_VALUE_OF_EMPTY_STRING;
+        if (!Objects.equals(this.hash, HASH_VALUE_OF_EMPTY_STRING)) {
+            return this.hash;
+        }
+
+        if (!this.exists()) {
+            return this.hash;
+        }
+
         try {
-            if (!this.exists()) {
-                return fileHash;
-            }
             String stringToHash = readBytesToString();
             if (!stringToHash.isEmpty()) {
-                fileHash = calculate(stringToHash);
+                this.hash = calculate(stringToHash);
             }
         } catch (NoSuchAlgorithmException e) {
             logger.atError().cause(e).log("The digest algorithm is invalid");
         }
-        return fileHash;
+
+        return this.hash;
     }
 
     public boolean isEmpty() {

@@ -14,6 +14,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -61,9 +62,9 @@ public final class LogFileGroup {
     /**
      * Create a list of Logfiles that are sorted based on lastModified time.
      *
-     * @param filePattern  the fileNameRegex used for each component to recognize its log files.
-     * @param directoryURI the directory path of the log files of component.
-     * @param lastUpdated  the saved updated time of the last uploaded log of a component.
+     * @param filePattern        the fileNameRegex used for each component to recognize its log files.
+     * @param directoryURI       the directory path of the log files of component.
+     * @param lastUpdated        the saved updated time of the last uploaded log of a component.
      * @param hardLinksDirectory path to store hardlinks
      * @return list of logFile.
      * @throws InvalidLogGroupException the exception if this is not a valid directory.
@@ -94,27 +95,48 @@ public final class LogFileGroup {
         }
 
         Map<String, LogFile> fileHashToLogFile = new ConcurrentHashMap<>();
-        List<LogFile> allFiles = new ArrayList<>();
+        List<LogFile> allFiles;
+
+        files = Arrays.stream(files).filter(File::isFile)
+                .filter(f -> filePattern.matcher(f.getName()).find())
+                .filter(f -> lastUpdated.isBefore(Instant.ofEpochMilli(f.lastModified()))).toArray(File[]::new);
+
+        try {
+            allFiles = createLogFiles(files, componentHardlinksDirectory);
+        } catch (IOException e) {
+            allFiles = createLogFiles(files);
+        }
+
+        return new LogFileGroup(allFiles, filePattern, fileHashToLogFile);
+    }
+
+    private static List<LogFile> createLogFiles(File[] files, Path hardlinksDirectory) throws
+            IOException {
         // TODO: We have to add the rotation detection mechanism here otherwise there is a chance that while we are
         //  looping and creating the hardlinks the files gets rotated so the path that
-        for (File file : files) {
-            boolean isModifiedAfterLastUpdatedFile =
-                    lastUpdated.isBefore(Instant.ofEpochMilli(file.lastModified()));
-            boolean isNameMatchPattern = filePattern.matcher(file.getName()).find();
+        List<LogFile> allFiles = new ArrayList<>();
 
-            if (file.isFile() && isModifiedAfterLastUpdatedFile && isNameMatchPattern) {
-                try {
-                    LogFile logfile = LogFile.of(file, componentHardlinksDirectory);
-                    allFiles.add(logfile);
-                    fileHashToLogFile.put(logfile.hashString(), logfile);
-                } catch (IOException e) {
-                    logger.atWarn().cause(e).log("Failed to create hardlink");
-                }
-            }
+        for (File file : files) {
+            LogFile logfile = LogFile.of(file, hardlinksDirectory);
+            allFiles.add(logfile);
         }
 
         allFiles.sort(Comparator.comparingLong(LogFile::lastModified));
-        return new LogFileGroup(allFiles, filePattern, fileHashToLogFile);
+        return allFiles;
+    }
+
+    private static List<LogFile> createLogFiles(File[] files) {
+        List<LogFile> allFiles = new ArrayList<>();
+
+        for (File file : files) {
+            LogFile logfile = LogFile.of(file);
+            allFiles.add(logfile);
+        }
+
+        allFiles.sort(Comparator.comparingLong(LogFile::lastModified));
+        allFiles.remove(allFiles.size() - 1);
+
+        return allFiles;
     }
 
     public void forEach(Consumer<LogFile> callback) {

@@ -2,6 +2,7 @@ package com.aws.greengrass.logmanager.util;
 
 import com.aws.greengrass.logmanager.model.LogFile;
 
+import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.URI;
@@ -24,7 +25,7 @@ public final class TestUtils {
         return testStrings.toString();
     }
 
-    public static void writeFile(LogFile file, byte[] byteArray) throws IOException {
+    public static void writeFile(File file, byte[] byteArray) throws IOException {
         try (OutputStream fileOutputStream = Files.newOutputStream(file.toPath())) {
             fileOutputStream.write(byteArray);
         }

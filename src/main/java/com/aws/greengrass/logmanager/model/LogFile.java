@@ -14,6 +14,7 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.security.NoSuchAlgorithmException;
 
 import static com.aws.greengrass.util.Digest.calculate;
@@ -25,7 +26,6 @@ public class LogFile extends File {
     private static final Logger logger = LogManager.getLogger(LogManagerService.class);
     public static final int bytesNeeded = 1024;
     public static final String HASH_VALUE_OF_EMPTY_STRING = "";
-    @SuppressWarnings("PMD.UnusedPrivateField")
     private final String sourcePath;
 
     public LogFile(Path sourcePath, Path hardLinkPath) {
@@ -113,6 +113,19 @@ public class LogFile extends File {
 
     public boolean isEmpty() {
         return Utils.isEmpty(this.hashString());
+    }
+
+    /**
+     * Determines if a file has rotated by comparing the current file on the sourcePath against the hardlink
+     * path. This returns false if the file that the hardlink is tracking is not the same it was
+     * originally created with.
+     */
+    public boolean hasRotated() {
+        try {
+            return !Files.isSameFile(Paths.get(sourcePath), toPath());
+        } catch (IOException e) {
+            return true;
+        }
     }
 
     /**

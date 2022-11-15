@@ -21,6 +21,9 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+
+import static com.aws.greengrass.logmanager.model.LogFile.HASH_VALUE_OF_EMPTY_STRING;
 
 
 public final class LogFileGroup {
@@ -55,9 +58,12 @@ public final class LogFileGroup {
         URI directoryURI = componentLogConfiguration.getDirectoryPath().toUri();
         File folder = new File(directoryURI);
 
+        // Setup directories
+
         if (!folder.isDirectory()) {
             throw new InvalidLogGroupException(String.format("%s must be a directory", directoryURI));
         }
+
         String componentName = componentLogConfiguration.getName();
         Path componentHardlinksDirectory = workDir.resolve(componentName);
 
@@ -69,6 +75,8 @@ public final class LogFileGroup {
                     String.format("%s failed to create hard link directory", componentHardlinksDirectory), e);
         }
 
+        // Get component files
+
         File[] files = folder.listFiles();
         Pattern filePattern = componentLogConfiguration.getFileNameRegex();
 
@@ -79,9 +87,8 @@ public final class LogFileGroup {
             return new LogFileGroup(Collections.emptyList(), filePattern, new HashMap<>(), false);
         }
 
-        Map<String, LogFile> fileHashToLogFileMap = new ConcurrentHashMap<>();
         boolean isUsingHardlinks = true;
-        List<LogFile> allFiles;
+        List<LogFile> logFiles;
 
         files = Arrays.stream(files)
                 .filter(File::isFile)
@@ -89,21 +96,30 @@ public final class LogFileGroup {
                 .filter(file -> filePattern.matcher(file.getName()).find()).toArray(File[]::new);
 
         // Convert files into log files
+
         try {
-            allFiles = convertToLogFiles(files, componentHardlinksDirectory);
+            logFiles = convertToLogFiles(files, componentHardlinksDirectory);
         } catch (IOException e) {
-            logger.atDebug().cause(e).log("Failed to create hardlinks for files. Falling back to only uploading "
-                    + "rotated files");
+            logger.atDebug().cause(e).log("Failed to create hardlinks for files. Falling to using regular "
+                    + " files");
             isUsingHardlinks = false;
-            allFiles = convertToLogFiles(files);
+            logFiles = convertToLogFiles(files);
         }
 
+        // Filter out files that can't be processed because they have no hash. 1. Empty 2. bytes < 1024
+
+        logFiles = logFiles.stream()
+                .filter(logFile -> !logFile.hashString().equals(HASH_VALUE_OF_EMPTY_STRING))
+                .collect(Collectors.toList());
+
         // Cache the logFiles by hash
-        allFiles.forEach(logFile -> {
+
+        Map<String, LogFile> fileHashToLogFileMap = new ConcurrentHashMap<>();
+        logFiles.forEach(logFile -> {
             fileHashToLogFileMap.put(logFile.hashString(), logFile);
         });
 
-        return new LogFileGroup(allFiles, filePattern, fileHashToLogFileMap, isUsingHardlinks);
+        return new LogFileGroup(logFiles, filePattern, fileHashToLogFileMap, isUsingHardlinks);
     }
 
     /**
@@ -121,8 +137,6 @@ public final class LogFileGroup {
 
         // TODO: We have to add the rotation detection mechanism here otherwise there is a chance that while we are
         //  looping and creating the hardlinks the files gets rotated so the path that
-
-        // TODO: Retry on NoSuchFileException
 
         for (File file : files) {
             logFiles.add(LogFile.of(file, hardLinkDirectory));

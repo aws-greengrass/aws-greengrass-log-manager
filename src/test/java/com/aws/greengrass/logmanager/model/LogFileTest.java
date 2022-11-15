@@ -3,6 +3,7 @@ package com.aws.greengrass.logmanager.model;
 import com.aws.greengrass.logmanager.util.TestUtils;
 import com.aws.greengrass.testcommons.testutilities.GGExtension;
 import com.aws.greengrass.util.Utils;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
@@ -10,6 +11,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import static com.aws.greengrass.logmanager.model.LogFile.HASH_VALUE_OF_EMPTY_STRING;
 import static com.aws.greengrass.logmanager.util.TestUtils.givenAStringOfSize;
+import static com.aws.greengrass.logmanager.util.TestUtils.readFileContent;
 import static com.aws.greengrass.logmanager.util.TestUtils.rotateFilesByRenamingThem;
 import static com.aws.greengrass.logmanager.util.TestUtils.writeFile;
 import static com.aws.greengrass.util.Digest.calculate;
@@ -31,6 +33,11 @@ public class LogFileTest {
     static Path directoryPath;
     private final static int DEFAULT_BYTES_FOR_DIGEST_NUM = 1024;
 
+    @BeforeEach
+    void setup() {
+        Arrays.stream(directoryPath.toFile().listFiles()).forEach(File::delete);
+    }
+
     @Test
     void GIVEN_empty_file_WHEN_calculate_file_hash_THEN_we_get_null() throws IOException {
         LogFile file = new LogFile(directoryPath.resolve("greengrass_test.log").toUri());
@@ -49,7 +56,6 @@ public class LogFileTest {
         String fileHash = file.hashString();
         assertEquals(fileHash, HASH_VALUE_OF_EMPTY_STRING);
     }
-
 
     @Test
     void GIVEN_log_file_with_equal_to_target_lines_in_one_line_WHEN_calculate_file_hash_THEN_we_get_null()
@@ -100,7 +106,7 @@ public class LogFileTest {
     }
 
     @Test
-    void GIVEN_logFileTrackingHardlink_WHEN_trackedFileRotates_THEN_itDeletesTheOriginalFile() throws IOException {
+    void GIVEN_logFileTrackingHardlink_WHEN_trackedFileRotates_THEN_itReadsTheCorrectContents() throws IOException {
         // Given
 
         Path testPath = directoryPath.resolve("itDeletesTheOriginalFile");
@@ -113,28 +119,47 @@ public class LogFileTest {
         // When
 
         rotateFilesByRenamingThem(new File[]{file});
+
+        // Assert
+
+        assertEquals("rotated", readFileContent(logFile));
+    }
+
+    @Test
+    void GIVEN_logFileTrackingHardlink_WHEN_trackedFileRotates_THEN_itDeletesTheOriginalFile() throws IOException {
+        // Given
+
+        Utils.createPaths(directoryPath.resolve("hardlinks"));
+        File file = TestUtils.createFileWithContent(
+                directoryPath.resolve("test.log"), "rotated");
+        LogFile logFile = LogFile.of(file, directoryPath.resolve("hardlinks"));
+
+        // When
+
+        rotateFilesByRenamingThem(new File[]{file});
         logFile.delete();
 
         // Assert
 
-        File[] directoryFiles = Arrays.stream(testPath.toFile().listFiles())
+        File[] directoryFiles = Arrays.stream(directoryPath.toFile().listFiles())
                         .filter(File::isFile)
                         .toArray(File[]::new);
         assertEquals(directoryFiles.length, 1);
-
         File remainingFile = directoryFiles[0];
         assertEquals(remainingFile.toPath(), file.toPath());
+        Utils.deleteFileRecursively(directoryPath.resolve("hardlinks").toFile());
     }
 
+    /**
+     * This scenario happens if the customer has a setup where they are logging files on a different volume and the
+     * rotation policy rotates logs reusing existing rotated file names.
+     */
     @Test
     void GIVEN_logFileTrackingRegularFile_WHEN_trackedFileRotates_THEN_itDeletesTheWrongFile() throws IOException {
         // Given
 
-        Path testPath = directoryPath.resolve("itDeletesTheWrongFile");
-        Utils.createPaths(testPath);
-
         File file = TestUtils.createFileWithContent(
-                testPath.resolve("test.log"), "rotated");
+                directoryPath.resolve("test.log"), "rotated");
         LogFile logFile = LogFile.of(file);
 
         // When
@@ -144,12 +169,12 @@ public class LogFileTest {
 
         // Assert
 
-        File[] directoryFiles = Arrays.stream(testPath.toFile().listFiles())
+        File[] directoryFiles = Arrays.stream(directoryPath.toFile().listFiles())
                 .filter(File::isFile)
                 .toArray(File[]::new);
         assertEquals(directoryFiles.length, 1);
 
         File remainingFile = directoryFiles[0];
-        assertEquals(remainingFile.toPath(), testPath.resolve("test.log.1"));
+        assertEquals(remainingFile.toPath(), directoryPath.resolve("test.log.1"));
     }
 }

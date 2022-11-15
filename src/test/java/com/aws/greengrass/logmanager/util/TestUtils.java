@@ -2,8 +2,10 @@ package com.aws.greengrass.logmanager.util;
 
 import com.aws.greengrass.logmanager.model.LogFile;
 
+import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
@@ -44,6 +46,19 @@ public final class TestUtils {
         byte[] bytesArray = givenAStringOfSize(bytesNeeded).getBytes(StandardCharsets.UTF_8);
         writeFile(file, bytesArray);
         return file;
+    }
+
+    @SuppressWarnings("PMD.AssignmentInOperand")
+    public static String readFileContent(File file) throws IOException {
+        StringBuilder content = new StringBuilder();
+
+        try (BufferedReader br = new BufferedReader(new InputStreamReader(Files.newInputStream(file.toPath())))) {
+            String line;
+            while ((line = br.readLine()) != null) {
+                content.append(line);
+            }
+        }
+        return content.toString();
     }
 
     public static File rotateFilesByRenamingThem(File... files) throws IOException {

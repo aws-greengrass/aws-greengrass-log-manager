@@ -472,15 +472,11 @@ public class LogManagerService extends PluginService {
                 return;
             }
             completedFiles.forEach(file -> {
-                try {
-                    boolean successfullyDeleted = Files.deleteIfExists(Paths.get(file.getSourcePath()));
-                    if (successfullyDeleted) {
-                        logger.atDebug().log("Successfully deleted file with name {}", file.getSourcePath());
-                    } else {
-                        logger.atWarn().log("Unable to delete file with name {}", file.getSourcePath());
-                    }
-                } catch (IOException e) {
-                    logger.atError().cause(e).log("Unable to delete file with name: {}", file.getSourcePath());
+                boolean successfullyDeleted = file.delete();
+                if (successfullyDeleted) {
+                    logger.atDebug().log("Successfully deleted file with name {}", file.getName());
+                } else {
+                    logger.atWarn().log("Unable to delete file with name {}", file.getName());
                 }
             });
         });
@@ -522,9 +518,6 @@ public class LogManagerService extends PluginService {
             return;
         }
 
-        // @deprecated  This is deprecated value in versions greater than 2.2, but keep it here to avoid
-        // upgrade-downgrade issues.
-        String fileName = file.getSourcePath();
         // If we have completely read the file, then we need add it to the completed files list and remove it
         // it (if necessary) for the current processing list.
         String componentName = attemptLogInformation.getComponentName();
@@ -548,7 +541,7 @@ public class LogManagerService extends PluginService {
             // upgrade-downgrade issues.
             CurrentProcessingFileInformation processingFileInformation =
                     CurrentProcessingFileInformation.builder()
-                            .fileName(fileName)
+                            .fileName(file.getSourcePath())
                             .startPosition(cloudWatchAttemptLogFileInformation.getStartPosition()
                                     + cloudWatchAttemptLogFileInformation.getBytesRead())
                             .lastModifiedTime(cloudWatchAttemptLogFileInformation.getLastModifiedTime())

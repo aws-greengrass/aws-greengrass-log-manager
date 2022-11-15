@@ -17,6 +17,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.security.NoSuchAlgorithmException;
 import java.util.Objects;
+import java.util.Optional;
 
 import static com.aws.greengrass.util.Digest.calculate;
 
@@ -42,6 +43,7 @@ public class LogFile extends File {
 
     /**
      * Convert the file to LogFile.
+     *
      * @param file The file to be converted.
      */
     public static LogFile of(File file) {
@@ -67,6 +69,7 @@ public class LogFile extends File {
 
     /**
      * Read target bytes from the file.
+     *
      * @return read byte array.
      */
     private String readBytesToString() {
@@ -95,6 +98,7 @@ public class LogFile extends File {
 
     /**
      * Get the hash of the logfile with target lines.
+     *
      * @return the calculated hash value of the logfile, empty string if not enough lines for digest.
      */
     public String hashString() {
@@ -136,11 +140,74 @@ public class LogFile extends File {
     }
 
     /**
-     * Returns the source path of the file original file.
+     * Deletes the hardlink (if there is one) and the file being tracked.
      */
+    @Override
+    public boolean delete() {
+        if (Objects.equals(toPath(), Paths.get(sourcePath))) {
+            return super.delete();
+        } else {
+            return deleteHardLinkWithSourceFile();
+        }
+    }
+
+    private boolean deleteHardLinkWithSourceFile() {
+        Path source = Paths.get(sourcePath);
+
+        if (this.hasRotated()) {
+            // We can't get the source path from a hard link, so we will try to find the tracked file and delete it if
+            // it is possible
+            try {
+                Optional<Path> hardLinkTargetPath = getHardLinkSourcePath(source);
+
+                if (hardLinkTargetPath.isPresent()) {
+                    Files.deleteIfExists(hardLinkTargetPath.get());
+                }
+            } catch (IOException e) {
+                logger.atWarn().cause(e).kv("hardlink", toPath()).kv("originalSource", sourcePath)
+                        .log("Unable to delete hardlink source path");
+            }
+        } else {
+            try {
+                Files.deleteIfExists(source);
+            } catch (IOException e) {
+                logger.atWarn().cause(e).kv("sourcePath", sourcePath).log("Unable to delete file");
+            }
+        }
+
+        return super.delete(); // delete hardlink
+    }
+
+    private Optional<Path> getHardLinkSourcePath(Path sourcePath) throws IOException {
+        Path sourceDir = sourcePath.getParent();
+
+        if (sourceDir == null) {
+            return Optional.empty();
+        }
+
+        File[] files = sourceDir.toFile().listFiles();
+
+        if (files == null) {
+            return Optional.empty();
+        }
+
+        for (File file : files) {
+            if (Files.isSameFile(file.toPath(), toPath())) {
+                return Optional.of(file.toPath());
+            }
+        }
+
+        return Optional.empty();
+    }
+
+
+    /**
+     * Returns the source path of the file original file.
+     *
+     * @deprecated do not use in versions greater than 2.2. It is just being used so upgrade-downgrade still works
+     */
+    @Deprecated
     public String getSourcePath() {
-        // TODO: This is wrong the file could have rotated by the time we call this and if we do that then we might
-        //  end up deleting or returning a path for a file that is no the same the hardlink INODE is tracking
         return sourcePath;
     }
 }

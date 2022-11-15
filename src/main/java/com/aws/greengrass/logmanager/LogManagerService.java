@@ -466,18 +466,9 @@ public class LogManagerService extends PluginService {
             if (!componentLogConfigurations.containsKey(componentName)) {
                 return;
             }
+
             ComponentLogConfiguration componentLogConfiguration = componentLogConfigurations.get(componentName);
-            if (!componentLogConfiguration.isDeleteLogFileAfterCloudUpload()) {
-                return;
-            }
-            completedFiles.forEach(file -> {
-                boolean successfullyDeleted = file.delete();
-                if (successfullyDeleted) {
-                    logger.atDebug().log("Successfully deleted file with name {}", file.getName());
-                } else {
-                    logger.atWarn().log("Unable to delete file with name {}", file.getName());
-                }
-            });
+            completedFiles.forEach(file -> this.deleteFile(componentLogConfiguration, file));
         });
         currentProcessingLogFilePerComponent.forEach(componentCurrentProcessingLogFile::put);
 
@@ -499,6 +490,19 @@ public class LogManagerService extends PluginService {
             lastFileProcessedTimeStamp.withValue(instant.toEpochMilli());
         });
         isCurrentlyUploading.set(false);
+    }
+
+    private void deleteFile(ComponentLogConfiguration config, LogFile file) {
+        if (!config.isDeleteLogFileAfterCloudUpload()) {
+            return;
+        }
+
+        boolean successfullyDeleted = file.delete();
+        if (successfullyDeleted) {
+            logger.atDebug().log("Successfully deleted file with name {}", file.getName());
+        } else {
+            logger.atWarn().log("Unable to delete file with name {}", file.getName());
+        }
     }
 
     private void processCloudWatchAttemptLogInformation(Map<String, Set<LogFile>> completedLogFilePerComponent,
@@ -643,6 +647,12 @@ public class LogManagerService extends PluginService {
                         } else if (startPosition == file.length() && !logFileGroup.isActiveFile(file)) {
                             updatelastComponentUploadedLogFile(lastComponentUploadedLogFileInstantMap,
                                     componentName, file);
+
+                            // NOTE: This handles the scenario where we are uploading the active file constantly and
+                            // upload all its contents and then rotates. We would pick it again on the next cycle, and
+                            // it will fall under this condition but since it was the active file on the previous
+                            // cycle it didn't get deleted
+                            deleteFile(componentLogConfiguration, file);
                         }
                     });
                 } catch (SecurityException e) {

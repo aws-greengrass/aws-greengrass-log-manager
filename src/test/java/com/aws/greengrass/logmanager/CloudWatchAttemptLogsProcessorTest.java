@@ -4,7 +4,6 @@
  */
 
 package com.aws.greengrass.logmanager;
-
 import com.aws.greengrass.config.Topic;
 import com.aws.greengrass.deployment.DeviceConfiguration;
 import com.aws.greengrass.logmanager.exceptions.InvalidLogGroupException;
@@ -30,7 +29,6 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.slf4j.event.Level;
 import software.amazon.awssdk.services.cloudwatchlogs.model.InputLogEvent;
-
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
@@ -54,7 +52,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.TimeZone;
 import java.util.regex.Pattern;
-
 import static com.aws.greengrass.deployment.DeviceConfiguration.DEVICE_PARAM_AWS_REGION;
 import static com.aws.greengrass.deployment.DeviceConfiguration.DEVICE_PARAM_THING_NAME;
 import static com.aws.greengrass.logmanager.CloudWatchAttemptLogsProcessor.DEFAULT_LOG_GROUP_NAME;

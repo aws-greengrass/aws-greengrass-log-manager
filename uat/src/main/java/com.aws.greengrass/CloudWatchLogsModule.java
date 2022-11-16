@@ -1,5 +1,4 @@
 package com.aws.greengrass.testing.resources.cloudwatch;
-
 import com.aws.greengrass.testing.modules.AbstractAWSResourceModule;
 import com.aws.greengrass.testing.modules.model.AWSResourcesContext;
 import com.google.auto.service.AutoService;
@@ -8,7 +7,6 @@ import com.google.inject.Provides;
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
 import software.amazon.awssdk.http.apache.ApacheHttpClient;
 import software.amazon.awssdk.services.cloudwatchlogs.CloudWatchLogsClient;
-
 import javax.inject.Singleton;
 
 @AutoService(Module.class)
@@ -27,6 +25,4 @@ public class CloudWatchLogsModule extends AbstractAWSResourceModule<CloudWatchLo
                 .httpClientBuilder(httpClientBuilder)
                 .build();
     }
-
-
 }

@@ -1,5 +1,4 @@
 package com.aws.greengrass;
-
 import com.aws.greengrass.testing.model.TestContext;
 import com.aws.greengrass.testing.platform.Platform;
 import com.google.inject.Inject;
@@ -10,7 +9,6 @@ import io.cucumber.java.en.Then;
 import org.apache.commons.text.RandomStringGenerator;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.IOException;
@@ -25,7 +23,6 @@ public class FileSteps {
 
     private final Platform platform;
     private final TestContext testContext;
-
     private static Logger LOGGER = LogManager.getLogger(FileSteps.class);
     private static final RandomStringGenerator RANDOM_STRING_GENERATOR =
             new RandomStringGenerator.Builder().withinRange('a', 'z').build();
@@ -47,7 +44,6 @@ public class FileSteps {
     public void arrangeComponentLogFiles(int numFiles, String componentName) throws IOException {
         Path logsDirectory = testContext.installRoot().resolve("logs");
         LOGGER.info("Writing {} log files into {}", numFiles, logsDirectory.toString());
-
         if (!platform.files().exists(logsDirectory)) {
             throw new IllegalStateException("No logs directory");
         }

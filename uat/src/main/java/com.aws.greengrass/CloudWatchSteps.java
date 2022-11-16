@@ -1,8 +1,3 @@
-/*
- * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: Apache-2.0
- */
-
 package com.aws.greengrass;
 import com.aws.greengrass.testing.model.TestContext;
 import com.aws.greengrass.testing.features.WaitSteps;
@@ -11,6 +6,7 @@ import com.aws.greengrass.testing.resources.cloudwatch.CloudWatchLogsLifecycle;
 import com.google.inject.Inject;
 import io.cucumber.guice.ScenarioScoped;
 import io.cucumber.java.en.Then;
+import io.cucumber.java.After;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import software.amazon.awssdk.services.cloudwatchlogs.model.LogGroup;
@@ -23,15 +19,15 @@ import java.util.TimeZone;
 import java.util.concurrent.TimeUnit;
 
 @ScenarioScoped
+
 public class CloudWatchSteps{
+    private String loggroup_name;
+    private String log_streamnamepattern;
     private final CloudWatchLogsLifecycle logsLifecycle;
     private final TestContext testContext;
     private final AWSResourcesContext resourceContext;
     private final WaitSteps waitSteps;
-
     private static final Logger LOGGER = LogManager.getLogger(CloudWatchSteps.class);
-
-
     @Inject
     @SuppressWarnings("MissingJavadocMethod")
     public CloudWatchSteps(
@@ -56,10 +52,13 @@ public class CloudWatchSteps{
      * @param timeout                 Number of seconds to wait before timing out the operation
      * @throws InterruptedException   {@link InterruptedException}
      */
+
     @Then("I verify that it created a log group for component type {word} for component {word}, with streams within "
             + "{int} seconds in CloudWatch")
     public void verifyCloudWatchGroupWithStreams(String componentType, String componentName, int timeout) throws
             InterruptedException {
+        LOGGER.info("Start verifyCloudWatchGroupWithStreams");
+
         SimpleDateFormat formatter = new SimpleDateFormat("yyyy/MM/dd", Locale.ENGLISH);
         formatter.setTimeZone(TimeZone.getTimeZone("UTC")); // All dates are UTC, not local time
 
@@ -68,13 +67,16 @@ public class CloudWatchSteps{
 
         String logGroupName = String.format("/aws/greengrass/%s/%s/%s", componentType, region, componentName);
         String logStreamNamePattern = String.format("/%s/thing/%s", formatter.format(new Date()), thingName);
-
+        loggroup_name= logGroupName;
+        log_streamnamepattern=logStreamNamePattern; 
         LOGGER.info("Verifying log group {} with stream {} was created", logGroupName, logStreamNamePattern);
 
         int operationTimeout = timeout / 2;
         waitSteps.untilTrue(() -> doesLogGroupExist(logGroupName), operationTimeout, TimeUnit.SECONDS);
         waitSteps.untilTrue(() -> doesStreamExistInGroup(logGroupName, logStreamNamePattern), operationTimeout,
                 TimeUnit.SECONDS);
+
+        LOGGER.info("End verifyCloudWatchGroupWithStreams");
     }
 
     private boolean doesLogGroupExist(String logGroupName) {
@@ -87,7 +89,6 @@ public class CloudWatchSteps{
 
         return exists;
     }
-
     private boolean doesStreamExistInGroup(String logGroupName, String streamName) {
         List<LogStream> streams = logsLifecycle.streamsByLogGroupName(logGroupName);
         boolean exists = streams.stream().anyMatch(stream -> stream.logStreamName().matches(streamName));
@@ -98,4 +99,16 @@ public class CloudWatchSteps{
 
         return exists;
     }
+
+    @After
+    public void cleanup() throws InterruptedException {
+        LOGGER.info("Start Cleanup");
+        logsLifecycle.streamsByLogGroupName(loggroup_name).clear();
+        //logsLifecycle.logGroupsByPrefix(loggroup_name).clear();
+        LOGGER.info("LogGroup Deleted");
+    }
+
+
 }
+
+

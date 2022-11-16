@@ -17,15 +17,13 @@ import software.amazon.awssdk.services.cloudwatchlogs.model.LogStream;
 import java.util.List;
 import javax.inject.Inject;
 
-
 @AutoService(AWSResourceLifecycle.class)
 public class CloudWatchLogsLifecycle extends AbstractAWSResourceLifecycle<CloudWatchLogsClient> {
 
     @Inject
     public CloudWatchLogsLifecycle(CloudWatchLogsClient client) {
-        super(client);
+        super(client, CloudWatchLogStreamSpec.class);
     }
-
     /**
      * Retrieves the logGroups matching the prefix.
      * @param prefix log group prefix

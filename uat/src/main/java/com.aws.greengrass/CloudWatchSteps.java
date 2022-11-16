@@ -2,19 +2,19 @@
  * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
-
 package com.aws.greengrass;
 
+import com.aws.greengrass.resources.CloudWatchLogStreamSpec;
+import com.aws.greengrass.resources.CloudWatchLogsLifecycle;
 import com.aws.greengrass.testing.model.TestContext;
 import com.aws.greengrass.testing.features.WaitSteps;
 import com.aws.greengrass.testing.modules.model.AWSResourcesContext;
-import com.aws.greengrass.testing.resources.cloudwatch.CloudWatchLogsLifecycle;
+import com.aws.greengrass.testing.resources.AWSResources;
 import com.google.inject.Inject;
 import io.cucumber.guice.ScenarioScoped;
 import io.cucumber.java.en.Then;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import software.amazon.awssdk.services.cloudwatchlogs.model.LogGroup;
 import software.amazon.awssdk.services.cloudwatchlogs.model.LogStream;
 
 import java.text.SimpleDateFormat;
@@ -28,11 +28,10 @@ import java.util.concurrent.TimeUnit;
 public class CloudWatchSteps{
     private final CloudWatchLogsLifecycle logsLifecycle;
     private final TestContext testContext;
-    private final AWSResourcesContext resourceContext;
     private final WaitSteps waitSteps;
-
     private static final Logger LOGGER = LogManager.getLogger(CloudWatchSteps.class);
-
+    private final AWSResources resources;
+    private final AWSResourcesContext resourceContext;
 
     @Inject
     @SuppressWarnings("MissingJavadocMethod")
@@ -40,11 +39,13 @@ public class CloudWatchSteps{
             CloudWatchLogsLifecycle logsLifecycle,
             TestContext testContext,
             AWSResourcesContext resourcesContext,
+            AWSResources resources,
             WaitSteps waitSteps
     ) {
         this.logsLifecycle = logsLifecycle;
         this.testContext = testContext;
         this.resourceContext = resourcesContext;
+        this.resources = resources;
         this.waitSteps = waitSteps;
     }
 
@@ -58,6 +59,7 @@ public class CloudWatchSteps{
      * @param timeout                 Number of seconds to wait before timing out the operation
      * @throws InterruptedException   {@link InterruptedException}
      */
+
     @Then("I verify that it created a log group for component type {word} for component {word}, with streams within "
             + "{int} seconds in CloudWatch")
     public void verifyCloudWatchGroupWithStreams(String componentType, String componentName, int timeout) throws
@@ -71,27 +73,19 @@ public class CloudWatchSteps{
         String logGroupName = String.format("/aws/greengrass/%s/%s/%s", componentType, region, componentName);
         String logStreamNamePattern = String.format("/%s/thing/%s", formatter.format(new Date()), thingName);
 
-        LOGGER.info("Verifying log group {} with stream {} was created", logGroupName, logStreamNamePattern);
+        resources.create(CloudWatchLogStreamSpec
+                .builder()
+                .logGroupName(logGroupName)
+                .logStreamName(logStreamNamePattern)
+                .build());
 
-        int operationTimeout = timeout / 2;
-        waitSteps.untilTrue(() -> doesLogGroupExist(logGroupName), operationTimeout, TimeUnit.SECONDS);
-        waitSteps.untilTrue(() -> doesStreamExistInGroup(logGroupName, logStreamNamePattern), operationTimeout,
+        LOGGER.info("Verifying log group {} with stream {} was created", logGroupName, logStreamNamePattern);
+        waitSteps.untilTrue(() -> doesStreamExistInGroup(logGroupName, logStreamNamePattern), timeout,
                 TimeUnit.SECONDS);
     }
 
-    private boolean doesLogGroupExist(String logGroupName) {
-        List<LogGroup> groups = logsLifecycle.logGroupsByPrefix(logGroupName);
-        boolean exists = groups.stream().anyMatch(group -> group.logGroupName().equals(logGroupName));
-
-        if (exists) {
-            LOGGER.info("Found logGroup {}", logGroupName);
-        }
-
-        return exists;
-    }
-
     private boolean doesStreamExistInGroup(String logGroupName, String streamName) {
-        List<LogStream> streams = logsLifecycle.streamsByLogGroupName(logGroupName);
+        List<LogStream> streams = logsLifecycle.findStream(logGroupName, streamName);
         boolean exists = streams.stream().anyMatch(stream -> stream.logStreamName().matches(streamName));
 
         if (exists) {
@@ -101,3 +95,5 @@ public class CloudWatchSteps{
         return exists;
     }
 }
+
+

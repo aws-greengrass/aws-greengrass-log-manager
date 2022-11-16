@@ -1,3 +1,4 @@
+/target/
 uat/target/
 .DS_Store
 ._*
@@ -5,7 +6,7 @@ uat/target/
 **/*.jar
 *~
 *.metrics
-.idea/
+.idea
 coverage
 *.iml
 bin

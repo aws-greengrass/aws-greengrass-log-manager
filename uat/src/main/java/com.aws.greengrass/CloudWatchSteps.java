@@ -4,7 +4,6 @@
  */
 
 package com.aws.greengrass;
-
 import com.aws.greengrass.testing.model.TestContext;
 import com.aws.greengrass.testing.features.WaitSteps;
 import com.aws.greengrass.testing.modules.model.AWSResourcesContext;
@@ -16,7 +15,6 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import software.amazon.awssdk.services.cloudwatchlogs.model.LogGroup;
 import software.amazon.awssdk.services.cloudwatchlogs.model.LogStream;
-
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.List;

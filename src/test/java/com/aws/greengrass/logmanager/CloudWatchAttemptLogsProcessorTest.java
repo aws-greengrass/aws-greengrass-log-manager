@@ -95,6 +95,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
         lenient().when(mockDeviceConfiguration.getAWSRegion()).thenReturn(regionTopic);
     }
 
+
     @Test
     void GIVEN_one_system_component_one_file_less_than_max_WHEN_merge_THEN_reads_entire_file(ExtensionContext ec)
             throws URISyntaxException, IOException, InvalidLogGroupException {

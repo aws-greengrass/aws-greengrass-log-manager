@@ -4,7 +4,6 @@
  */
 
 package com.aws.greengrass.testing.resources.cloudwatch;
-
 import com.aws.greengrass.testing.resources.AWSResourceLifecycle;
 import com.aws.greengrass.testing.resources.AbstractAWSResourceLifecycle;
 import com.google.auto.service.AutoService;
@@ -15,7 +14,6 @@ import software.amazon.awssdk.services.cloudwatchlogs.model.DescribeLogStreamsRe
 import software.amazon.awssdk.services.cloudwatchlogs.model.DescribeLogStreamsResponse;
 import software.amazon.awssdk.services.cloudwatchlogs.model.LogGroup;
 import software.amazon.awssdk.services.cloudwatchlogs.model.LogStream;
-
 import java.util.List;
 import javax.inject.Inject;
 

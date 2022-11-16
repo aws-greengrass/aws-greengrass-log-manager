@@ -7,7 +7,6 @@ Feature: Greengrass V2 LogManager
     Given my device is registered as a Thing
     And my device is running Greengrass
     And 5 temporary rotated log files for component aws.greengrass.Nucleus
-    And 5 temporary rotated log files for component aws.greengrass.StreamManager
   Scenario: configure the log manager component using a componentLogsConfiguration list and logs are uploaded to
   CloudWatch
     Given I create a Greengrass deployment with components
@@ -29,7 +28,8 @@ Feature: Greengrass V2 LogManager
                 "periodicUploadIntervalSec": "10"
             }
         }
+
         """
     And I deploy the Greengrass deployment configuration
     Then the Greengrass deployment is COMPLETED on the device after 5 minutes
-    And I verify the aws.greengrass.LogManager component is RUNNING using the greengrass-cli
+    And I verify the aws.greengrass.LogManager component is RUNNING using the greengrass-cli after 5 minutes

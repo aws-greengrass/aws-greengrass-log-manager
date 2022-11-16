@@ -15,7 +15,7 @@ To do that run following commands from the root of the project:
 
 ```
 mvn -U -ntp clean verify -f uat/pom.xml
-mvn -U -ntp verify -DskipTests=true
+mvn -U -ntp clean verify -f uat/pom.xml
 ```
 
 Note: Everytime you make changes to the code base you will have to rebuild the Uber jar for those changes to be present.

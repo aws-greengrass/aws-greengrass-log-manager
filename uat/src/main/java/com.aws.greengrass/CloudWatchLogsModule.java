@@ -1,4 +1,9 @@
-package com.aws.greengrass.testing.resources.cloudwatch;
+/*
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ */
+package com.aws.greengrass;
+
 import com.aws.greengrass.testing.modules.AbstractAWSResourceModule;
 import com.aws.greengrass.testing.modules.model.AWSResourcesContext;
 import com.google.auto.service.AutoService;

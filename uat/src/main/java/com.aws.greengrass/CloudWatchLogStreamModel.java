@@ -1,4 +1,4 @@
-package com.aws.greengrass.testing.resources.cloudwatch;
+package com.aws.greengrass;
 import com.aws.greengrass.testing.api.model.TestingModel;
 import com.aws.greengrass.testing.resources.AWSResource;
 import org.immutables.value.Value;

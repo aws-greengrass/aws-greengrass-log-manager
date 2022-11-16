@@ -1,12 +1,18 @@
+/*
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 package com.aws.greengrass;
-import com.aws.greengrass.testing.model.TestContext;
+
 import com.aws.greengrass.testing.features.WaitSteps;
+import com.aws.greengrass.testing.model.TestContext;
 import com.aws.greengrass.testing.modules.model.AWSResourcesContext;
-import com.aws.greengrass.testing.resources.cloudwatch.CloudWatchLogsLifecycle;
+import com.aws.greengrass.testing.resources.AWSResources;
 import com.google.inject.Inject;
 import io.cucumber.guice.ScenarioScoped;
-import io.cucumber.java.en.Then;
 import io.cucumber.java.After;
+import io.cucumber.java.en.Then;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import software.amazon.awssdk.services.cloudwatchlogs.model.LogGroup;
@@ -21,11 +27,10 @@ import java.util.concurrent.TimeUnit;
 @ScenarioScoped
 
 public class CloudWatchSteps{
-    private String loggroup_name;
-    private String log_streamnamepattern;
     private final CloudWatchLogsLifecycle logsLifecycle;
     private final TestContext testContext;
     private final AWSResourcesContext resourceContext;
+    private final AWSResources resources;
     private final WaitSteps waitSteps;
     private static final Logger LOGGER = LogManager.getLogger(CloudWatchSteps.class);
     @Inject
@@ -34,12 +39,14 @@ public class CloudWatchSteps{
             CloudWatchLogsLifecycle logsLifecycle,
             TestContext testContext,
             AWSResourcesContext resourcesContext,
+            AWSResources resources,
             WaitSteps waitSteps
     ) {
         this.logsLifecycle = logsLifecycle;
         this.testContext = testContext;
         this.resourceContext = resourcesContext;
         this.waitSteps = waitSteps;
+        this.resources= resources;
     }
 
     /**
@@ -67,9 +74,20 @@ public class CloudWatchSteps{
 
         String logGroupName = String.format("/aws/greengrass/%s/%s/%s", componentType, region, componentName);
         String logStreamNamePattern = String.format("/%s/thing/%s", formatter.format(new Date()), thingName);
-        loggroup_name= logGroupName;
-        log_streamnamepattern=logStreamNamePattern; 
+
         LOGGER.info("Verifying log group {} with stream {} was created", logGroupName, logStreamNamePattern);
+
+
+        CloudWatchLogStreamSpec spec=
+                CloudWatchLogStreamSpec.builder()
+                        .resource(CloudWatchLogStream.builder()
+                                .streamName(logStreamNamePattern)
+                                .groupName(logGroupName).build()
+                        ).build();
+
+        resources.create(spec);
+        LOGGER.info("verify build",spec);
+
 
         int operationTimeout = timeout / 2;
         waitSteps.untilTrue(() -> doesLogGroupExist(logGroupName), operationTimeout, TimeUnit.SECONDS);
@@ -100,15 +118,15 @@ public class CloudWatchSteps{
         return exists;
     }
 
-    @After
-    public void cleanup() throws InterruptedException {
-        LOGGER.info("Start Cleanup");
-        logsLifecycle.streamsByLogGroupName(loggroup_name).clear();
+  //  @After
+  //  public void cleanup() throws InterruptedException {
+      //  LOGGER.info("Start Cleanup");
+       // logsLifecycle.streamsByLogGroupName(loggroup_name).clear();
         //logsLifecycle.logGroupsByPrefix(loggroup_name).clear();
-        LOGGER.info("LogGroup Deleted");
+       // LOGGER.info("LogGroup Deleted");//
     }
 
 
-}
+
 
 

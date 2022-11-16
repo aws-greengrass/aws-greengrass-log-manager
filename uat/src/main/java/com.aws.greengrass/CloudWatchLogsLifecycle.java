@@ -1,9 +1,7 @@
-/*
- * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: Apache-2.0
- */
 
-package com.aws.greengrass.testing.resources.cloudwatch;
+
+package com.aws.greengrass;
+
 import com.aws.greengrass.testing.resources.AWSResourceLifecycle;
 import com.aws.greengrass.testing.resources.AbstractAWSResourceLifecycle;
 import com.google.auto.service.AutoService;
@@ -22,6 +20,7 @@ public class CloudWatchLogsLifecycle extends AbstractAWSResourceLifecycle<CloudW
 
     @Inject
     public CloudWatchLogsLifecycle(CloudWatchLogsClient client) {
+
         super(client, CloudWatchLogStreamSpec.class);
     }
     /**

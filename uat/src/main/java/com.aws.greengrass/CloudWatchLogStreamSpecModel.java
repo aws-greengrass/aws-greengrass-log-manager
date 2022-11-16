@@ -1,4 +1,11 @@
-package com.aws.greengrass.testing.resources.cloudwatch;
+/*
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+package com.aws.greengrass;
+
+
 import com.aws.greengrass.testing.api.model.TestingModel;
 import com.aws.greengrass.testing.resources.AWSResources;
 import com.aws.greengrass.testing.resources.ResourceSpec;
@@ -16,6 +23,10 @@ public interface CloudWatchLogStreamSpecModel extends ResourceSpec<CloudWatchLog
     default CloudWatchLogStreamSpec create(CloudWatchLogsClient client, AWSResources resources) {
         // Not implementing yet given we don't create the streams ourselves on tests. They get created by
         // the components
+        //resources.create(CloudWatchLogStreamSpec.builder().build());
+
         return CloudWatchLogStreamSpec.builder().build();
     }
+
+
 }

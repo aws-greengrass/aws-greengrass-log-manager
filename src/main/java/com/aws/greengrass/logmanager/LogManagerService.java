@@ -73,7 +73,6 @@ import javax.inject.Inject;
 
 import static com.aws.greengrass.componentmanager.KernelConfigResolver.CONFIGURATION_CONFIG_KEY;
 import static com.aws.greengrass.logmanager.LogManagerService.LOGS_UPLOADER_SERVICE_TOPICS;
-import static com.aws.greengrass.logmanager.model.LogFile.HASH_VALUE_OF_EMPTY_STRING;
 
 
 @ImplementsService(name = LOGS_UPLOADER_SERVICE_TOPICS, version = "2.0.0")
@@ -467,18 +466,9 @@ public class LogManagerService extends PluginService {
             if (!componentLogConfigurations.containsKey(componentName)) {
                 return;
             }
+
             ComponentLogConfiguration componentLogConfiguration = componentLogConfigurations.get(componentName);
-            if (!componentLogConfiguration.isDeleteLogFileAfterCloudUpload()) {
-                return;
-            }
-            completedFiles.forEach(file -> {
-                boolean successfullyDeleted = file.delete();
-                if (successfullyDeleted) {
-                    logger.atDebug().log("Successfully deleted file with name {}", file.getName());
-                } else {
-                    logger.atWarn().log("Unable to delete file with name {}", file.getName());
-                }
-            });
+            completedFiles.forEach(file -> this.deleteFile(componentLogConfiguration, file));
         });
         currentProcessingLogFilePerComponent.forEach(componentCurrentProcessingLogFile::put);
 
@@ -500,6 +490,19 @@ public class LogManagerService extends PluginService {
             lastFileProcessedTimeStamp.withValue(instant.toEpochMilli());
         });
         isCurrentlyUploading.set(false);
+    }
+
+    private void deleteFile(ComponentLogConfiguration config, LogFile file) {
+        if (!config.isDeleteLogFileAfterCloudUpload()) {
+            return;
+        }
+
+        boolean successfullyDeleted = file.delete();
+        if (successfullyDeleted) {
+            logger.atDebug().log("Successfully deleted file with name {}", file.getName());
+        } else {
+            logger.atWarn().log("Unable to delete file with name {}", file.getName());
+        }
     }
 
     private void processCloudWatchAttemptLogInformation(Map<String, Set<LogFile>> completedLogFilePerComponent,
@@ -592,7 +595,7 @@ public class LogManagerService extends PluginService {
                 TimeUnit.SECONDS.sleep(periodicUpdateIntervalSec);
                 continue;
             }
-            List<ComponentLogFileInformation> unitsOfWork = new ArrayList<>();
+            List<ComponentLogFileInformation> componentMetadata = new ArrayList<>();
             // Get the latest known configurations because the componentLogConfigurations can change if a new
             // configuration is received from the customer.
             for (ComponentLogConfiguration componentLogConfiguration : componentLogConfigurations.values()) {
@@ -609,7 +612,7 @@ public class LogManagerService extends PluginService {
                         continue;
                     }
 
-                    ComponentLogFileInformation unitOfWork = ComponentLogFileInformation.builder()
+                    ComponentLogFileInformation logFileInfo = ComponentLogFileInformation.builder()
                             .name(componentName)
                             .multiLineStartPattern(componentLogConfiguration.getMultiLineStartPattern())
                             .desiredLogLevel(componentLogConfiguration.getMinimumLogLevel())
@@ -617,35 +620,39 @@ public class LogManagerService extends PluginService {
                             .logFileGroup(logFileGroup)
                             .build();
 
-                    unitsOfWork.add(unitOfWork);
+                    componentMetadata.add(logFileInfo);
 
                     logFileGroup.forEach(file -> {
                         long startPosition = 0;
                         String fileHash = file.hashString();
-                        // The file must contain enough lines for digest hash, otherwise fileHash is empty string
-                        if (!HASH_VALUE_OF_EMPTY_STRING.equals(fileHash)) {
-                            // If the file was partially read in the previous run, then get the starting position for
-                            // new log lines.
-                            if (componentCurrentProcessingLogFile.containsKey(componentName)) {
-                                CurrentProcessingFileInformation processingFileInformation =
-                                        componentCurrentProcessingLogFile.get(componentName);
-                                if (processingFileInformation.fileHash.equals(fileHash)) {
-                                    startPosition = processingFileInformation.startPosition;
-                                }
-                            }
 
-                            LogFileInformation logFileInformation = LogFileInformation.builder()
-                                    .logFile(file)
-                                    .startPosition(startPosition)
-                                    .fileHash(fileHash)
-                                    .build();
-
-                            if (startPosition < file.length()) {
-                                unitOfWork.getLogFileInformationList().add(logFileInformation);
-                            } else if (startPosition == file.length() && !logFileGroup.isActiveFile(file)) {
-                                updatelastComponentUploadedLogFile(lastComponentUploadedLogFileInstantMap,
-                                        componentName, file);
+                        // If the file was partially read in the previous run, then get the starting position for
+                        // new log lines.
+                        if (componentCurrentProcessingLogFile.containsKey(componentName)) {
+                            CurrentProcessingFileInformation processingFileInformation =
+                                    componentCurrentProcessingLogFile.get(componentName);
+                            if (processingFileInformation.fileHash.equals(fileHash)) {
+                                startPosition = processingFileInformation.startPosition;
                             }
+                        }
+
+                        LogFileInformation logFileInformation = LogFileInformation.builder()
+                                .logFile(file)
+                                .startPosition(startPosition)
+                                .fileHash(fileHash)
+                                .build();
+
+                        if (startPosition < file.length()) {
+                            logFileInfo.getLogFileInformationList().add(logFileInformation);
+                        } else if (startPosition == file.length() && !logFileGroup.isActiveFile(file)) {
+                            updatelastComponentUploadedLogFile(lastComponentUploadedLogFileInstantMap,
+                                    componentName, file);
+
+                            // NOTE: This handles the scenario where we are uploading the active file constantly and
+                            // upload all its contents and then rotates. We would pick it again on the next cycle, and
+                            // it will fall under this condition but since it was the active file on the previous
+                            // cycle it didn't get deleted
+                            deleteFile(componentLogConfiguration, file);
                         }
                     });
                 } catch (SecurityException e) {
@@ -655,16 +662,20 @@ public class LogManagerService extends PluginService {
                     logger.atDebug().cause(e).log("Unable to read the directory");
                 }
             }
-            //TODO: need to refactor. This is for the case unitOfWork may be empty. This will get refactored when the
-            // logFilgeGroup won't return files that should not be processed.
-            unitsOfWork = unitsOfWork.stream().filter(unit -> !unit.getLogFileInformationList().isEmpty()).collect(
-                    Collectors.toList());
 
-            unitsOfWork.forEach((unit) -> {
+            //TODO: need to refactor. This is for the case componentMetadata may be empty.
+            // This will get refactored when the logFileGroup won't return files that should not be processed.
+            componentMetadata = componentMetadata.stream()
+                    .filter(metaData -> !metaData.getLogFileInformationList().isEmpty())
+                    .collect(Collectors.toList());
+
+            componentMetadata.forEach((unit) -> {
                 CloudWatchAttempt cloudWatchAttempt = logsProcessor.processLogFiles(unit);
                 uploader.upload(cloudWatchAttempt, 1);
             });
             isCurrentlyUploading.set(false);
+
+            // TODO: Change this. It is only added for testing
             emitEventStatus(EventType.ALL_COMPONENTS_PROCESSED);
             // after handle one cycle, we sleep for interval to avoid seamless scanning and processing next cycle.
             // TODO, do not use lazy sleep. Use scheduler to unblock the thread.

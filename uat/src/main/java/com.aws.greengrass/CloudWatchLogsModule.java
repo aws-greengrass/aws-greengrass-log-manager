@@ -13,10 +13,8 @@ import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
 import software.amazon.awssdk.http.apache.ApacheHttpClient;
 import software.amazon.awssdk.services.cloudwatchlogs.CloudWatchLogsClient;
 import javax.inject.Singleton;
-
 @AutoService(Module.class)
 public class CloudWatchLogsModule extends AbstractAWSResourceModule<CloudWatchLogsClient, CloudWatchLogsLifecycle> {
-
     @Provides
     @Singleton
     @Override

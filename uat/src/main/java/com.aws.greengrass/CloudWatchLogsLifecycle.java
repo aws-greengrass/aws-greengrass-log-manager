@@ -1,5 +1,7 @@
-
-
+/*
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ */
 package com.aws.greengrass;
 
 import com.aws.greengrass.testing.resources.AWSResourceLifecycle;
@@ -32,7 +34,6 @@ public class CloudWatchLogsLifecycle extends AbstractAWSResourceLifecycle<CloudW
         DescribeLogGroupsResponse response  = client.describeLogGroups(request);
         return response.logGroups();
     }
-
     /**
      * Retrieves the streams for a given CloudWatch log group if there are any.
      * @param groupName   name of the CloudWatch group
@@ -41,5 +42,8 @@ public class CloudWatchLogsLifecycle extends AbstractAWSResourceLifecycle<CloudW
         DescribeLogStreamsRequest request = DescribeLogStreamsRequest.builder().logGroupName(groupName).build();
         DescribeLogStreamsResponse response = client.describeLogStreams(request);
         return response.logStreams();
+    }
+    public CloudWatchLogsClient getClient(){
+        return client;
     }
 }

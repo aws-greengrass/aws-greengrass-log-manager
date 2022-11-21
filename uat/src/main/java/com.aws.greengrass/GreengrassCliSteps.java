@@ -16,15 +16,12 @@ import io.cucumber.java.en.And;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.List;
 import java.util.concurrent.TimeUnit;
 import javax.inject.Inject;
 import static com.aws.greengrass.testing.component.LocalComponentPreparationService.ARTIFACTS_DIR;
 import static com.aws.greengrass.testing.component.LocalComponentPreparationService.LOCAL_STORE;
 import static com.aws.greengrass.testing.component.LocalComponentPreparationService.RECIPE_DIR;
-
 @ScenarioScoped
 public class GreengrassCliSteps {
     public static final String LOCAL_DEPLOYMENT_ID = "localDeploymentId";
@@ -36,7 +33,6 @@ public class GreengrassCliSteps {
     private ComponentPreparationService componentPreparation;
     private WaitSteps waitSteps;
     private static Logger LOGGER = LogManager.getLogger(GreengrassCliSteps.class);
-
     @Inject
     @SuppressWarnings("MissingJavadocMethod")
     public GreengrassCliSteps(Platform platform, TestContext testContext,
@@ -74,5 +70,3 @@ public class GreengrassCliSteps {
         return response.contains(String.format("State: %s", componentStatus));
     }
 }
-
-

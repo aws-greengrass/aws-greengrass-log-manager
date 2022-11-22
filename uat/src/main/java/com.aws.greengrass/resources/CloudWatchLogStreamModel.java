@@ -6,6 +6,8 @@ package com.aws.greengrass.resources;
 
 import com.aws.greengrass.testing.api.model.TestingModel;
 import com.aws.greengrass.testing.resources.AWSResource;
+import com.aws.greengrass.logging.impl.LogManager;
+import com.aws.greengrass.logging.api.Logger;
 import org.immutables.value.Value;
 import software.amazon.awssdk.services.cloudwatchlogs.CloudWatchLogsClient;
 import software.amazon.awssdk.services.cloudwatchlogs.model.DeleteLogStreamRequest;
@@ -16,6 +18,8 @@ import software.amazon.awssdk.services.cloudwatchlogs.model.ResourceNotFoundExce
 public interface CloudWatchLogStreamModel extends AWSResource<CloudWatchLogsClient> {
     String groupName();
     String streamName();
+    Logger logger = LogManager.getLogger(CloudWatchLogStream.class);
+
 
     @Override
     default void remove(CloudWatchLogsClient client) {
@@ -25,7 +29,7 @@ public interface CloudWatchLogStreamModel extends AWSResource<CloudWatchLogsClie
         try {
             client.deleteLogStream(request);
         } catch (ResourceNotFoundException notFound) {
-            // Do nothing if it is already deleted.
+            logger.atInfo().kv("streamName", streamName()).cause(notFound).log("Failed to delete stream");
         }
     }
 }

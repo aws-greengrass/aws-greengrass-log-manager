@@ -5,6 +5,7 @@
 
 package com.aws.greengrass;
 
+import com.aws.greengrass.testing.model.ScenarioContext;
 import com.aws.greengrass.testing.model.TestContext;
 import com.aws.greengrass.testing.platform.Platform;
 import com.google.inject.Inject;
@@ -27,14 +28,16 @@ import java.util.List;
 public class FileSteps {
     private final Platform platform;
     private final TestContext testContext;
+    private final ScenarioContext senarioContext;
     private static Logger LOGGER = LogManager.getLogger(FileSteps.class);
     public Map<String, List<String>> msgMap=new HashMap<String, List<String>>();
     private static final RandomStringGenerator RANDOM_STRING_GENERATOR =
             new RandomStringGenerator.Builder().withinRange('a', 'z').build();
     @Inject
-    public FileSteps(Platform platform, TestContext testContext,CloudWatchLogsLifecycle logsLifecycle) {
+    public FileSteps(Platform platform, TestContext testContext, ScenarioContext senarioContext) {
         this.platform = platform;
         this.testContext = testContext;
+        this.senarioContext= senarioContext;
     }
     /**
      * Arranges some log files with content on the /logs folder for a component
@@ -43,23 +46,26 @@ public class FileSteps {
      * @param componentName  name of the component.
      * @throws IOException   thrown when file fails to be written.
      */
-    @And("{int} temporary rotated log files for component {word}")
+    @And("{int} temporary rotated log files for component {word} have been created")
     public void arrangeComponentLogFiles(int numFiles, String componentName) throws IOException {
         Path logsDirectory = testContext.installRoot().resolve("logs");
         LOGGER.info("Writing {} log files into {}", numFiles, logsDirectory.toString());
         if (!platform.files().exists(logsDirectory)) {
             throw new IllegalStateException("No logs directory");
         }
+        senarioContext.put(componentName + "LogDirectory",logsDirectory.toString());
         if (componentName.equals("aws.greengrass.Nucleus")) {
             msgMap.clear();
             for (int i = 0; i < numFiles; i++) {
-                String fileName = String.format("greengrass_%d.log", i);
+                String fileName = String.format("greengrass_%s.log", i);
                 createFileAndWriteData(logsDirectory, fileName, false);
             }
-            return;
+        } else  {
+            for (int i = 0; i < numFiles; i++) {
+                String fileName = String.format("%s_%s.log",componentName, i);
+                createFileAndWriteData(logsDirectory,fileName, false);
+            }
         }
-        String message = String.format("Generating log files for %d not yet implemented", componentName);
-        throw new UnsupportedOperationException(message);
     }
     private void createFileAndWriteData(Path tempDirectoryPath, String fileNamePrefix, boolean isTemp)
             throws IOException {
@@ -89,5 +95,4 @@ public class FileSteps {
             writer.write(data + "\r\n");
         }
     }
-
 }

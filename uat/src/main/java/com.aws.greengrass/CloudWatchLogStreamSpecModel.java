@@ -22,5 +22,6 @@ public interface CloudWatchLogStreamSpecModel extends ResourceSpec<CloudWatchLog
     @Override
     default CloudWatchLogStreamSpec create(CloudWatchLogsClient client, AWSResources resources) {
         return CloudWatchLogStreamSpec.builder().build();
+
     }
 }

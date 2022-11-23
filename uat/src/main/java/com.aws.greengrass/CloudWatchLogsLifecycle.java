@@ -19,7 +19,6 @@ import javax.inject.Inject;
 
 @AutoService(AWSResourceLifecycle.class)
 public class CloudWatchLogsLifecycle extends AbstractAWSResourceLifecycle<CloudWatchLogsClient> {
-
     @Inject
     public CloudWatchLogsLifecycle(CloudWatchLogsClient client) {
 

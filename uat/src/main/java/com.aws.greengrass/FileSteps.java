@@ -1,5 +1,6 @@
 package com.aws.greengrass;
 
+import com.aws.greengrass.testing.model.ScenarioContext;
 import com.aws.greengrass.testing.model.TestContext;
 import com.aws.greengrass.testing.platform.Platform;
 import com.google.inject.Inject;
@@ -27,11 +28,13 @@ public class FileSteps {
     private static Logger LOGGER = LogManager.getLogger(FileSteps.class);
     private static final RandomStringGenerator RANDOM_STRING_GENERATOR =
             new RandomStringGenerator.Builder().withinRange('a', 'z').build();
+    private final ScenarioContext scenarioContext;
 
     @Inject
-    public FileSteps(Platform platform, TestContext testContext) {
+    public FileSteps(Platform platform, TestContext testContext, ScenarioContext scenarioContext) {
         this.platform = platform;
         this.testContext = testContext;
+        this.scenarioContext = scenarioContext;
     }
 
     /**
@@ -45,21 +48,22 @@ public class FileSteps {
     public void arrangeComponentLogFiles(int numFiles, String componentName) throws IOException {
         Path logsDirectory = testContext.installRoot().resolve("logs");
         LOGGER.info("Writing {} log files into {}", numFiles, logsDirectory.toString());
-
         if (!platform.files().exists(logsDirectory)) {
             throw new IllegalStateException("No logs directory");
         }
-
+        scenarioContext.put(componentName + "LogDirectory",logsDirectory.toString());
         if (componentName.equals("aws.greengrass.Nucleus")) {
+
             for (int i = 0; i < numFiles; i++) {
-                String fileName = String.format("greengrass_%d.log", i);
+                String fileName = String.format("greengrass_%s.log", i);
                 createFileAndWriteData(logsDirectory, fileName, false);
             }
-            return;
+        } else  {
+            for (int i = 0; i < numFiles; i++) {
+                String fileName = String.format("%s_%s.log",componentName, i);
+                createFileAndWriteData(logsDirectory,fileName, false);
+            }
         }
-
-        String message = String.format("Generating log files for %d not yet implemented", componentName);
-        throw new UnsupportedOperationException(message);
     }
 
     private void createFileAndWriteData(Path tempDirectoryPath, String fileNamePrefix, boolean isTemp)

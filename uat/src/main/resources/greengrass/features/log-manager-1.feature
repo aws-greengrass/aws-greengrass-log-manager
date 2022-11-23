@@ -7,6 +7,7 @@ Feature: Greengrass V2 LogManager
         Given my device is registered as a Thing
         And my device is running Greengrass
         And 5 temporary rotated log files for component aws.greengrass.Nucleus have been created
+        And 5 temporary rotated log files for component UserComponentA have been created
 
     Scenario: configure the log manager component using a componentLogsConfiguration list and logs are uploaded to
     CloudWatch
@@ -18,6 +19,12 @@ Feature: Greengrass V2 LogManager
         {
             "MERGE": {
                 "logsUploaderConfiguration": {
+                     "componentLogsConfigurationMap": {
+                        "UserComponentA": {
+                            "logFileRegex": "UserComponentA_\\w*.log",
+                            "logFileDirectoryPath": "${UserComponentALogDirectory}"
+                        }
+                    },
                     "systemLogsConfiguration": {
                         "uploadToCloudWatch": "true",
                         "minimumLogLevel": "INFO",
@@ -34,3 +41,4 @@ Feature: Greengrass V2 LogManager
         Then the Greengrass deployment is COMPLETED on the device after 2 minutes
         And I verify the aws.greengrass.LogManager component is RUNNING using the greengrass-cli
         And I verify that it created a log group for component type GreengrassSystemComponent for component System, with streams within 120 seconds in CloudWatch
+        And I verify that it created a log group for component type UserComponent for component UserComponentA, with streams within 120 seconds in CloudWatch

@@ -8,10 +8,10 @@ package com.aws.greengrass.resources;
 import com.aws.greengrass.testing.resources.AWSResourceLifecycle;
 import com.aws.greengrass.testing.resources.AbstractAWSResourceLifecycle;
 import com.google.auto.service.AutoService;
+import software.amazon.awssdk.services.cloudwatchlogs.CloudWatchLogsAsyncClient;
 import software.amazon.awssdk.services.cloudwatchlogs.CloudWatchLogsClient;
-import software.amazon.awssdk.services.cloudwatchlogs.model.DescribeLogStreamsRequest;
-import software.amazon.awssdk.services.cloudwatchlogs.model.DescribeLogStreamsResponse;
-import software.amazon.awssdk.services.cloudwatchlogs.model.LogStream;
+import software.amazon.awssdk.services.cloudwatchlogs.model.*;
+
 import java.util.List;
 import javax.inject.Inject;
 
@@ -27,14 +27,26 @@ public class CloudWatchLogsLifecycle extends AbstractAWSResourceLifecycle<CloudW
      * Retrieves the streams for a given CloudWatch log group if there are any.
      * @param groupName   name of the CloudWatch group
      */
-    public List<LogStream> findStream(String groupName, String logStreamNamePattern) {
-        DescribeLogStreamsRequest request = DescribeLogStreamsRequest.builder()
-                .logGroupName(groupName)
-                .logStreamNamePrefix(logStreamNamePattern)
-                .descending(true)
-                .build();
-
+    /**
+     * Retrieves the logGroups matching the prefix.
+     * @param prefix log group prefix
+     */
+    public List<LogGroup> logGroupsByPrefix(String prefix) {
+        DescribeLogGroupsRequest request = DescribeLogGroupsRequest.builder().logGroupNamePrefix(prefix).build();
+        DescribeLogGroupsResponse response  = client.describeLogGroups(request);
+        return response.logGroups();
+    }
+    /**
+     * Retrieves the streams for a given CloudWatch log group if there are any.
+     * @param groupName   name of the CloudWatch group
+     */
+    public List<LogStream> streamsByLogGroupName(String groupName) {
+        DescribeLogStreamsRequest request = DescribeLogStreamsRequest.builder().logGroupName(groupName).build();
         DescribeLogStreamsResponse response = client.describeLogStreams(request);
         return response.logStreams();
     }
+    public CloudWatchLogsClient getClient(){
+        return client;
+    }
 }
+

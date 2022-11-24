@@ -52,17 +52,14 @@ public class FileSteps {
             throw new IllegalStateException("No logs directory");
         }
         scenarioContext.put(componentName + "LogDirectory",logsDirectory.toString());
-        if (componentName.equals("aws.greengrass.Nucleus")) {
-
-            for (int i = 0; i < numFiles; i++) {
-                String fileName = String.format("greengrass_%s.log", i);
-                createFileAndWriteData(logsDirectory, fileName, false);
-            }
-        } else  {
-            for (int i = 0; i < numFiles; i++) {
-                String fileName = String.format("%s_%s.log",componentName, i);
-                createFileAndWriteData(logsDirectory,fileName, false);
-            }
+        String filePrefix = "greengrass";
+        if (!componentName.equals("aws.greengrass.Nucleus")) {
+            filePrefix = componentName;
+        }
+        for (int i = 0; i < numFiles; i++) {
+            String fileName = String.format("%s_%d.log", filePrefix,  i);
+            createFileAndWriteData(logsDirectory, fileName, false);
+        }
         }
     }
 

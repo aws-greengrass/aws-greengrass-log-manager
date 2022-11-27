@@ -5,7 +5,9 @@ import com.aws.greengrass.testing.model.TestContext;
 import com.aws.greengrass.testing.platform.Platform;
 import com.google.inject.Inject;
 import io.cucumber.guice.ScenarioScoped;
+import io.cucumber.java.en.And;
 import io.cucumber.java.en.Given;
+import io.cucumber.java.en.Then;
 import org.apache.commons.text.RandomStringGenerator;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -95,4 +97,32 @@ public class FileSteps {
         }
     }
 
+    @And("I verify the rotated files are deleted except for the active log file for component {word}")
+    public void verifyActiveFile(String componentName) {
+        Path logsDirectory = testContext.installRoot().resolve("logs");
+        if (!platform.files().exists(logsDirectory)) {
+            throw new IllegalStateException("No logs directory");
+        }
+        String filePrefix = componentName;
+        int count = 0;
+        String activeFileName = "";
+        File f = logsDirectory.toFile();
+        for (String file_name : f.list()) {
+            if (file_name.startsWith(filePrefix)) {
+                count++;
+                activeFileName = file_name;
+            }
+        }
+        if (count == 1) {
+            LOGGER.info("Last Active File name is: " + activeFileName);
+        } else {
+            LOGGER.info("Multiple file exist starting with " + filePrefix);
+        }
+    }
 }
+
+
+
+
+
+

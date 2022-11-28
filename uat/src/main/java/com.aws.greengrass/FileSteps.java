@@ -1,5 +1,6 @@
 package com.aws.greengrass;
 
+import com.aws.greengrass.testing.model.ScenarioContext;
 import com.aws.greengrass.testing.model.TestContext;
 import com.aws.greengrass.testing.platform.Platform;
 import com.google.inject.Inject;
@@ -21,45 +22,54 @@ import java.util.List;
 @ScenarioScoped
 public class FileSteps {
 
-    private final Platform platform;
-    private final TestContext testContext;
-
-    private static Logger LOGGER = LogManager.getLogger(FileSteps.class);
     private static final RandomStringGenerator RANDOM_STRING_GENERATOR =
             new RandomStringGenerator.Builder().withinRange('a', 'z').build();
+    private static Logger LOGGER = LogManager.getLogger(FileSteps.class);
+    private final Platform platform;
+    private final TestContext testContext;
+    private final ScenarioContext scenarioContext;
 
     @Inject
-    public FileSteps(Platform platform, TestContext testContext) {
+    public FileSteps(Platform platform, TestContext testContext, ScenarioContext scenarioContext) {
         this.platform = platform;
         this.testContext = testContext;
+        this.scenarioContext = scenarioContext;
+    }
+
+    private static List<String> generateRandomMessages(int n, int length) {
+        List<String> msgs = new ArrayList<>();
+        for (int i = 0; i < n; i++) {
+            // TODO: Improves this as this is not how the logger writes the logs
+            msgs.add(RANDOM_STRING_GENERATOR.generate(length));
+        }
+        return msgs;
     }
 
     /**
      * Arranges some log files with content on the /logs folder for a component
      * to simulate a devices where logs have already bee written.
-     * @param numFiles       number of log files to write.
-     * @param componentName  name of the component.
-     * @throws IOException   thrown when file fails to be written.
+     *
+     * @param numFiles      number of log files to write.
+     * @param componentName name of the component.
+     * @throws IOException thrown when file fails to be written.
      */
     @Given("{int} temporary rotated log files for component {word} have been created")
     public void arrangeComponentLogFiles(int numFiles, String componentName) throws IOException {
         Path logsDirectory = testContext.installRoot().resolve("logs");
         LOGGER.info("Writing {} log files into {}", numFiles, logsDirectory.toString());
-
         if (!platform.files().exists(logsDirectory)) {
             throw new IllegalStateException("No logs directory");
         }
-
-        if (componentName.equals("aws.greengrass.Nucleus")) {
-            for (int i = 0; i < numFiles; i++) {
-                String fileName = String.format("greengrass_%d.log", i);
-                createFileAndWriteData(logsDirectory, fileName, false);
-            }
-            return;
+        scenarioContext.put(componentName + "LogDirectory", logsDirectory.toString());
+        String filePrefix = "greengrass";
+        if (!componentName.equals("aws.greengrass.Nucleus")) {
+            filePrefix = componentName;
         }
 
-        String message = String.format("Generating log files for %d not yet implemented", componentName);
-        throw new UnsupportedOperationException(message);
+        for (int i = 0; i < numFiles; i++) {
+            String fileName = String.format("%s_%d.log", filePrefix, i);
+            createFileAndWriteData(logsDirectory, fileName, false);
+        }
     }
 
     private void createFileAndWriteData(Path tempDirectoryPath, String fileNamePrefix, boolean isTemp)
@@ -75,15 +85,6 @@ public class FileSteps {
         for (String messageBytes : randomMessages) {
             addDataToFile(messageBytes, file.toPath());
         }
-    }
-
-    private static List<String> generateRandomMessages(int n, int length) {
-        List<String> msgs = new ArrayList<>();
-        for (int i = 0; i < n; i++) {
-            // TODO: Improves this as this is not how the logger writes the logs
-            msgs.add(RANDOM_STRING_GENERATOR.generate(length));
-        }
-        return msgs;
     }
 
     private void addDataToFile(String data, Path filePath) throws IOException {

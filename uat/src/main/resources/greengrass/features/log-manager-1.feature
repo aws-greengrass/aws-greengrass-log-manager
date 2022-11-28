@@ -76,3 +76,5 @@ Feature: Greengrass V2 LogManager
         And I verify that it created a log group for component type UserComponent for component UserComponentA, with streams within 120 seconds in CloudWatch
         # There should be 1 file left because we do not upload and delete the "active" log file
         And I verify the rotated files are deleted except for the active log file for component UserComponentA
+      
+

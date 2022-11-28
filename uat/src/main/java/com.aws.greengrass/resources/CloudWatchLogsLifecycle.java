@@ -10,8 +10,12 @@ import com.aws.greengrass.testing.resources.AbstractAWSResourceLifecycle;
 import com.google.auto.service.AutoService;
 import software.amazon.awssdk.services.cloudwatchlogs.CloudWatchLogsAsyncClient;
 import software.amazon.awssdk.services.cloudwatchlogs.CloudWatchLogsClient;
+
 import software.amazon.awssdk.services.cloudwatchlogs.model.*;
 
+import software.amazon.awssdk.services.cloudwatchlogs.model.DescribeLogStreamsRequest;
+import software.amazon.awssdk.services.cloudwatchlogs.model.DescribeLogStreamsResponse;
+import software.amazon.awssdk.services.cloudwatchlogs.model.LogStream;
 import java.util.List;
 import javax.inject.Inject;
 
@@ -26,6 +30,7 @@ public class CloudWatchLogsLifecycle extends AbstractAWSResourceLifecycle<CloudW
     /**
      * Retrieves the streams for a given CloudWatch log group if there are any.
      * @param groupName   name of the CloudWatch group
+     * @param logStreamNamePattern name of the log CloudWatch log stream
      */
     /**
      * Retrieves the logGroups matching the prefix.

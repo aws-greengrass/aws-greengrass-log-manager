@@ -21,9 +21,13 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
+
 import java.util.stream.Collectors;
 
 import static org.junit.Assert.assertEquals;
+
+import java.util.Objects;
+
 
 @ScenarioScoped
 public class FileSteps {
@@ -36,6 +40,10 @@ public class FileSteps {
     private final ScenarioContext scenarioContext;
 
     @Inject
+
+
+    @SuppressWarnings("MissingJavadocMethod")
+
     public FileSteps(Platform platform, TestContext testContext, ScenarioContext scenarioContext) {
         this.platform = platform;
         this.testContext = testContext;
@@ -68,9 +76,15 @@ public class FileSteps {
             throw new IllegalStateException("No logs directory");
         }
 
+
         scenarioContext.put(componentName + "LogDirectory", logsDirectory.toString());
         String filePrefix = "greengrass";
         if (!componentName.equals("aws.greengrass.Nucleus")) {
+
+        scenarioContext.put(componentName + "LogDirectory", logsDirectory.toString());
+        String filePrefix = "greengrass";
+        if (!Objects.equals("aws.greengrass.Nucleus", componentName)) {
+
             filePrefix = componentName;
         }
 

@@ -31,6 +31,7 @@ public class FileSteps {
     private final ScenarioContext scenarioContext;
 
     @Inject
+    @SuppressWarnings("MissingJavadocMethod")
     public FileSteps(Platform platform, TestContext testContext, ScenarioContext scenarioContext) {
         this.platform = platform;
         this.testContext = testContext;

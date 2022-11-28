@@ -7,7 +7,6 @@ import com.google.inject.Inject;
 import io.cucumber.guice.ScenarioScoped;
 import io.cucumber.java.en.And;
 import io.cucumber.java.en.Given;
-import io.cucumber.java.en.Then;
 import org.apache.commons.text.RandomStringGenerator;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -19,7 +18,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Comparator;
 import java.util.List;
+import java.util.stream.Collectors;
+
+import static org.junit.Assert.assertEquals;
 
 @ScenarioScoped
 public class FileSteps {
@@ -96,28 +100,22 @@ public class FileSteps {
             writer.write(data + "\r\n");
         }
     }
-
     @And("I verify the rotated files are deleted except for the active log file for component {word}")
     public void verifyActiveFile(String componentName) {
         Path logsDirectory = testContext.installRoot().resolve("logs");
         if (!platform.files().exists(logsDirectory)) {
             throw new IllegalStateException("No logs directory");
         }
-        String filePrefix = componentName;
-        int count = 0;
-        String activeFileName = "";
-        File f = logsDirectory.toFile();
-        for (String file_name : f.list()) {
-            if (file_name.startsWith(filePrefix)) {
-                count++;
-                activeFileName = file_name;
-            }
-        }
-        if (count == 1) {
-            LOGGER.info("Last Active File name is: " + activeFileName);
-        } else {
-            LOGGER.info("Multiple file exist starting with " + filePrefix);
-        }
+        List<File> componentFiles = Arrays.stream(logsDirectory.toFile().listFiles())
+                .filter(File::isFile)
+                .sorted(Comparator.comparingLong(File::lastModified))
+                .collect(Collectors.toList());
+        assertEquals(1, componentFiles.size());
+        File activeFile = componentFiles.get(componentFiles.size() - 1);
+        // When writing the files for a component store on the scenario context the path of the last file that got
+        // written
+        String expectedActiveFilePath = scenarioContext.get(componentName + "ActiveFile");
+        assertEquals(expectedActiveFilePath, activeFile.getAbsolutePath());
     }
 }
 

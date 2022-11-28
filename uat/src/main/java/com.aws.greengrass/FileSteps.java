@@ -18,6 +18,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 @ScenarioScoped
 public class FileSteps {
@@ -48,21 +49,21 @@ public class FileSteps {
     /**
      * Arranges some log files with content on the /logs folder for a component
      * to simulate a devices where logs have already bee written.
-     *
-     * @param numFiles      number of log files to write.
-     * @param componentName name of the component.
-     * @throws IOException thrown when file fails to be written.
+     * @param numFiles       number of log files to write.
+     * @param componentName  name of the component.
+     * @throws IOException   thrown when file fails to be written.
      */
     @Given("{int} temporary rotated log files for component {word} have been created")
     public void arrangeComponentLogFiles(int numFiles, String componentName) throws IOException {
         Path logsDirectory = testContext.installRoot().resolve("logs");
         LOGGER.info("Writing {} log files into {}", numFiles, logsDirectory.toString());
+
         if (!platform.files().exists(logsDirectory)) {
             throw new IllegalStateException("No logs directory");
         }
         scenarioContext.put(componentName + "LogDirectory", logsDirectory.toString());
         String filePrefix = "greengrass";
-        if (!componentName.equals("aws.greengrass.Nucleus")) {
+        if (!Objects.equals("aws.greengrass.Nucleus", componentName)) {
             filePrefix = componentName;
         }
 

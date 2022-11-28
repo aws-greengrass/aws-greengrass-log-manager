@@ -2,6 +2,7 @@
  * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
+
 package com.aws.greengrass.resources;
 
 import com.aws.greengrass.testing.modules.AbstractAWSResourceModule;
@@ -12,6 +13,7 @@ import com.google.inject.Provides;
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
 import software.amazon.awssdk.http.apache.ApacheHttpClient;
 import software.amazon.awssdk.services.cloudwatchlogs.CloudWatchLogsClient;
+
 import javax.inject.Singleton;
 
 @AutoService(Module.class)

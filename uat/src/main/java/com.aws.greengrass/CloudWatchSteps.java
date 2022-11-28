@@ -2,12 +2,13 @@
  * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
+
 package com.aws.greengrass;
 
 import com.aws.greengrass.resources.CloudWatchLogStreamSpec;
 import com.aws.greengrass.resources.CloudWatchLogsLifecycle;
-import com.aws.greengrass.testing.model.TestContext;
 import com.aws.greengrass.testing.features.WaitSteps;
+import com.aws.greengrass.testing.model.TestContext;
 import com.aws.greengrass.testing.modules.model.AWSResourcesContext;
 import com.aws.greengrass.testing.resources.AWSResources;
 import com.google.inject.Inject;
@@ -25,7 +26,7 @@ import java.util.TimeZone;
 import java.util.concurrent.TimeUnit;
 
 @ScenarioScoped
-public class CloudWatchSteps{
+public class CloudWatchSteps {
     private final CloudWatchLogsLifecycle logsLifecycle;
     private final TestContext testContext;
     private final WaitSteps waitSteps;

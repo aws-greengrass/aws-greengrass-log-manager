@@ -2,6 +2,7 @@
  * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
  * SPDX-License-Identifier: Apache-2.0
  */
+
 package com.aws.greengrass.resources;
 
 import com.aws.greengrass.testing.api.model.TestingModel;
@@ -14,6 +15,7 @@ import software.amazon.awssdk.services.cloudwatchlogs.CloudWatchLogsClient;
 @Value.Immutable
 public interface CloudWatchLogStreamSpecModel extends ResourceSpec<CloudWatchLogsClient, CloudWatchLogStream> {
     String logGroupName();
+
     String logStreamName();
 
     @Override

@@ -123,15 +123,15 @@ public class FileSteps {
         }
         FilenameFilter f = new
                 FilenameFilter() {
-            @Override
-            public boolean accept(File dir, String name) {
-                if (name.startsWith(componentName)) {
-                    return true;
-                } else {
-                    return false;
-                }
-            }
-        };
+                    @Override
+                    public boolean accept(File dir, String name) {
+                        if (name.startsWith(componentName)) {
+                            return true;
+                        } else {
+                            return false;
+                        }
+                    }
+                };
 
         List<File> componentFiles = Arrays.stream(logsDirectory.toFile().listFiles(f))
                 .filter(File::isFile)
@@ -144,6 +144,6 @@ public class FileSteps {
         String expectedActiveFilePath = scenarioContext.get(componentName + "ActiveFile");
         assertEquals(expectedActiveFilePath, activeFile.getAbsolutePath());
     }
-    }
+}
 
 

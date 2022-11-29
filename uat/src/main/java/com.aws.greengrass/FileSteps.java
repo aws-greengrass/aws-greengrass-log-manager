@@ -5,7 +5,8 @@ import com.aws.greengrass.testing.model.TestContext;
 import com.aws.greengrass.testing.platform.Platform;
 import com.google.inject.Inject;
 import io.cucumber.guice.ScenarioScoped;
-import io.cucumber.java.en.Given;
+import io.cucumber.java.en.And;
+import io.cucumber.java.en.Then;
 import org.apache.commons.text.RandomStringGenerator;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -17,8 +18,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
+import java.util.stream.Collectors;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 @ScenarioScoped
 public class FileSteps {
@@ -54,7 +59,7 @@ public class FileSteps {
      * @param componentName  name of the component.
      * @throws IOException   thrown when file fails to be written.
      */
-    @Given("{int} temporary rotated log files for component {word} have been created")
+    @And("{int} temporary rotated log files for component {word} have been created")
     public void arrangeComponentLogFiles(int numFiles, String componentName) throws IOException {
         Path logsDirectory = testContext.installRoot().resolve("logs");
         LOGGER.info("Writing {} log files into {}", numFiles, logsDirectory.toString());
@@ -93,6 +98,26 @@ public class FileSteps {
         try (BufferedWriter writer = Files.newBufferedWriter(filePath, StandardOpenOption.APPEND)) {
             writer.write(data + "\r\n");
         }
+    }
+
+    /**
+     * Arranges some log files with content on the /logs folder for a component
+     * to simulate a devices where logs have already bee written.
+     * @param componentName  name of the component.
+     * @throws IOException   thrown when file fails to be written.
+     */
+
+    @Then("I verify that 5 temporary rotated log files for component {word} are still available")
+    public void verifyActiveFile(String componentName) {
+        Path logsDirectory = testContext.installRoot().resolve("logs");
+        if (!platform.files().exists(logsDirectory)) {
+            throw new IllegalStateException("No logs directory");
+        }
+        List<File> componentFiles = Arrays.stream(logsDirectory.toFile().listFiles())
+                .filter(File::isFile)
+                .filter(file -> file.getName().startsWith(componentName))
+                .collect(Collectors.toList());
+        assertEquals(5, componentFiles.size());
     }
 
 }

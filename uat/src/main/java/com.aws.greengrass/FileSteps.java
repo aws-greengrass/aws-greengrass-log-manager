@@ -121,7 +121,8 @@ public class FileSteps {
         if (!platform.files().exists(logsDirectory)) {
             throw new IllegalStateException("No logs directory");
         }
-        FilenameFilter f = new FilenameFilter() {
+        FilenameFilter f = new
+                FilenameFilter() {
             @Override
             public boolean accept(File dir, String name) {
                 if (name.startsWith(componentName)) {
@@ -143,4 +144,6 @@ public class FileSteps {
         String expectedActiveFilePath = scenarioContext.get(componentName + "ActiveFile");
         assertEquals(expectedActiveFilePath, activeFile.getAbsolutePath());
     }
-}
+    }
+
+

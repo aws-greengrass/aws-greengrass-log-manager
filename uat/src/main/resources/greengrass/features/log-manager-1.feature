@@ -39,7 +39,6 @@ Feature: Greengrass V2 LogManager
         """
         And I deploy the Greengrass deployment configuration
         Then the Greengrass deployment is COMPLETED on the device after 2 minutes
-        # And I verify the aws.greengrass.LogManager component is RUNNING using the greengrass-cli
         Then I verify that it created a log group for component type GreengrassSystemComponent for component System, with streams within 120 seconds in CloudWatch
         And I verify that it created a log group for component type UserComponent for component UserComponentA, with streams within 120 seconds in CloudWatch
 
@@ -74,6 +73,5 @@ Feature: Greengrass V2 LogManager
             """
         And I deploy the Greengrass deployment configuration
         Then the Greengrass deployment is COMPLETED on the device after 5 minutes
-        # And I verify the aws.greengrass.LogManager component is RUNNING using the greengrass-cli
         And I verify that it created a log group for component type UserComponent for component UserComponentA, with streams within 120 seconds in CloudWatch
         And I verify the rotated files are deleted except for the active log file for component UserComponentA

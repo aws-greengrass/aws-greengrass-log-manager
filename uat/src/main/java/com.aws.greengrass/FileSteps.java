@@ -5,20 +5,26 @@ import com.aws.greengrass.testing.model.TestContext;
 import com.aws.greengrass.testing.platform.Platform;
 import com.google.inject.Inject;
 import io.cucumber.guice.ScenarioScoped;
-import io.cucumber.java.en.Given;
+import io.cucumber.java.en.And;
 import org.apache.commons.text.RandomStringGenerator;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import java.io.BufferedWriter;
 import java.io.File;
+import java.io.FilenameFilter;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
+import java.util.stream.Collectors;
+
+import static org.junit.Assert.assertEquals;
 
 @ScenarioScoped
 public class FileSteps {
@@ -30,8 +36,15 @@ public class FileSteps {
     private final TestContext testContext;
     private final ScenarioContext scenarioContext;
 
+    /**
+     * Arranges some log files with content on the /logs folder for a component
+     * to simulate a devices where logs have already bee written.
+     * @param platform     number of log files to write.
+     * @param testContext name of the component.
+     * @param scenarioContext name of the component.
+     */
+
     @Inject
-    @SuppressWarnings("MissingJavadocMethod")
     public FileSteps(Platform platform, TestContext testContext, ScenarioContext scenarioContext) {
         this.platform = platform;
         this.testContext = testContext;
@@ -50,15 +63,15 @@ public class FileSteps {
     /**
      * Arranges some log files with content on the /logs folder for a component
      * to simulate a devices where logs have already bee written.
-     * @param numFiles       number of log files to write.
-     * @param componentName  name of the component.
-     * @throws IOException   thrown when file fails to be written.
+     *
+     * @param numFiles      number of log files to write.
+     * @param componentName name of the component.
+     * @throws IOException thrown when file fails to be written.
      */
-    @Given("{int} temporary rotated log files for component {word} have been created")
+    @And("{int} temporary rotated log files for component {word} have been created")
     public void arrangeComponentLogFiles(int numFiles, String componentName) throws IOException {
         Path logsDirectory = testContext.installRoot().resolve("logs");
         LOGGER.info("Writing {} log files into {}", numFiles, logsDirectory.toString());
-
         if (!platform.files().exists(logsDirectory)) {
             throw new IllegalStateException("No logs directory");
         }
@@ -67,11 +80,12 @@ public class FileSteps {
         if (!Objects.equals("aws.greengrass.Nucleus", componentName)) {
             filePrefix = componentName;
         }
-
+        String fileName = "";
         for (int i = 0; i < numFiles; i++) {
-            String fileName = String.format("%s_%d.log", filePrefix, i);
+            fileName = String.format("%s_%d.log", filePrefix, i);
             createFileAndWriteData(logsDirectory, fileName, false);
         }
+        scenarioContext.put(componentName + "ActiveFile", logsDirectory.resolve(fileName).toAbsolutePath().toString());
     }
 
     private void createFileAndWriteData(Path tempDirectoryPath, String fileNamePrefix, boolean isTemp)
@@ -94,5 +108,39 @@ public class FileSteps {
             writer.write(data + "\r\n");
         }
     }
+    /**
+     * Arranges some log files with content on the /logs folder for a component
+     * to simulate a devices where logs have already bee written.
+     * @param componentName name of the component.
+     * @throws IOException thrown when file fails to be written.
+     */
 
+    @And("I verify the rotated files are deleted except for the active log file for component {word}")
+    public void verifyActiveFile(String componentName) {
+        Path logsDirectory = testContext.installRoot().resolve("logs");
+        if (!platform.files().exists(logsDirectory)) {
+            throw new IllegalStateException("No logs directory");
+        }
+        FilenameFilter f = new FilenameFilter() {
+            @Override
+            public boolean accept(File dir, String name) {
+                if (name.startsWith(componentName)) {
+                    return true;
+                } else {
+                    return false;
+                }
+            }
+        };
+
+        List<File> componentFiles = Arrays.stream(logsDirectory.toFile().listFiles(f))
+                .filter(File::isFile)
+                .sorted(Comparator.comparingLong(File::lastModified))
+                .collect(Collectors.toList());
+        assertEquals(1, componentFiles.size());
+        File activeFile = componentFiles.get(componentFiles.size() - 1);
+        // When writing the files for a component store on the scenario context the path of the last file that got
+        // written
+        String expectedActiveFilePath = scenarioContext.get(componentName + "ActiveFile");
+        assertEquals(expectedActiveFilePath, activeFile.getAbsolutePath());
+    }
 }

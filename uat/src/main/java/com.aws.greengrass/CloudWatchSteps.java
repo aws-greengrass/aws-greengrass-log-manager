@@ -1,8 +1,3 @@
-/*
- * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
- * SPDX-License-Identifier: Apache-2.0
- */
-
 package com.aws.greengrass;
 
 import com.aws.greengrass.resources.CloudWatchLogStreamSpec;
@@ -96,5 +91,3 @@ public class CloudWatchSteps {
         return exists;
     }
 }
-
-

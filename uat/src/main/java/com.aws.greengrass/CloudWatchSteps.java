@@ -1,3 +1,8 @@
+/*
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 package com.aws.greengrass;
 
 import com.aws.greengrass.resources.CloudWatchLogStreamSpec;
@@ -11,17 +16,14 @@ import io.cucumber.guice.ScenarioScoped;
 import io.cucumber.java.en.Then;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import software.amazon.awssdk.services.cloudwatchlogs.model.GetLogEventsRequest;
 import software.amazon.awssdk.services.cloudwatchlogs.model.LogStream;
 
-import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 import java.util.TimeZone;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
 
 @ScenarioScoped
 public class CloudWatchSteps {
@@ -84,7 +86,7 @@ public class CloudWatchSteps {
     }
 
     private boolean doesStreamExistInGroup(String logGroupName, String streamName) {
-        List<LogStream> streams = logsLifecycle.streamsByLogGroupName(logGroupName);
+        List<LogStream> streams = logsLifecycle.findStream(logGroupName, streamName);
         boolean exists = streams.stream().anyMatch(stream -> stream.logStreamName().matches(streamName));
 
         if (exists) {
@@ -92,33 +94,5 @@ public class CloudWatchSteps {
         }
 
         return exists;
-    }
-
-    /**
-     * Gets the currently processing logstreams
-     * to simulate a devices where logs have already bee written.
-     * filedataBefore  where data is stored before processing
-     * GetLogEventsRequest gets the log events with given Group name starting with initial LogstreamName
-     * @throws IOException   thrown when file fails to be written.
-     */
-    private void  getFileAndReadDataFromCloudWatch(List<String> randomMessages)
-            throws IOException {
-        LOGGER.info("getFileAndReadDataFromCloudWatch Start");
-        List<LogStream> streams = logsLifecycle.streamsByLogGroupName("/aws/greengrass/GreengrassSystemComponent/us-west-2/System");
-        String filedataBefore = randomMessages.stream().collect(Collectors.joining("\n"));
-        GetLogEventsRequest getLogEventsRequest =GetLogEventsRequest.builder()
-                .logGroupName( "/aws/greengrass/GreengrassSystemComponent/us-west-2/System")
-                .logStreamName(streams.get(0).logStreamName())
-                .build();
-        String filedata = "";
-        int logLimit = logsLifecycle.getClient().getLogEvents(getLogEventsRequest).events().size();
-        for (int c = logLimit-1; c >= logLimit -51; c--) {
-            filedata=(logsLifecycle.getClient().getLogEvents(getLogEventsRequest).events().get(c).message());
-            if(filedataBefore.trim().contains(filedata.trim()))
-            {
-                LOGGER.info("Inside getFileAndReadData Matched");
-                break;
-            }
-        }
     }
 }

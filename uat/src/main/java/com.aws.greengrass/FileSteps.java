@@ -1,3 +1,8 @@
+/*
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 package com.aws.greengrass;
 
 import com.aws.greengrass.testing.model.ScenarioContext;
@@ -12,7 +17,6 @@ import org.apache.logging.log4j.Logger;
 
 import java.io.BufferedWriter;
 import java.io.File;
-import java.io.FilenameFilter;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -24,7 +28,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
-import static org.junit.Assert.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 @ScenarioScoped
 public class FileSteps {
@@ -39,11 +43,11 @@ public class FileSteps {
     /**
      * Arranges some log files with content on the /logs folder for a component
      * to simulate a devices where logs have already bee written.
+     *
      * @param platform     number of log files to write.
      * @param testContext name of the component.
      * @param scenarioContext name of the component.
      */
-
     @Inject
     public FileSteps(Platform platform, TestContext testContext, ScenarioContext scenarioContext) {
         this.platform = platform;
@@ -108,39 +112,30 @@ public class FileSteps {
             writer.write(data + "\r\n");
         }
     }
+
     /**
      * Arranges some log files with content on the /logs folder for a component
      * to simulate a devices where logs have already bee written.
+     *
      * @param componentName name of the component.
-     * @throws IOException thrown when file fails to be written.
      */
-
     @And("I verify the rotated files are deleted except for the active log file for component {word}")
     public void verifyActiveFile(String componentName) {
         Path logsDirectory = testContext.installRoot().resolve("logs");
+
         if (!platform.files().exists(logsDirectory)) {
             throw new IllegalStateException("No logs directory");
         }
-        FilenameFilter f = new
-                FilenameFilter() {
-                    @Override
-                    public boolean accept(File dir, String name) {
-                        if (name.startsWith(componentName)) {
-                            return true;
-                        } else {
-                            return false;
-                        }
-                    }
-                };
 
-        List<File> componentFiles = Arrays.stream(logsDirectory.toFile().listFiles(f))
+        List<File> componentFiles = Arrays.stream(logsDirectory.toFile().listFiles())
                 .filter(File::isFile)
+                .filter(file -> file.getName().startsWith(componentName))
                 .sorted(Comparator.comparingLong(File::lastModified))
                 .collect(Collectors.toList());
+
         assertEquals(1, componentFiles.size());
         File activeFile = componentFiles.get(componentFiles.size() - 1);
-        // When writing the files for a component store on the scenario context the path of the last file that got
-        // written
+
         String expectedActiveFilePath = scenarioContext.get(componentName + "ActiveFile");
         assertEquals(expectedActiveFilePath, activeFile.getAbsolutePath());
     }

@@ -30,7 +30,7 @@ Feature: Greengrass V2 LogManager
                         }
                     },
                     "systemLogsConfiguration": {
-                        "uploadToCloudWatch": "true",
+                        "uploadToCloudWatch": "true",g
                         "minimumLogLevel": "INFO",
                         "diskSpaceLimit": "25",
                         "diskSpaceLimitUnit": "MB",

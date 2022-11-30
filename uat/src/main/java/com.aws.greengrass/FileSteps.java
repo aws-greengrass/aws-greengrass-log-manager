@@ -41,7 +41,8 @@ public class FileSteps {
     private final TestContext testContext;
     private final ScenarioContext scenarioContext;
 
-    private final String ACTIVE_FILE = "ActiveFile";
+    public static final String ACTIVE_File = "Activefile";
+
 
     /**
      * Arranges some log files with content on the /logs folder for a component
@@ -92,7 +93,7 @@ public class FileSteps {
             fileName = String.format("%s_%d.log", filePrefix, i);
             createFileAndWriteData(logsDirectory, fileName, false);
         }
-        scenarioContext.put(componentName + ACTIVE_FILE, logsDirectory.resolve(fileName).toAbsolutePath().toString());
+        scenarioContext.put(componentName + ACTIVE_File, logsDirectory.resolve(fileName).toAbsolutePath().toString());
     }
 
     private void createFileAndWriteData(Path tempDirectoryPath, String fileNamePrefix, boolean isTemp)
@@ -120,11 +121,12 @@ public class FileSteps {
      * Arranges some log files with content on the /logs folder for a component
      * to simulate a devices where logs have already bee written.
      * @param componentName  name of the component.
+     * @param numfiles name of the component.
      * @throws IOException   thrown when file fails to be written.
      */
 
-    @Then("I verify that 5 temporary rotated log files for component {word} are still available")
-    public void verifyActiveFile(String componentName) {
+    @Then("I verify that {int} temporary rotated log files for component {word} are still available")
+    public void verifyRotatedFilesAvailable(int numfiles,String componentName) {
         Path logsDirectory = testContext.installRoot().resolve("logs");
         if (!platform.files().exists(logsDirectory)) {
             throw new IllegalStateException("No logs directory");
@@ -133,14 +135,16 @@ public class FileSteps {
                 .filter(File::isFile)
                 .filter(file -> file.getName().startsWith(componentName))
                 .collect(Collectors.toList());
-        assertEquals(5, componentFiles.size());
+        assertEquals(numfiles, componentFiles.size());
     }
 
-}
-
-     *
-     * @param componentName name of the component.
+    /**
+     * Arranges some log files with content on the /logs folder for a component
+     * to simulate a devices where logs have already bee written.
+     * @param componentName  name of the component.
+     * @throws IOException   thrown when file fails to be written.
      */
+
     @And("I verify the rotated files are deleted except for the active log file for component {word}")
     public void verifyActiveFile(String componentName) {
         Path logsDirectory = testContext.installRoot().resolve("logs");
@@ -158,23 +162,9 @@ public class FileSteps {
         assertEquals(1, componentFiles.size());
         File activeFile = componentFiles.get(componentFiles.size() - 1);
 
-        String expectedActiveFilePath = scenarioContext.get(componentName + ACTIVE_FILE);
+        String expectedActiveFilePath = scenarioContext.get(componentName + ACTIVE_File);
         assertEquals(expectedActiveFilePath, activeFile.getAbsolutePath());
     }
-    @And("I verify the rotated files are not deleted except for the active log file for component {word}")
-    public void verifyActiveFilenotDeleted(String componentName) {
-        Path logsDirectory = testContext.installRoot().resolve("logs");
 
-        if (!platform.files().exists(logsDirectory)) {
-            throw new IllegalStateException("No logs directory");
-        }
-
-        List<File> componentFiles = Arrays.stream(logsDirectory.toFile().listFiles())
-                .filter(File::isFile)
-                .filter(file -> file.getName().startsWith(componentName))
-                .sorted(Comparator.comparingLong(File::lastModified))
-                .collect(Collectors.toList());
-        assertEquals(5, componentFiles.size());
-    }
 }
 

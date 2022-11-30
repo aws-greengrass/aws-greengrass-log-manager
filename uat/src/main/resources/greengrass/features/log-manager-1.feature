@@ -40,7 +40,7 @@ Feature: Greengrass V2 LogManager
         """
         And I deploy the Greengrass deployment configuration
         Then the Greengrass deployment is COMPLETED on the device after 2 minutes
-       # And I verify the aws.greengrass.LogManager component is RUNNING using the greengrass-cli
+        And I verify the aws.greengrass.LogManager component is RUNNING using the greengrass-cli
         And I verify that it created a log group for component type GreengrassSystemComponent for component System, with streams within 120 seconds in CloudWatch
         And I verify that it created a log group for component type UserComponent for component UserComponentA, with streams within 120 seconds in CloudWatch
 
@@ -50,7 +50,7 @@ Feature: Greengrass V2 LogManager
             | aws.greengrass.LogManager | LATEST | periodicUploadIntervalSec  | 500 |
         And I deploy the Greengrass deployment configuration
         Then the Greengrass deployment is COMPLETED on the device after 4 minutes
-       # Then I can check the cli to see the status of component aws.greengrass.LogManager is RUNNING
+        Then I verify the aws.greengrass.LogManager component is RUNNING using the greengrass-cli
         When I update my Greengrass deployment configuration, setting the component aws.greengrass.LogManager configuration to:
         """
         {

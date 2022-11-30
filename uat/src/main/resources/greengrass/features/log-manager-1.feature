@@ -75,3 +75,5 @@ Feature: Greengrass V2 LogManager
         Then the Greengrass deployment is COMPLETED on the device after 5 minutes
         And I verify that it created a log group for component type UserComponent for component UserComponentA, with streams within 120 seconds in CloudWatch
         And I verify the rotated files are deleted except for the active log file for component UserComponentA
+        # "deleteLogFileAfterCloudUpload":"false"
+        And I verify the rotated files are not deleted except for the active log file for component UserComponentA

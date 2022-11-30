@@ -141,6 +141,21 @@ public class FileSteps {
         String expectedActiveFilePath = scenarioContext.get(componentName + ACTIVE_FILE);
         assertEquals(expectedActiveFilePath, activeFile.getAbsolutePath());
     }
+    @And("I verify the rotated files are not deleted except for the active log file for component {word}")
+    public void verifyActiveFilenotDeleted(String componentName) {
+        Path logsDirectory = testContext.installRoot().resolve("logs");
+
+        if (!platform.files().exists(logsDirectory)) {
+            throw new IllegalStateException("No logs directory");
+        }
+
+        List<File> componentFiles = Arrays.stream(logsDirectory.toFile().listFiles())
+                .filter(File::isFile)
+                .filter(file -> file.getName().startsWith(componentName))
+                .sorted(Comparator.comparingLong(File::lastModified))
+                .collect(Collectors.toList());
+        assertEquals(5, componentFiles.size());
+    }
 }
 
 

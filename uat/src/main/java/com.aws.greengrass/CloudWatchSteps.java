@@ -96,5 +96,3 @@ public class CloudWatchSteps {
         return exists;
     }
 }
-
-

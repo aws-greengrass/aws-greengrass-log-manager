@@ -43,7 +43,6 @@ Feature: Greengrass V2 LogManager
         Then I verify the aws.greengrass.LogManager component is RUNNING using the greengrass-cli
         Then I verify that it created a log group for component type GreengrassSystemComponent for component System, with streams within 120 seconds in CloudWatch
         And I verify that it created a log group for component type UserComponent for component UserComponentA, with streams within 120 seconds in CloudWatch
-        And I verify the rotated files are not deleted except for the active log file for component UserComponentA
 
     @smoke
     Scenario: LogManager-1-T2: As a customer I can configure the logs uploader to delete log files after all logs from the file have been uploaded to CloudWatch
@@ -78,4 +77,4 @@ Feature: Greengrass V2 LogManager
         Then the Greengrass deployment is COMPLETED on the device after 5 minutes
         Then I verify the aws.greengrass.LogManager component is RUNNING using the greengrass-cli
         And I verify that it created a log group for component type UserComponent for component UserComponentA, with streams within 120 seconds in CloudWatch
-        And I verify the rotated files are deleted except for the active log file for component UserComponentA
+        And I verify the rotated files are deleted and that the active log file is present for component UserComponentA

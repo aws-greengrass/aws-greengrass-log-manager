@@ -22,7 +22,8 @@ Feature: Greengrass V2 LogManager
                      "componentLogsConfigurationMap": {
                         "UserComponentA": {
                             "logFileRegex": "UserComponentA_\\w*.log",
-                            "logFileDirectoryPath": "${UserComponentALogDirectory}"
+                            "logFileDirectoryPath": "${UserComponentALogDirectory}",
+                            "deleteLogFileAfterCloudUpload": "false"
                         }
                     },
                     "systemLogsConfiguration": {
@@ -41,6 +42,7 @@ Feature: Greengrass V2 LogManager
         Then the Greengrass deployment is COMPLETED on the device after 2 minutes
         Then I verify that it created a log group for component type GreengrassSystemComponent for component System, with streams within 120 seconds in CloudWatch
         And I verify that it created a log group for component type UserComponent for component UserComponentA, with streams within 120 seconds in CloudWatch
+        And I verify the rotated files are not deleted except for the active log file for component UserComponentA
 
     @smoke
     Scenario: LogManager-1-T2: As a customer I can configure the logs uploader to delete log files after all logs from the file have been uploaded to CloudWatch
@@ -75,5 +77,3 @@ Feature: Greengrass V2 LogManager
         Then the Greengrass deployment is COMPLETED on the device after 5 minutes
         And I verify that it created a log group for component type UserComponent for component UserComponentA, with streams within 120 seconds in CloudWatch
         And I verify the rotated files are deleted except for the active log file for component UserComponentA
-        # "deleteLogFileAfterCloudUpload":"false"
-        And I verify the rotated files are not deleted except for the active log file for component UserComponentA

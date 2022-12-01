@@ -121,12 +121,12 @@ public class FileSteps {
      * Arranges some log files with content on the /logs folder for a component
      * to simulate a devices where logs have already bee written.
      * @param componentName  name of the component.
-     * @param numfiles name of the component.
+     * @param nfiles name of the component.
      * @throws IOException   thrown when file fails to be written.
      */
 
     @Then("I verify that {int} temporary rotated log files for component {word} are still available")
-    public void verifyRotatedFilesAvailable(int numfiles,String componentName) {
+    public void verifyRotatedFilesAvailable(int nfiles,String componentName) {
         Path logsDirectory = testContext.installRoot().resolve("logs");
         if (!platform.files().exists(logsDirectory)) {
             throw new IllegalStateException("No logs directory");
@@ -135,7 +135,7 @@ public class FileSteps {
                 .filter(File::isFile)
                 .filter(file -> file.getName().startsWith(componentName))
                 .collect(Collectors.toList());
-        assertEquals(numfiles, componentFiles.size());
+        assertEquals(nfiles, componentFiles.size());
     }
 
     /**

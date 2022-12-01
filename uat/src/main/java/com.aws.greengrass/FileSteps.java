@@ -114,13 +114,12 @@ public class FileSteps {
             writer.write(data + "\r\n");
         }
     }
-
     /**
      * Arranges some log files with content on the /logs folder for a component
      * to simulate a devices where logs have already bee written.
-     *
      * @param componentName name of the component.
      */
+
     @And("I verify the rotated files are deleted and that the active log file is present for component {word}")
     public void verifyActiveFile(String componentName) {
         Path logsDirectory = testContext.installRoot().resolve("logs");
@@ -140,28 +139,6 @@ public class FileSteps {
 
         String expectedActiveFilePath = scenarioContext.get(componentName + this.ACTIVEFILE);
         assertEquals(expectedActiveFilePath, activeFile.getAbsolutePath());
-    }
-    /**
-     * Arranges some log files with content on the /logs folder for a component
-     * to simulate a devices where logs have already bee written.
-     *
-     * @param componentName name of the component.
-     */
-
-    @And("I verify the rotated files are not deleted except for the active log file for component {word}")
-    public void verifyActiveFilenotDeleted(String componentName) {
-        Path logsDirectory = testContext.installRoot().resolve("logs");
-
-        if (!platform.files().exists(logsDirectory)) {
-            throw new IllegalStateException("No logs directory");
-        }
-
-        List<File> componentFiles = Arrays.stream(logsDirectory.toFile().listFiles())
-                .filter(File::isFile)
-                .filter(file -> file.getName().startsWith(componentName))
-                .sorted(Comparator.comparingLong(File::lastModified))
-                .collect(Collectors.toList());
-        assertEquals(5, componentFiles.size());
     }
 }
 

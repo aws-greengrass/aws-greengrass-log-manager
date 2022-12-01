@@ -150,7 +150,7 @@ public class FileSteps {
      */
 
     @And("I verify the rotated files are not deleted except for the active log file for component {word}")
-    public void verifyActiveFilenotDeleted(String componentName) {
+    public void verifyActiveFileNotDeleted(String componentName) {
         Path logsDirectory = testContext.installRoot().resolve("logs");
 
         if (!platform.files().exists(logsDirectory)) {

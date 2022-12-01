@@ -9,7 +9,7 @@ Feature: Greengrass V2 LogManager
 
     Scenario: LogManager-1-T4: As a developer, logs uploader will handle network interruptions gracefully and upload logs from the last uploaded log after network resumes
         Given I create a Greengrass deployment with components
-            | aws.greengrass.LogManager | LATEST | periodicUploadIntervalSec  | 10 |
+            | aws.greengrass.LogManager | LATEST
         And I deploy the Greengrass deployment configuration
         Then the Greengrass deployment is COMPLETED on the device after 4 minutes
         When device network connectivity is offline
@@ -36,7 +36,7 @@ Feature: Greengrass V2 LogManager
             }
         }
         """
-        When I wait 20 seconds
+        Then I verify the aws.greengrass.LogManager component is RUNNING using the greengrass-cli
         When device network connectivity is online
         And I verify that it created a log group for component type GreengrassSystemComponent for component System, with streams within 120 seconds in CloudWatch
         And I verify that it created a log group for component type UserComponent for component UserComponentA, with streams within 120 seconds in CloudWatch

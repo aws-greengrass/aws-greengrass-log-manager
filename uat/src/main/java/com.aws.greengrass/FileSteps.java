@@ -40,8 +40,7 @@ public class FileSteps {
     private final Platform platform;
     private final TestContext testContext;
     private final ScenarioContext scenarioContext;
-
-    public static final String ACTIVE_File = "Activefile";
+    private static final String ACTIVEFILE = "ActiveFile";
 
 
     /**
@@ -93,7 +92,7 @@ public class FileSteps {
             fileName = String.format("%s_%d.log", filePrefix, i);
             createFileAndWriteData(logsDirectory, fileName, false);
         }
-        scenarioContext.put(componentName + ACTIVE_File, logsDirectory.resolve(fileName).toAbsolutePath().toString());
+        scenarioContext.put(componentName + ACTIVEFILE, logsDirectory.resolve(fileName).toAbsolutePath().toString());
     }
 
     private void createFileAndWriteData(Path tempDirectoryPath, String fileNamePrefix, boolean isTemp)
@@ -124,7 +123,7 @@ public class FileSteps {
      * @param nfiles name of the component.
      * @throws IOException   thrown when file fails to be written.
      */
-
+     
     @Then("I verify that {int} temporary rotated log files for component {word} are still available")
     public void verifyRotatedFilesAvailable(int nfiles,String componentName) {
         Path logsDirectory = testContext.installRoot().resolve("logs");
@@ -161,10 +160,11 @@ public class FileSteps {
 
         assertEquals(1, componentFiles.size());
         File activeFile = componentFiles.get(componentFiles.size() - 1);
-
-        String expectedActiveFilePath = scenarioContext.get(componentName + ACTIVE_File);
+        String expectedActiveFilePath = scenarioContext.get(componentName + this.ACTIVEFILE);
         assertEquals(expectedActiveFilePath, activeFile.getAbsolutePath());
     }
-
 }
+
+
+
 

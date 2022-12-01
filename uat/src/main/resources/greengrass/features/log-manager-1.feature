@@ -113,3 +113,5 @@ Feature: Greengrass V2 LogManager
         }
         """
         Then I verify that 5 temporary rotated log files for component UserComponentA are still available
+        And I verify the rotated files are deleted and that the active log file is present for component UserComponentA
+

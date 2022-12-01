@@ -39,8 +39,8 @@ public class FileSteps {
     private final Platform platform;
     private final TestContext testContext;
     private final ScenarioContext scenarioContext;
+    private static final String ACTIVEFILE = "ActiveFile";
 
-    public static final String ACTIVE_FILE = "ActiveFile";
 
     /**
      * Arranges some log files with content on the /logs folder for a component
@@ -91,7 +91,7 @@ public class FileSteps {
             fileName = String.format("%s_%d.log", filePrefix, i);
             createFileAndWriteData(logsDirectory, fileName, false);
         }
-        scenarioContext.put(componentName + ACTIVE_FILE, logsDirectory.resolve(fileName).toAbsolutePath().toString());
+        scenarioContext.put(componentName + ACTIVEFILE, logsDirectory.resolve(fileName).toAbsolutePath().toString());
     }
 
     private void createFileAndWriteData(Path tempDirectoryPath, String fileNamePrefix, boolean isTemp)
@@ -121,7 +121,7 @@ public class FileSteps {
      *
      * @param componentName name of the component.
      */
-    @And("I verify the rotated files are deleted except for the active log file for component {word}")
+    @And("I verify the rotated files are deleted and that the active log file is present for component {word}")
     public void verifyActiveFile(String componentName) {
         Path logsDirectory = testContext.installRoot().resolve("logs");
 
@@ -138,10 +138,9 @@ public class FileSteps {
         assertEquals(1, componentFiles.size());
         File activeFile = componentFiles.get(componentFiles.size() - 1);
 
-        String expectedActiveFilePath = scenarioContext.get(componentName + ACTIVE_FILE);
+        String expectedActiveFilePath = scenarioContext.get(componentName + this.ACTIVEFILE);
         assertEquals(expectedActiveFilePath, activeFile.getAbsolutePath());
     }
-
     /**
      * Arranges some log files with content on the /logs folder for a component
      * to simulate a devices where logs have already bee written.

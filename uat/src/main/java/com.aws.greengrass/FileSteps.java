@@ -145,7 +145,6 @@ public class FileSteps {
     /**
      * Arranges some log files with content on the /logs folder for a component
      * to simulate a devices where logs have already bee written.
-     *
      * @param componentName name of the component.
      */
 

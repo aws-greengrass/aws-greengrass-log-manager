@@ -32,7 +32,7 @@ Feature: Greengrass V2 LogManager
                         "diskSpaceLimit": "25",
                         "diskSpaceLimitUnit": "MB",
                         "deleteLogFileAfterCloudUpload": "true"
-                        }
+                    }
                 },
                 "periodicUploadIntervalSec": "10"
             }
@@ -65,7 +65,7 @@ Feature: Greengrass V2 LogManager
                         "diskSpaceLimit": "25",
                         "diskSpaceLimitUnit": "MB",
                         "deleteLogFileAfterCloudUpload": "true"
-                        }
+                    }
                 },
                 "periodicUploadIntervalSec": "10"
             }
@@ -100,7 +100,7 @@ Feature: Greengrass V2 LogManager
                         "diskSpaceLimit": "25",
                         "diskSpaceLimitUnit": "MB",
                         "deleteLogFileAfterCloudUpload": "true"
-                        }
+                    }
                 },
                 "periodicUploadIntervalSec": "10"
             }

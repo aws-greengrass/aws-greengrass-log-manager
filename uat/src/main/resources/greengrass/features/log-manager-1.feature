@@ -32,7 +32,7 @@ Feature: Greengrass V2 LogManager
                         "diskSpaceLimit": "25",
                         "diskSpaceLimitUnit": "MB",
                         "deleteLogFileAfterCloudUpload": "true"
-                        }
+                    }
                 },
                 "periodicUploadIntervalSec": "10"
             }
@@ -50,29 +50,29 @@ Feature: Greengrass V2 LogManager
             | aws.greengrass.Cli        | LATEST |
             | aws.greengrass.LogManager | LATEST |
         And I update my Greengrass deployment configuration, setting the component aws.greengrass.LogManager configuration to:
-            """
-            {
-                "MERGE": {
-                    "logsUploaderConfiguration": {
-                        "componentLogsConfigurationMap": {
-                            "UserComponentA": {
-                                "logFileRegex": "UserComponentA_\\w*.log",
-                                "logFileDirectoryPath":"${UserComponentALogDirectory}",
-                                "deleteLogFileAfterCloudUpload":"true"
-                            }
-                        },
-                        "systemLogsConfiguration": {
-                            "uploadToCloudWatch":"true",
-                            "minimumLogLevel":"INFO",
-                            "diskSpaceLimit":"25",
-                            "diskSpaceLimitUnit":"MB",
-                            "deleteLogFileAfterCloudUpload":"true"
+         """
+        {
+            "MERGE": {
+                "logsUploaderConfiguration": {
+                     "componentLogsConfigurationMap": {
+                        "UserComponentA": {
+                            "logFileRegex": "UserComponentA_\\w*.log",
+                            "logFileDirectoryPath": "${UserComponentALogDirectory}",
+                            "deleteLogFileAfterCloudUpload": "true"
                         }
                     },
-                    "periodicUploadIntervalSec": "10"
-                }
+                    "systemLogsConfiguration": {
+                        "uploadToCloudWatch": "true",
+                        "minimumLogLevel": "INFO",
+                        "diskSpaceLimit": "25",
+                        "diskSpaceLimitUnit": "MB",
+                        "deleteLogFileAfterCloudUpload": "true"
+                    }
+                },
+                "periodicUploadIntervalSec": "10"
             }
-            """
+        }
+        """
         And I deploy the Greengrass deployment configuration
         Then the Greengrass deployment is COMPLETED on the device after 5 minutes
         Then I verify the aws.greengrass.LogManager component is RUNNING using the greengrass-cli
@@ -106,12 +106,11 @@ Feature: Greengrass V2 LogManager
                         "diskSpaceLimit": "25",
                         "diskSpaceLimitUnit": "MB",
                         "deleteLogFileAfterCloudUpload": "true"
-                        }
+                    }
                 },
                 "periodicUploadIntervalSec": "500"
             }
         }
         """
         Then I verify that 5 temporary rotated log files for component UserComponentA are still available
-        And I verify the rotated files are deleted and that the active log file is present for component UserComponentA
 

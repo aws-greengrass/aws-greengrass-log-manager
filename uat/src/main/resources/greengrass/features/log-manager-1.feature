@@ -112,5 +112,6 @@ Feature: Greengrass V2 LogManager
             }
         }
         """
-        Then I verify that 5 temporary rotated log files for component UserComponentA are still available
+        And 10 temporary rotated log files for component UserComponentA have been created
+        Then I verify that 10 temporary rotated log files for component UserComponentA are still available
 

@@ -47,7 +47,7 @@ Feature: Greengrass V2 LogManager
     @R1    @functional @M2 @B1 @stable
     Scenario: LogManager-1-T3: As a customer I can configure the logs uploader to delete log oldest log files inorder to keep the disk space limit configured by the customer
         Given I create a Greengrass deployment with components
-            | aws.greengrass.LogManager | LATEST | periodicUploadIntervalSec  | 500 |
+            | aws.greengrass.LogManager | LATEST
         And I deploy the Greengrass deployment configuration
         Then the Greengrass deployment is COMPLETED on the device after 4 minutes
         Then I verify the aws.greengrass.LogManager component is RUNNING using the greengrass-cli

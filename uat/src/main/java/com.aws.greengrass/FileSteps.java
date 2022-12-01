@@ -39,7 +39,7 @@ public class FileSteps {
     private final Platform platform;
     private final TestContext testContext;
     private final ScenarioContext scenarioContext;
-    private static final String activeFile = "ActiveFile";
+    private static final String ACTIVEFILE = "ActiveFile";
 
     /**
      * Arranges some log files with content on the /logs folder for a component
@@ -90,7 +90,7 @@ public class FileSteps {
             fileName = String.format("%s_%d.log", filePrefix, i);
             createFileAndWriteData(logsDirectory, fileName, false);
         }
-        scenarioContext.put(componentName + activeFile, logsDirectory.resolve(fileName).toAbsolutePath().toString());
+        scenarioContext.put(componentName + ACTIVEFILE, logsDirectory.resolve(fileName).toAbsolutePath().toString());
     }
 
     private void createFileAndWriteData(Path tempDirectoryPath, String fileNamePrefix, boolean isTemp)
@@ -137,7 +137,7 @@ public class FileSteps {
         assertEquals(1, componentFiles.size());
         File activeFile = componentFiles.get(componentFiles.size() - 1);
 
-        String expectedActiveFilePath = scenarioContext.get(componentName + this.activeFile);
+        String expectedActiveFilePath = scenarioContext.get(componentName + this.ACTIVEFILE);
         assertEquals(expectedActiveFilePath, activeFile.getAbsolutePath());
     }
 }

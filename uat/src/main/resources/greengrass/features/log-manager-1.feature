@@ -40,48 +40,9 @@ Feature: Greengrass V2 LogManager
         """
         And I deploy the Greengrass deployment configuration
         Then the Greengrass deployment is COMPLETED on the device after 2 minutes
-        And I verify the aws.greengrass.LogManager component is RUNNING using the greengrass-cli
-        And I verify that it created a log group for component type GreengrassSystemComponent for component System, with streams within 120 seconds in CloudWatch
-        And I verify that it created a log group for component type UserComponent for component UserComponentA, with streams within 120 seconds in CloudWatch
-
-    @R1    @functional @M2 @B1 @stable
-    Scenario: LogManager-1-T3: As a customer I can configure the logs uploader to delete log oldest log files inorder to keep the disk space limit configured by the customer
-        Given I create a Greengrass deployment with components
-            | aws.greengrass.LogManager | LATEST
-        And I deploy the Greengrass deployment configuration
-        Then the Greengrass deployment is COMPLETED on the device after 4 minutes
         Then I verify the aws.greengrass.LogManager component is RUNNING using the greengrass-cli
-        When I update my Greengrass deployment configuration, setting the component aws.greengrass.LogManager configuration to:
-        """
-        {
-            "MERGE": {
-                "logsUploaderConfiguration": {
-                     "componentLogsConfigurationMap": {
-                        "UserComponentA": {
-                            "logFileRegex": "UserComponentA_\\w*.log",
-                            "logFileDirectoryPath": "${UserComponentALogDirectory}",
-                            "diskSpaceLimit":"100",
-                            "diskSpaceLimitUnit":"KB"
-                        }
-                    },
-                    "systemLogsConfiguration": {
-                        "uploadToCloudWatch": "true",
-                        "minimumLogLevel": "INFO",
-                        "diskSpaceLimit": "25",
-                        "diskSpaceLimitUnit": "MB",
-                        "deleteLogFileAfterCloudUpload": "true"
-                        }
-                },
-                "periodicUploadIntervalSec": "500"
-            }
-        }
-        """
-        When I wait 60 secounds
-     #  And 5 temporary rotated log files for component UserComponentA have been created
-        Then I verify that 5 temporary rotated log files for component UserComponentA are still available
         Then I verify that it created a log group for component type GreengrassSystemComponent for component System, with streams within 120 seconds in CloudWatch
         And I verify that it created a log group for component type UserComponent for component UserComponentA, with streams within 120 seconds in CloudWatch
-        And I verify the rotated files are not deleted except for the active log file for component UserComponentA
 
     @smoke
     Scenario: LogManager-1-T2: As a customer I can configure the logs uploader to delete log files after all logs from the file have been uploaded to CloudWatch
@@ -114,5 +75,41 @@ Feature: Greengrass V2 LogManager
             """
         And I deploy the Greengrass deployment configuration
         Then the Greengrass deployment is COMPLETED on the device after 5 minutes
+        Then I verify the aws.greengrass.LogManager component is RUNNING using the greengrass-cli
         And I verify that it created a log group for component type UserComponent for component UserComponentA, with streams within 120 seconds in CloudWatch
         And I verify the rotated files are deleted except for the active log file for component UserComponentA
+
+    @R1    @functional @M2 @B1 @stable
+    Scenario: LogManager-1-T3: As a customer I can configure the logs uploader to delete log oldest log files inorder to keep the disk space limit configured by the customer
+        Given I create a Greengrass deployment with components
+            | aws.greengrass.Cli        | LATEST |
+            | aws.greengrass.LogManager | LATEST |
+        And I deploy the Greengrass deployment configuration
+        Then the Greengrass deployment is COMPLETED on the device after 4 minutes
+        Then I verify the aws.greengrass.LogManager component is RUNNING using the greengrass-cli
+        When I update my Greengrass deployment configuration, setting the component aws.greengrass.LogManager configuration to:
+        """
+        {
+            "MERGE": {
+                "logsUploaderConfiguration": {
+                     "componentLogsConfigurationMap": {
+                        "UserComponentA": {
+                            "logFileRegex": "UserComponentA_\\w*.log",
+                            "logFileDirectoryPath": "${UserComponentALogDirectory}",
+                            "diskSpaceLimit":"100",
+                            "diskSpaceLimitUnit":"KB"
+                        }
+                    },
+                    "systemLogsConfiguration": {
+                        "uploadToCloudWatch": "true",
+                        "minimumLogLevel": "INFO",
+                        "diskSpaceLimit": "25",
+                        "diskSpaceLimitUnit": "MB",
+                        "deleteLogFileAfterCloudUpload": "true"
+                        }
+                },
+                "periodicUploadIntervalSec": "500"
+            }
+        }
+        """
+        Then I verify that 5 temporary rotated log files for component UserComponentA are still available

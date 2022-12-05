@@ -144,7 +144,7 @@ public class FileSteps {
      * @throws IOException   thrown when file fails to be written.
      */
 
-    @And("I verify the rotated files are deleted except for the active log file for component {word}")
+    @And("I verify the rotated files are deleted and that the active log file is present for component {word}")
     public void verifyActiveFile(String componentName) {
         Path logsDirectory = testContext.installRoot().resolve("logs");
 

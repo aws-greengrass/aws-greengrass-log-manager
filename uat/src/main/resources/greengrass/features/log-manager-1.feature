@@ -84,9 +84,6 @@ Feature: Greengrass V2 LogManager
         Given I create a Greengrass deployment with components
             | aws.greengrass.Cli        | LATEST |
             | aws.greengrass.LogManager | LATEST |
-        And I deploy the Greengrass deployment configuration
-        Then the Greengrass deployment is COMPLETED on the device after 4 minutes
-        Then I verify the aws.greengrass.LogManager component is RUNNING using the greengrass-cli
         When I update my Greengrass deployment configuration, setting the component aws.greengrass.LogManager configuration to:
         """
         {
@@ -112,6 +109,9 @@ Feature: Greengrass V2 LogManager
             }
         }
         """
+        And I deploy the Greengrass deployment configuration
+        Then the Greengrass deployment is COMPLETED on the device after 4 minutes
+        Then I verify the aws.greengrass.LogManager component is RUNNING using the greengrass-cli
         And 10 temporary rotated log files for component UserComponentA have been created
         Then I verify that 10 temporary rotated log files for component UserComponentA are still available
 

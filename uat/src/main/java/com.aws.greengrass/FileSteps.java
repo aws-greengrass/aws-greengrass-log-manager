@@ -41,6 +41,7 @@ public class FileSteps {
     private final ScenarioContext scenarioContext;
     private static final String ACTIVEFILE = "ActiveFile";
 
+
     /**
      * Arranges some log files with content on the /logs folder for a component
      * to simulate a devices where logs have already bee written.
@@ -117,7 +118,6 @@ public class FileSteps {
     /**
      * Arranges some log files with content on the /logs folder for a component
      * to simulate a devices where logs have already bee written.
-     *
      * @param componentName name of the component.
      */
     @And("I verify the rotated files are deleted and that the active log file is present for component {word}")

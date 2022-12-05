@@ -121,7 +121,7 @@ public class FileSteps {
      * @param nfiles number of log files to write.
      */
     @Then("I verify that {int} temporary rotated log files for component {word} are still available")
-    public void verifyRotatedFilesAvailable(int nfiles,String componentName) {
+    public void verifyRotatedFilesAvailable(int nfiles, String componentName) {
         Path logsDirectory = testContext.installRoot().resolve("logs");
         if (!platform.files().exists(logsDirectory)) {
             throw new IllegalStateException("No logs directory");
@@ -135,7 +135,7 @@ public class FileSteps {
 
     /**
      * Arranges some log files with content on the /logs folder for a component
-     * to simulate a devices where logs have already bee written.
+     * to simulate logs being written by other components.
      * @param componentName  name of the component.
      */
     @And("I verify the rotated files are deleted and that the active log file is present for component {word}")

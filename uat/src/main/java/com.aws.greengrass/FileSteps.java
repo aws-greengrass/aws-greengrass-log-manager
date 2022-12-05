@@ -46,7 +46,6 @@ public class FileSteps {
     /**
      * Arranges some log files with content on the /logs folder for a component
      * to simulate a devices where logs have already bee written.
-     *
      * @param platform     number of log files to write.
      * @param testContext name of the component.
      * @param scenarioContext name of the component.
@@ -70,7 +69,6 @@ public class FileSteps {
     /**
      * Arranges some log files with content on the /logs folder for a component
      * to simulate a devices where logs have already bee written.
-     *
      * @param numFiles      number of log files to write.
      * @param componentName name of the component.
      * @throws IOException thrown when file fails to be written.
@@ -120,10 +118,8 @@ public class FileSteps {
      * Arranges some log files with content on the /logs folder for a component
      * to simulate a devices where logs have already bee written.
      * @param componentName  name of the component.
-     * @param nfiles name of the component.
-     * @throws IOException   thrown when file fails to be written.
+     * @param nfiles number of log files to write.
      */
-     
     @Then("I verify that {int} temporary rotated log files for component {word} are still available")
     public void verifyRotatedFilesAvailable(int nfiles,String componentName) {
         Path logsDirectory = testContext.installRoot().resolve("logs");
@@ -141,9 +137,7 @@ public class FileSteps {
      * Arranges some log files with content on the /logs folder for a component
      * to simulate a devices where logs have already bee written.
      * @param componentName  name of the component.
-     * @throws IOException   thrown when file fails to be written.
      */
-
     @And("I verify the rotated files are deleted and that the active log file is present for component {word}")
     public void verifyActiveFile(String componentName) {
         Path logsDirectory = testContext.installRoot().resolve("logs");

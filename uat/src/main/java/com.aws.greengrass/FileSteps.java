@@ -87,7 +87,7 @@ public class FileSteps {
     @And("{int} temporary rotated log files for component {word} have been created")
     public void arrangeComponentLogFiles(int numFiles, String componentName) throws IOException {
         Path logsDirectory = testContext.installRoot().resolve("logs");
-        LOGGER.info("Writing {} log files into {}", numFiles,logsDirectory.toString());
+        LOGGER.info("Writing {} log files into {}", numFiles, logsDirectory.toString());
         if (!platform.files().exists(logsDirectory)) {
             throw new IllegalStateException("No logs directory");
         }
@@ -158,7 +158,7 @@ public class FileSteps {
         List<File> sortedFileList = getComponentLogFiles(componentName, logsDirectory);
         String expectedActiveFilePath = scenarioContext.get(componentName + this.ACTIVEFILE);
         File activeFile = sortedFileList.get(sortedFileList.size() - 1);
-        assertEquals(1,sortedFileList.size());
+        assertEquals(1, sortedFileList.size());
         assertEquals(expectedActiveFilePath, activeFile.getAbsolutePath());
     }
 }

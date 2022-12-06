@@ -68,7 +68,7 @@ public class FileSteps {
         return msgs;
     }
 
-    private static List<File> getLastModifiedActiveFile(String componentName, Path logsDirectory) {
+    private static List<File> getComponentLogFiles(String componentName, Path logsDirectory) {
         return Arrays.stream(logsDirectory.toFile().listFiles())
                 .filter(File::isFile)
                 .filter(file -> file.getName().startsWith(componentName))
@@ -138,7 +138,7 @@ public class FileSteps {
         if (!platform.files().exists(logsDirectory)) {
             throw new IllegalStateException("No logs directory");
         }
-        List<File> componentFiles = getLastModifiedActiveFile(componentName, logsDirectory);
+        List<File> componentFiles = getComponentLogFiles(componentName, logsDirectory);
         assertEquals(nfiles, componentFiles.size());
     }
 
@@ -155,7 +155,7 @@ public class FileSteps {
         if (!platform.files().exists(logsDirectory)) {
             throw new IllegalStateException("No logs directory");
         }
-        List<File> sortedFileList = getLastModifiedActiveFile(componentName, logsDirectory);
+        List<File> sortedFileList = getComponentLogFiles(componentName, logsDirectory);
         String expectedActiveFilePath = scenarioContext.get(componentName + this.ACTIVEFILE);
         File activeFile = sortedFileList.get(sortedFileList.size() - 1);
         assertEquals(1,sortedFileList.size());

@@ -184,3 +184,4 @@ Feature: Greengrass V2 LogManager
         When device network connectivity is online
         And I verify that it created a log group for component type GreengrassSystemComponent for component System, with streams within 120 seconds in CloudWatch
         And I verify that it created a log group for component type UserComponent for component UserComponentA, with streams within 120 seconds in CloudWatch
+

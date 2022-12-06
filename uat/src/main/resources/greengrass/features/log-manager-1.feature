@@ -21,7 +21,7 @@ Feature: Greengrass V2 LogManager
                 "logsUploaderConfiguration": {
                      "componentLogsConfigurationMap": {
                         "UserComponentA": {
-                            "logFileRegex": "UserComponentA_\\w*.log",
+                            "logFileRegex": "UserComponentA_(.)+.log",
                             "logFileDirectoryPath": "${UserComponentALogDirectory}",
                             "deleteLogFileAfterCloudUpload": "false"
                         }
@@ -55,7 +55,7 @@ Feature: Greengrass V2 LogManager
                 "logsUploaderConfiguration": {
                      "componentLogsConfigurationMap": {
                         "UserComponentA": {
-                            "logFileRegex": "UserComponentA_\\w*.log",
+                            "logFileRegex": "UserComponentA_(.)+.log",
                             "logFileDirectoryPath": "${UserComponentALogDirectory}"
                         }
                     },
@@ -89,7 +89,7 @@ Feature: Greengrass V2 LogManager
                 "logsUploaderConfiguration": {
                      "componentLogsConfigurationMap": {
                         "UserComponentA": {
-                            "logFileRegex": "UserComponentA_\\w*.log",
+                            "logFileRegex": "UserComponentA_(.)+.log",
                             "logFileDirectoryPath": "${UserComponentALogDirectory}",
                             "deleteLogFileAfterCloudUpload": "true"
                         }
@@ -112,3 +112,39 @@ Feature: Greengrass V2 LogManager
         And I verify that it created a log group for component type UserComponent for component UserComponentA, with streams within 120 seconds in CloudWatch
         And I verify the rotated files are deleted and that the active log file is present for component UserComponentA
 
+    @R1    @functional @M2 @B1 @stable
+    Scenario: LogManager-1-T3: As a customer I can configure the logs uploader to delete log oldest log files inorder to keep the disk space limit configured by the customer
+        Given 10 temporary rotated log files for component UserComponentB have been created
+        Given I create a Greengrass deployment with components
+            | aws.greengrass.Cli        | LATEST |
+            | aws.greengrass.LogManager | LATEST |
+        When I update my Greengrass deployment configuration, setting the component aws.greengrass.LogManager configuration to:
+        """
+        {
+            "MERGE": {
+                "logsUploaderConfiguration": {
+                     "componentLogsConfigurationMap": {
+                        "UserComponentB": {
+                            "logFileRegex": "UserComponentB_(.)+.log",
+                            "logFileDirectoryPath": "${UserComponentBLogDirectory}",
+                            "diskSpaceLimit":"100",
+                            "diskSpaceLimitUnit":"KB"
+                        }
+                    },
+                    "systemLogsConfiguration": {
+                        "uploadToCloudWatch": "true",
+                        "minimumLogLevel": "INFO",
+                        "diskSpaceLimit": "25",
+                        "diskSpaceLimitUnit": "MB",
+                        "deleteLogFileAfterCloudUpload": "true"
+                    }
+                },
+                "periodicUploadIntervalSec": "500"
+            }
+        }
+        """
+        And I deploy the Greengrass deployment configuration
+        Then the Greengrass deployment is COMPLETED on the device after 4 minutes
+        Then I verify the aws.greengrass.LogManager component is RUNNING using the greengrass-cli
+        And I wait 5 seconds
+        Then I verify that 10 log files for component UserComponentB are still available

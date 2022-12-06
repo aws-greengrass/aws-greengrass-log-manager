@@ -68,7 +68,7 @@ public class FileSteps {
         return msgs;
     }
 
-    private static List<File> getComponentLogFiles(String componentName, Path logsDirectory) {
+    private static List<File> getLastModifiedActiveFile(String componentName, Path logsDirectory) {
         return Arrays.stream(logsDirectory.toFile().listFiles())
                 .filter(File::isFile)
                 .filter(file -> file.getName().startsWith(componentName))
@@ -87,7 +87,7 @@ public class FileSteps {
     @And("{int} temporary rotated log files for component {word} have been created")
     public void arrangeComponentLogFiles(int numFiles, String componentName) throws IOException {
         Path logsDirectory = testContext.installRoot().resolve("logs");
-        LOGGER.info("Writing {} log files into {}", numFiles, ((Path) logsDirectory).toString());
+        LOGGER.info("Writing {} log files into {}", numFiles,logsDirectory.toString());
         if (!platform.files().exists(logsDirectory)) {
             throw new IllegalStateException("No logs directory");
         }
@@ -132,13 +132,13 @@ public class FileSteps {
      * @param componentName name of the component.
      * @param nfiles        number of log files to write.
      */
-    @Then("I verify that {int} temporary rotated log files for component {word} are still available")
+    @Then("I verify that {int} log files for component {word} are still available")
     public void verifyRotatedFilesAvailable(int nfiles, String componentName) {
         Path logsDirectory = testContext.installRoot().resolve("logs");
         if (!platform.files().exists(logsDirectory)) {
             throw new IllegalStateException("No logs directory");
         }
-        List<File> componentFiles = getComponentLogFiles(componentName, logsDirectory);
+        List<File> componentFiles = getLastModifiedActiveFile(componentName, logsDirectory);
         assertEquals(nfiles, componentFiles.size());
     }
 
@@ -155,9 +155,10 @@ public class FileSteps {
         if (!platform.files().exists(logsDirectory)) {
             throw new IllegalStateException("No logs directory");
         }
-        List<File> sortedFileList = getComponentLogFiles(componentName, logsDirectory);
+        List<File> sortedFileList = getLastModifiedActiveFile(componentName, logsDirectory);
         String expectedActiveFilePath = scenarioContext.get(componentName + this.ACTIVEFILE);
         File activeFile = sortedFileList.get(sortedFileList.size() - 1);
+        assertEquals(1,sortedFileList.size());
         assertEquals(expectedActiveFilePath, activeFile.getAbsolutePath());
     }
 }

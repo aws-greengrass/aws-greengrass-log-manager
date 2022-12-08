@@ -1,33 +1,48 @@
-##User Acceptance Test
-UATs are defined under uat module. 
-UATs use aws-greengrass-testing-standalone as the test framework to run the tests.(OTF)
-aws-greengrass-testing-standalone is pulled as maven dependency from GG maven repo. 
-You can add/update UATs at uat source. 
-The uat module generates a UAT artifact (greengrass-log-manager-uat-artifact.jar) which is an executable jar meant to run the UATs.
+## Log Manager User Acceptance Tests
+User Acceptance Tests for Log Manager run using `aws-greengrass-testing-standalone` as a library. They execute E2E
+tests which will spin up an instance of Greengrass on your device and execute different sets of tests, by installing
+the `aws.greengrass.LogManager` component.
 
-##Running UATs locally
-Ensure credentials are available either by setting them in environment variables or 
-[configuring them in your aws cli profile]
-(https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-files.html)
+## Running UATs locally
 
-For UATs to run you will need to package your entire application along with OTF as a dependency on an Uber jar. 
-To do that run following commands from the root of the project:
+Ensure credentials are available by setting them in environment variables. In unix based systems:
+
+```bash
+export AWS_ACCESS_KEY_ID=<AWS_ACCESS_KEY_ID>
+export AWS_SECRET_ACCESS_KEY=<AWS_SECRET_ACCESS_KEY>
+```
+
+on Windows Powershell
+
+```bash
+$Env:AWS_ACCESS_KEY_ID=<AWS_ACCESS_KEY_ID>
+$Env:AWS_SECRET_ACCESS_KEY=<AWS_SECRET_ACCESS_KEY>
+```
+
+For UATs to run you will need to package your entire application along with `aws-greengrass-testing-standalone` into
+an uber jar. To do run (from the root of the project)
 
 ```
 mvn -U -ntp clean verify -f uat/pom.xml
-mvn -U -ntp verify -DskipTests=true
 ```
 
-Note: Everytime you make changes to the code base you will have to rebuild the Uber jar for those changes to be present.
+Note: Everytime you make changes to the codebase you will have to rebuild the uber jar for those changes to be present
+on the final artifact.
 
-Command to run UATs locally from the project root is:
+Finally, download the zip containing the latest version of the Nucleus, which will be used to provision Greengrass for
+the UATs.
+
+```bash
+curl -s https://d2s8p88vqu9w66.cloudfront.net/releases/greengrass-nucleus-latest.zip > greengrass-nucleus-latest.zip
+```
+
+Execute the UATs by running the following command from the root of the project.
 
 ```
-java -Dggc.archive=<path to nuclues zip> -Dtest.log.path=<path to the test results> -jar uat/target/greengrass-log-manager-uat-artifact.jar
+sudo java -Dggc.archive=<path-to-nucleus-zip> -Dtest.log.path=<path-to-test-results-folder> -Dtags=LogManager -jar uat/target/greengrass-log-manager-uat-artifact.jar
 ```
 
 Command arguments:
 
-Dggc.archive - path to the nucleus zip
-Dtest.log.path - path where the test results are being stored
-Dtags - filter tests by a specific cucumber tags.
+Dggc.archive - path to the nucleus zip that was downloaded
+Dtest.log.path - path where you would like the test results to be stored 

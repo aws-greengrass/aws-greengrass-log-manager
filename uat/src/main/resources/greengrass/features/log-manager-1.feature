@@ -162,7 +162,7 @@ Feature: Greengrass V2 LogManager
                 "logsUploaderConfiguration": {
                      "componentLogsConfigurationMap": {
                         "UserComponentA": {
-                            "logFileRegex": "UserComponentA_(.)+.log,
+                            "logFileRegex": "UserComponentA_(.)+.log",
                             "logFileDirectoryPath": "${UserComponentALogDirectory}"
                         }
                     },

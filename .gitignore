@@ -1,5 +1,4 @@
-/target/
-uat/target/
+target
 .DS_Store
 ._*
 *.class

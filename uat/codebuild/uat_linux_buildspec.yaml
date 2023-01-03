@@ -13,8 +13,8 @@ phases:
       - mvn -U -ntp clean verify -f uat/pom.xml
       - mvn -U -ntp verify -DskipTests=true
       - java -Dggc.archive=./target/aws.greengrass.nucleus.zip
-        -Dtags=HelloWorldTst -Dggc.install.root=$CODEBUILD_SRC_DIR -Dggc.log.level=INFO -Daws.region=us-east-1
-        -jar uat/target/greengrass-log-manager-uat-artifact
+        -Dtags=smoke -Dggc.install.root=$CODEBUILD_SRC_DIR -Dggc.log.level=INFO -Daws.region=us-west-2
+        -jar uat/testing-features/target/greengrass-log-manager-testing-features
 
 artifacts:
   files:

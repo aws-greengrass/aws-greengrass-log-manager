@@ -9,6 +9,18 @@ Feature: Greengrass V2 LogManager
         And 5 temporary rotated log files for component aws.greengrass.Nucleus have been created
         And 5 temporary rotated log files for component UserComponentA have been created
 
+    @local
+    Scenario: LogManager-1-T0: install the local custom component
+        Given I create a Greengrass deployment with components
+            | aws.greengrass.Cli        | LATEST |
+        And I deploy the Greengrass deployment configuration
+        Then the Greengrass deployment is COMPLETED on the device after 2 minutes
+        When I install the component logGenerator from local store with configuration
+            | key                    | value             |
+            | FileSize               | 10MB              |
+            | LogSpeed               | 1                 |
+        Then the local Greengrass deployment is SUCCEEDED on the device after 120 seconds
+
     Scenario: LogManager-1-T1: configure the log manager component using a componentLogsConfiguration list and logs are uploaded to
     CloudWatch
         Given I create a Greengrass deployment with components

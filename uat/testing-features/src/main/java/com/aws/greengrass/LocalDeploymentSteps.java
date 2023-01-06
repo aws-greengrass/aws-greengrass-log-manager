@@ -131,7 +131,6 @@ public class LocalDeploymentSteps {
         if (!updateConfigArgs.isEmpty()) {
             commandArgs.add("--update-config '" + updateConfigArgs + "'");
         }
-        LOGGER.info("The cli command: {}", commandArgs);
         return CommandInput.builder()
                 .line(testContext.installRoot().resolve("bin").resolve("greengrass-cli").toString())
                 .addAllArgs(commandArgs)

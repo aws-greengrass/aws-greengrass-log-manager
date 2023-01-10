@@ -15,15 +15,15 @@ import com.aws.greengrass.testing.api.model.ComponentOverrides;
 import com.aws.greengrass.testing.features.WaitSteps;
 import com.aws.greengrass.testing.model.ScenarioContext;
 import com.aws.greengrass.testing.model.TestContext;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.annotations.VisibleForTesting;
-import io.cucumber.datatable.DataTable;
 import io.cucumber.guice.ScenarioScoped;
 import io.cucumber.java.en.When;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import software.amazon.awssdk.services.greengrassv2.model.ComponentDeploymentSpecification;
-import software.amazon.awssdk.utils.ImmutableMap;
 import software.amazon.awssdk.utils.StringUtils;
 
 import java.io.IOException;
@@ -90,9 +90,12 @@ public class LocalDeploymentSteps {
      * @throws IOException          IOException could be throw out during preparation of the CLI command
      */
     @When("I install the component {word} from local store with configuration")
-    public void installComponentWithConfiguration(final String componentName, final DataTable configurationTable)
+    public void installComponentWithConfiguration(final String componentName, final String configurationTable)
             throws InterruptedException, IOException {
-        List<Map<String, String>> configuration = configurationTable.asMaps(String.class, String.class);
+        // handle the configuration table
+        List<Map<String, Object>> configuration = readConfigurationTable(configurationTable);
+
+        // handle the recipe
         List<String> componentSpecs = Arrays.asList(
                 componentName, LOCAL_STORE_RECIPES.resolve(String.format("%s.yaml", componentName)).toString()
         );
@@ -110,15 +113,24 @@ public class LocalDeploymentSteps {
      * @throws IOException          IOException could be throw out during preparation of the CLI command
      */
     @When("I update the component {word} with configuration")
-    public void updateComponentConfiguration(final String componentName, final DataTable configurationTable)
+    public void updateComponentConfiguration(final String componentName, final String configurationTable)
             throws InterruptedException, IOException {
-        List<Map<String, String>> configuration = configurationTable.asMaps(String.class, String.class);
+        List<Map<String, Object>> configuration = readConfigurationTable(configurationTable);
         CommandInput command = getCliDeploymentCommand(componentName, null, configuration);
         createLocalDeploymentWithRetry(command, 0);
     }
 
+    private List<Map<String, Object>> readConfigurationTable(String configurationTable) throws JsonProcessingException {
+        List<Map<String, Object>> configuration = new ArrayList<>();
+        String updatedConfiguration = this.scenarioContext.applyInline(configurationTable);
+        Map<String, Object> json = this.mapper.readValue(updatedConfiguration,
+                new TypeReference<Map<String, Object>>() {});
+        configuration.add(json);
+        return configuration;
+    }
+
     private CommandInput getCliDeploymentCommand(String componentName, String componentVersion,
-                                                 List<Map<String, String>> configuration) throws IOException {
+                                                 List<Map<String, Object>> configuration) throws IOException {
         List<String> commandArgs = new ArrayList<>(Arrays.asList(
                 "deployment",
                 "create",
@@ -170,7 +182,7 @@ public class LocalDeploymentSteps {
         return new String(op, StandardCharsets.UTF_8);
     }
 
-    private void installComponent(List<String> component, List<Map<String, String>> configuration)
+    private void installComponent(List<String> component, List<Map<String, Object>> configuration)
             throws InterruptedException, IOException {
         //get the structure of local deployment with version
         final Map<String, ComponentDeploymentSpecification> localComponentSpec = prepareLocalComponent(component);
@@ -183,11 +195,13 @@ public class LocalDeploymentSteps {
         }
     }
 
-    private String getCliUpdateConfigArgs(String componentName, List<Map<String, String>> configuration)
+    private String getCliUpdateConfigArgs(String componentName, List<Map<String, Object>> configuration)
             throws IOException {
         Map<String, Map<String, Object>> configurationUpdate = new HashMap<>();
         // config update for each component, in the format of <componentName, <MERGE/RESET, map>>
-        updateConfigObject(componentName, configuration, configurationUpdate);
+        for (Map<String, Object> configKeyValue : configuration) {
+            configurationUpdate.put(componentName, configKeyValue);
+        }
         if (configurationUpdate.isEmpty()) {
             return "";
         }
@@ -216,49 +230,6 @@ public class LocalDeploymentSteps {
         Map<String, ComponentDeploymentSpecification> components = new HashMap<>();
         components.put(name, builder.build());
         return components;
-    }
-
-    /**
-     * Transform component config to CLI --update-config acceptable format. Put it in given configurationUpdate map.
-     *
-     * @param component           component name
-     * @param configuration       list of configs given by cucumber step
-     * @param configurationUpdate format: (componentName, (MERGE or RESET, (KV map)))
-     */
-    private void updateConfigObject(String component, List<Map<String, String>> configuration,
-                                    Map<String, Map<String, Object>> configurationUpdate) throws IOException {
-        if (configuration != null) {
-            Map<String, Map<String, Object>> componentToConfig = new HashMap<>();
-            for (Map<String, String> configKeyValue : configuration) {
-                String value = configKeyValue.get("value");
-                value = scenarioContext.applyInline(value);
-                String[] parts = configKeyValue.get("key").split(":");
-                String componentName;
-                String path;
-                if (parts.length == 1) {
-                    componentName = component;
-                    path = parts[0];
-                } else {
-                    componentName = parts[0];
-                    path = parts[1];
-                }
-
-                Map<String, Object> config = componentToConfig.get(componentName);
-                if (config == null) {
-                    config = new HashMap<>();
-                    componentToConfig.put(componentName, config);
-                }
-                Object objVal = value;
-                try {
-                    objVal = mapper.readValue(value, Map.class);
-                } catch (IllegalArgumentException | IOException ignored) {
-                }
-                config.put(path, objVal);
-            }
-            for (Map.Entry<String, Map<String, Object>> entry : componentToConfig.entrySet()) {
-                configurationUpdate.put(entry.getKey(), ImmutableMap.of(MERGE_CONFIG, entry.getValue()));
-            }
-        }
     }
 }
 

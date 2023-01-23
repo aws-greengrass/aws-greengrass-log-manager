@@ -104,6 +104,21 @@
                 <version>2.6</version>
                 <executions>
                     <execution>
+                        <id>copy-local-store-recipe-resources</id>
+                        <phase>process-classes</phase>
+                        <goals>
+                            <goal>copy-resources</goal>
+                        </goals>
+                        <configuration>
+                            <outputDirectory>${basedir}/target/classes/local-store/recipes</outputDirectory>
+                            <resources>
+                                <resource>
+                                    <directory>${basedir}/../../uat/custom-components/target/classes/recipes</directory>
+                                </resource>
+                            </resources>
+                        </configuration>
+                    </execution>
+                    <execution>
                         <id>copy-local-store-artifact-resources</id>
                         <phase>process-classes</phase>
                         <goals>

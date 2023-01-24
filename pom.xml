@@ -454,6 +454,6 @@
         <maven.compiler.target>1.8</maven.compiler.target>
         <skipTests>false</skipTests>
         <groups></groups>
-        <logmanagerjar.name>LogManager</logmanagerjar.name>
+        <logmanagerjar.name>aws.greengrass.LogManager</logmanagerjar.name>
     </properties>
 </project>

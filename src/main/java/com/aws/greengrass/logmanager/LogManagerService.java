@@ -26,6 +26,8 @@ import com.aws.greengrass.logmanager.model.EventType;
 import com.aws.greengrass.logmanager.model.LogFile;
 import com.aws.greengrass.logmanager.model.LogFileGroup;
 import com.aws.greengrass.logmanager.model.LogFileInformation;
+import com.aws.greengrass.logmanager.model.ProcessingFileInformation;
+import com.aws.greengrass.logmanager.model.ProcessingFileLRU;
 import com.aws.greengrass.util.Coerce;
 import com.aws.greengrass.util.NucleusPaths;
 import com.aws.greengrass.util.Utils;
@@ -58,6 +60,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -108,14 +111,24 @@ public class LogManagerService extends PluginService {
     public static final String UPLOAD_TO_CW_CONFIG_TOPIC_NAME = "uploadToCloudWatch";
     public static final String MULTILINE_PATTERN_CONFIG_TOPIC_NAME = "multiLineStartPattern";
     public static final int DEFAULT_PERIODIC_UPDATE_INTERVAL_SEC = 300;
+    public static final int DEFAULT_MAX_FILES_TO_TRACK_PER_COMPONENT = 5;
     private final Object spaceManagementLock = new Object();
     private final List<Consumer<EventType>> serviceStatusListeners = new ArrayList<>();
 
     // public only for integ tests
     public final Map<String, Instant> lastComponentUploadedLogFileInstantMap =
             Collections.synchronizedMap(new LinkedHashMap<>());
+
+    // TODO: Remove
     final Map<String, CurrentProcessingFileInformation> componentCurrentProcessingLogFile =
             new ConcurrentHashMap<>();
+
+
+    // NEW: NELSON
+    final Map<String, ProcessingFileLRU> processingFileInformationNELSON =
+            new ConcurrentHashMap<>();
+
+
     @Getter
     Map<String, ComponentLogConfiguration> componentLogConfigurations = new ConcurrentHashMap<>();
     @Getter
@@ -410,18 +423,34 @@ public class LogManagerService extends PluginService {
     private void loadStateFromConfiguration(String componentName) {
         Topics currentProcessingComponentTopics = getRuntimeConfig()
                 .lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION, componentName);
+
         if (!currentProcessingComponentTopics.isEmpty()) {
-            CurrentProcessingFileInformation currentProcessingFileInformation =
-                    CurrentProcessingFileInformation.builder().build();
-            currentProcessingComponentTopics.iterator().forEachRemaining(node ->
-                    currentProcessingFileInformation.updateFromTopic((Topic) node));
-            // Only store the processing information when the fileHash is not empty or null.
-            if (Utils.isNotEmpty(currentProcessingFileInformation.getFileHash())) {
-                componentCurrentProcessingLogFile.put(componentName, currentProcessingFileInformation);
-            }
+            ProcessingFileLRU lru =  new ProcessingFileLRU(DEFAULT_MAX_FILES_TO_TRACK_PER_COMPONENT);
+
+            currentProcessingComponentTopics.iterator().forEachRemaining(node -> {
+                ProcessingFileInformation fileInformation = ProcessingFileInformation.builder().build();
+
+                // Handle legacy format of configuration before 2.3.0 and below
+
+                fileInformation.updateFromTopic((Topic) node);
+
+                // Handle new configuration 2.3.1 and above
+
+                currentProcessingComponentTopics.lookupTopics(node.getName()).iterator().forEachRemaining(subNode -> {
+                    fileInformation.updateFromTopic((Topic) node);
+                });
+
+                if (Utils.isNotEmpty(fileInformation.getFileHash())) {
+                    lru.put(fileInformation);
+                }
+            });
+
+            processingFileInformationNELSON.put(componentName, lru);
         }
+
         Topics lastFileProcessedComponentTopics = getRuntimeConfig()
                 .lookupTopics(PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP, componentName);
+
         if (!lastFileProcessedComponentTopics.isEmpty()) {
             Topic lastFileProcessedTimeStamp =
                     lastFileProcessedComponentTopics.lookup(PERSISTED_LAST_FILE_PROCESSED_TIMESTAMP);
@@ -447,7 +476,6 @@ public class LogManagerService extends PluginService {
      */
     private void handleCloudWatchAttemptStatus(CloudWatchAttempt cloudWatchAttempt) {
         Map<String, Set<LogFile>> completedLogFilePerComponent = new ConcurrentHashMap<>();
-        Map<String, CurrentProcessingFileInformation> currentProcessingLogFilePerComponent = new HashMap<>();
 
         cloudWatchAttempt.getLogStreamUploadedSet().forEach((streamName) -> {
             CloudWatchAttemptLogInformation attemptLogInformation =
@@ -455,14 +483,16 @@ public class LogManagerService extends PluginService {
             attemptLogInformation.getAttemptLogFileInformationMap().forEach(
                     (fileHash, cloudWatchAttemptLogFileInformation) ->
                             processCloudWatchAttemptLogInformation(completedLogFilePerComponent,
-                                    currentProcessingLogFilePerComponent, attemptLogInformation, fileHash,
+                                    attemptLogInformation, fileHash,
                                     cloudWatchAttemptLogFileInformation));
         });
+
         completedLogFilePerComponent.forEach((componentName, completedFiles) -> {
             completedFiles.forEach(file -> {
                 updatelastComponentUploadedLogFile(lastComponentUploadedLogFileInstantMap, componentName,
                         file);
             });
+
             if (!componentLogConfigurations.containsKey(componentName)) {
                 return;
             }
@@ -470,14 +500,16 @@ public class LogManagerService extends PluginService {
             ComponentLogConfiguration componentLogConfiguration = componentLogConfigurations.get(componentName);
             completedFiles.forEach(file -> this.deleteFile(componentLogConfiguration, file));
         });
-        currentProcessingLogFilePerComponent.forEach(componentCurrentProcessingLogFile::put);
+
+        // Update the runtime configuration and store the last processed file information
 
         context.runOnPublishQueueAndWait(() -> {
-            componentCurrentProcessingLogFile.forEach((componentName, currentProcessingFileInformation) -> {
+            processingFileInformationNELSON.forEach((componentName, lru) -> {
                 Topics componentTopics =
                         getRuntimeConfig().lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION,
                                 componentName);
-                componentTopics.updateFromMap(currentProcessingFileInformation.convertToMapOfObjects(),
+
+                componentTopics.updateFromMap(lru.toMap(),
                         new UpdateBehaviorTree(UpdateBehaviorTree.UpdateBehavior.REPLACE, System.currentTimeMillis()));
             });
         });
@@ -506,8 +538,6 @@ public class LogManagerService extends PluginService {
     }
 
     private void processCloudWatchAttemptLogInformation(Map<String, Set<LogFile>> completedLogFilePerComponent,
-                                                        Map<String, CurrentProcessingFileInformation>
-                                                                currentProcessingLogFilePerComponent,
                                                         CloudWatchAttemptLogInformation attemptLogInformation,
                                                         String fileHash,
                                                         CloudWatchAttemptLogFileInformation
@@ -524,35 +554,36 @@ public class LogManagerService extends PluginService {
         // If we have completely read the file, then we need add it to the completed files list and remove it
         // it (if necessary) for the current processing list.
         String componentName = attemptLogInformation.getComponentName();
-        if (!logFileGroup.isActiveFile(file) && file.length() == cloudWatchAttemptLogFileInformation.getBytesRead()
-                + cloudWatchAttemptLogFileInformation.getStartPosition()) {
+        long bytesUploaded = cloudWatchAttemptLogFileInformation.getBytesRead()
+                + cloudWatchAttemptLogFileInformation.getStartPosition();
+
+        if (!logFileGroup.isActiveFile(file) && file.length() == bytesUploaded) {
             Set<LogFile> completedFiles = completedLogFilePerComponent.getOrDefault(componentName,
                     new HashSet<>());
             completedFiles.add(file);
             completedLogFilePerComponent.put(componentName, completedFiles);
-            if (currentProcessingLogFilePerComponent.containsKey(componentName)) {
-                CurrentProcessingFileInformation fileInformation = currentProcessingLogFilePerComponent
-                        .get(componentName);
-                if (fileInformation.fileHash.equals(fileHash)) {
-                    currentProcessingLogFilePerComponent.remove(componentName);
-                }
-            }
-        } else {
-            // Add the file to the current processing list for the component.
-            // Note: There should always be only 1 file which will be in progress at any given time.
-            // @deprecated The fileName is deprecated value in versions greater than 2.2, but keep it here to avoid
-            // upgrade-downgrade issues.
-            CurrentProcessingFileInformation processingFileInformation =
-                    CurrentProcessingFileInformation.builder()
-                            .fileName(file.getSourcePath())
-                            .startPosition(cloudWatchAttemptLogFileInformation.getStartPosition()
-                                    + cloudWatchAttemptLogFileInformation.getBytesRead())
-                            .lastModifiedTime(cloudWatchAttemptLogFileInformation.getLastModifiedTime())
-                            .fileHash(fileHash)
-                            .build();
-            currentProcessingLogFilePerComponent.put(attemptLogInformation.getComponentName(),
-                    processingFileInformation);
         }
+
+
+        // Track each file that got uploaded. So that if modified in the future we can still track upload
+        // the new contents starting from the last upload position.
+
+        ProcessingFileInformation processingFileInformation =
+                ProcessingFileInformation.builder()
+                        .fileName(file.getSourcePath()) // @deprecated
+                        .startPosition(bytesUploaded)
+                        .lastModifiedTime(cloudWatchAttemptLogFileInformation.getLastModifiedTime())
+                        .fileHash(fileHash)
+                        .build();
+
+        if (!processingFileInformationNELSON.containsKey(componentName)) {
+            // TODO: need to figure a smarter mechanism to adjust the LRU capacity. Add an adjust capacity method
+            processingFileInformationNELSON.put(componentName, new ProcessingFileLRU(
+                    Math.max(logFileGroup.getLogFiles().size(), DEFAULT_MAX_FILES_TO_TRACK_PER_COMPONENT)));
+        }
+
+        ProcessingFileLRU lru  = processingFileInformationNELSON.get(componentName);
+        lru.put(processingFileInformation);
     }
 
     /**
@@ -568,6 +599,12 @@ public class LogManagerService extends PluginService {
         if (!lastComponentUploadedLogFileInstantMap.containsKey(componentName)
                 || lastComponentUploadedLogFileInstantMap.get(componentName)
                 .isBefore(Instant.ofEpochMilli(logFile.lastModified()))) {
+            // Everything where this timestamp is before the current time needs to be re uploaded
+            //    To upload again    | lastUpdated | Already uploaded (THIS IS why the secondary active gets picked
+            //    again and
+            // again)
+//            logger.atInfo().kv("file", logFile.getName()).kv("last modified",
+//                    Instant.ofEpochMilli(logFile.lastModified())).log();
             lastComponentUploadedLogFileInstantMap.put(componentName,
                     Instant.ofEpochMilli(logFile.lastModified()));
         }
@@ -595,6 +632,7 @@ public class LogManagerService extends PluginService {
                 TimeUnit.SECONDS.sleep(periodicUpdateIntervalSec);
                 continue;
             }
+//            logger.info("======== RUNNING LOOP ==================");
             List<ComponentLogFileInformation> componentMetadata = new ArrayList<>();
             // Get the latest known configurations because the componentLogConfigurations can change if a new
             // configuration is received from the customer.
@@ -612,6 +650,10 @@ public class LogManagerService extends PluginService {
                         continue;
                     }
 
+//                    logger.atInfo().kv("files",
+//                            logFileGroup.getLogFiles().stream().map(File::getName).collect(Collectors.toList())).log();
+
+
                     ComponentLogFileInformation logFileInfo = ComponentLogFileInformation.builder()
                             .name(componentName)
                             .multiLineStartPattern(componentLogConfiguration.getMultiLineStartPattern())
@@ -628,11 +670,12 @@ public class LogManagerService extends PluginService {
 
                         // If the file was partially read in the previous run, then get the starting position for
                         // new log lines.
-                        if (componentCurrentProcessingLogFile.containsKey(componentName)) {
-                            CurrentProcessingFileInformation processingFileInformation =
-                                    componentCurrentProcessingLogFile.get(componentName);
-                            if (processingFileInformation.fileHash.equals(fileHash)) {
-                                startPosition = processingFileInformation.startPosition;
+                        if (processingFileInformationNELSON.containsKey(componentName)) {
+                            ProcessingFileLRU lru = processingFileInformationNELSON.get(componentName);
+                            Optional<ProcessingFileInformation> info = lru.get(fileHash);
+
+                            if (info.isPresent()) {
+                                startPosition = info.get().getStartPosition();
                             }
                         }
 
@@ -704,7 +747,7 @@ public class LogManagerService extends PluginService {
      * exceed the disk space limit set by the customer. If it does, the log manager will delete the log files until
      * the limit is met.
      *
-     * @throws IOException if unable to initialise a new Watch Service.
+     * @throws IOException          if unable to initialise a new Watch Service.
      * @throws InterruptedException if thread is shutdown
      */
     private void startWatchServiceOnLogFilePaths() throws IOException, InterruptedException {

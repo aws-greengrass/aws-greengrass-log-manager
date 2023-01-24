@@ -1,3 +1,4 @@
+greengrass-build/
 /target/
 uat/target/
 .DS_Store

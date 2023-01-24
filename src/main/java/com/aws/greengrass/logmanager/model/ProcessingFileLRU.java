@@ -17,10 +17,11 @@ public class ProcessingFileLRU {
     @Getter
     @Setter
     private int capacity;
+    @Getter
     private int size;
     private Node head;
     private Node tail;
-    HashMap<String, Node> cache;
+    private final HashMap<String, Node> cache;
 
 
     public ProcessingFileLRU(int capacity) {
@@ -83,6 +84,7 @@ public class ProcessingFileLRU {
     }
 
     private void detach(Node node) {
+
         if (node.prev != null) {
             node.prev.next = node.next;
         } else {
@@ -94,13 +96,15 @@ public class ProcessingFileLRU {
         } else {
             this.tail = node.prev;
         }
+
+        cache.remove(node.fileHash);
     }
 
     public Map<String, Object> toMap() {
         HashMap<String, Object> map = new HashMap<>();
 
         Node node = this.head;
-        while (head != null) {
+        while (node != null) {
             map.put(node.fileHash, node.fileInformation.convertToMapOfObjects());
             node = head.next;
         }

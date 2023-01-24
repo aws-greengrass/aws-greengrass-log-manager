@@ -118,12 +118,9 @@ public class LogManagerService extends PluginService {
     public final Map<String, Instant> lastComponentUploadedLogFileInstantMap =
             Collections.synchronizedMap(new LinkedHashMap<>());
 
-    // TODO: Remove
+    // TODO: Remove - OLD
     final Map<String, CurrentProcessingFileInformation> componentCurrentProcessingLogFile =
             new ConcurrentHashMap<>();
-
-
-    // NEW: NELSON
     final Map<String, ProcessingFileLRU> processingFilesInformation =
             new ConcurrentHashMap<>();
 
@@ -424,27 +421,27 @@ public class LogManagerService extends PluginService {
                 .lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION, componentName);
 
         if (!currentProcessingComponentTopics.isEmpty()) {
-            ProcessingFileLRU lru =  new ProcessingFileLRU(DEFAULT_MAX_FILES_TO_TRACK_PER_COMPONENT);
-
-            currentProcessingComponentTopics.iterator().forEachRemaining(node -> {
-                CurrentProcessingFileInformation fileInformation = CurrentProcessingFileInformation.builder().build();
-
-                // Handle legacy format of configuration before 2.3.0 and below
-
-                fileInformation.updateFromTopic((Topic) node);
-
-                // Handle new configuration 2.3.1 and above
-
-                currentProcessingComponentTopics.lookupTopics(node.getName()).iterator().forEachRemaining(subNode -> {
-                    fileInformation.updateFromTopic((Topic) node);
-                });
-
-                if (Utils.isNotEmpty(fileInformation.getFileHash())) {
-                    lru.put(fileInformation);
-                }
-            });
-
-            processingFilesInformation.put(componentName, lru);
+//            ProcessingFileLRU lru =  new ProcessingFileLRU(DEFAULT_MAX_FILES_TO_TRACK_PER_COMPONENT);
+//
+//            currentProcessingComponentTopics.iterator().forEachRemaining(node -> {
+//                CurrentProcessingFileInformation fileInformation = CurrentProcessingFileInformation.builder().build();
+//
+//                // Handle legacy format of configuration before 2.3.0 and below
+//
+//                fileInformation.updateFromTopic((Topic) node);
+//
+//                // Handle new configuration 2.3.1 and above
+//
+//                currentProcessingComponentTopics.lookupTopics(node.getName()).iterator().forEachRemaining(subNode -> {
+//                    fileInformation.updateFromTopic((Topic) node);
+//                });
+//
+//                if (Utils.isNotEmpty(fileInformation.getFileHash())) {
+//                    lru.put(fileInformation);
+//                }
+//            });
+//
+//            processingFilesInformation.put(componentName, lru);
         }
 
         Topics lastFileProcessedComponentTopics = getRuntimeConfig()
@@ -500,6 +497,7 @@ public class LogManagerService extends PluginService {
             completedFiles.forEach(file -> this.deleteFile(componentLogConfiguration, file));
         });
 
+
         // Update the runtime configuration and store the last processed file information
 
         context.runOnPublishQueueAndWait(() -> {
@@ -507,6 +505,8 @@ public class LogManagerService extends PluginService {
                 Topics componentTopics =
                         getRuntimeConfig().lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION,
                                 componentName);
+
+                logger.info("LRU {}", lru.toMap());
 
                 componentTopics.updateFromMap(lru.toMap(),
                         new UpdateBehaviorTree(UpdateBehaviorTree.UpdateBehavior.REPLACE, System.currentTimeMillis()));

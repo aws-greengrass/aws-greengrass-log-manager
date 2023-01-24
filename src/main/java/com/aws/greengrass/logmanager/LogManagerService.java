@@ -125,7 +125,7 @@ public class LogManagerService extends PluginService {
 
 
     // NEW: NELSON
-    final Map<String, ProcessingFileLRU> processingFileInformationNELSON =
+    final Map<String, ProcessingFileLRU> processingFilesInformation =
             new ConcurrentHashMap<>();
 
 
@@ -445,7 +445,7 @@ public class LogManagerService extends PluginService {
                 }
             });
 
-            processingFileInformationNELSON.put(componentName, lru);
+            processingFilesInformation.put(componentName, lru);
         }
 
         Topics lastFileProcessedComponentTopics = getRuntimeConfig()
@@ -504,7 +504,7 @@ public class LogManagerService extends PluginService {
         // Update the runtime configuration and store the last processed file information
 
         context.runOnPublishQueueAndWait(() -> {
-            processingFileInformationNELSON.forEach((componentName, lru) -> {
+            processingFilesInformation.forEach((componentName, lru) -> {
                 Topics componentTopics =
                         getRuntimeConfig().lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION,
                                 componentName);
@@ -576,13 +576,13 @@ public class LogManagerService extends PluginService {
                         .fileHash(fileHash)
                         .build();
 
-        if (!processingFileInformationNELSON.containsKey(componentName)) {
+        if (!processingFilesInformation.containsKey(componentName)) {
             // TODO: need to figure a smarter mechanism to adjust the LRU capacity. Add an adjust capacity method
-            processingFileInformationNELSON.put(componentName, new ProcessingFileLRU(
+            processingFilesInformation.put(componentName, new ProcessingFileLRU(
                     Math.max(logFileGroup.getLogFiles().size(), DEFAULT_MAX_FILES_TO_TRACK_PER_COMPONENT)));
         }
 
-        ProcessingFileLRU lru  = processingFileInformationNELSON.get(componentName);
+        ProcessingFileLRU lru  = processingFilesInformation.get(componentName);
         lru.put(processingFileInformation);
     }
 
@@ -599,12 +599,6 @@ public class LogManagerService extends PluginService {
         if (!lastComponentUploadedLogFileInstantMap.containsKey(componentName)
                 || lastComponentUploadedLogFileInstantMap.get(componentName)
                 .isBefore(Instant.ofEpochMilli(logFile.lastModified()))) {
-            // Everything where this timestamp is before the current time needs to be re uploaded
-            //    To upload again    | lastUpdated | Already uploaded (THIS IS why the secondary active gets picked
-            //    again and
-            // again)
-//            logger.atInfo().kv("file", logFile.getName()).kv("last modified",
-//                    Instant.ofEpochMilli(logFile.lastModified())).log();
             lastComponentUploadedLogFileInstantMap.put(componentName,
                     Instant.ofEpochMilli(logFile.lastModified()));
         }
@@ -632,7 +626,6 @@ public class LogManagerService extends PluginService {
                 TimeUnit.SECONDS.sleep(periodicUpdateIntervalSec);
                 continue;
             }
-//            logger.info("======== RUNNING LOOP ==================");
             List<ComponentLogFileInformation> componentMetadata = new ArrayList<>();
             // Get the latest known configurations because the componentLogConfigurations can change if a new
             // configuration is received from the customer.
@@ -650,10 +643,6 @@ public class LogManagerService extends PluginService {
                         continue;
                     }
 
-//                    logger.atInfo().kv("files",
-//                            logFileGroup.getLogFiles().stream().map(File::getName).collect(Collectors.toList())).log();
-
-
                     ComponentLogFileInformation logFileInfo = ComponentLogFileInformation.builder()
                             .name(componentName)
                             .multiLineStartPattern(componentLogConfiguration.getMultiLineStartPattern())
@@ -670,8 +659,8 @@ public class LogManagerService extends PluginService {
 
                         // If the file was partially read in the previous run, then get the starting position for
                         // new log lines.
-                        if (processingFileInformationNELSON.containsKey(componentName)) {
-                            ProcessingFileLRU lru = processingFileInformationNELSON.get(componentName);
+                        if (processingFilesInformation.containsKey(componentName)) {
+                            ProcessingFileLRU lru = processingFilesInformation.get(componentName);
                             Optional<ProcessingFileInformation> info = lru.get(fileHash);
 
                             if (info.isPresent()) {

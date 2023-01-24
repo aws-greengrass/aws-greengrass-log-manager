@@ -1,5 +1,6 @@
 package com.aws.greengrass.logmanager.model;
 
+import com.aws.greengrass.logmanager.LogManagerService;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -32,19 +33,19 @@ public class ProcessingFileLRU {
 
     static class Node {
         private final String fileHash;
-        private final ProcessingFileInformation fileInformation;
+        private final LogManagerService.CurrentProcessingFileInformation fileInformation;
         public Node next = null;
         public Node prev = null;
 
 
-        Node(String fileHash, ProcessingFileInformation fileInformation) {
+        Node(String fileHash, LogManagerService.CurrentProcessingFileInformation fileInformation) {
             this.fileHash = fileHash;
             this.fileInformation = fileInformation;
         }
     }
 
 
-    public void put(ProcessingFileInformation info) {
+    public void put(LogManagerService.CurrentProcessingFileInformation info) {
         String fileHash = info.getFileHash();
 
         if (cache.containsKey(fileHash)) {
@@ -67,7 +68,7 @@ public class ProcessingFileLRU {
         this.size++;
     }
 
-    public Optional<ProcessingFileInformation> get(String fileHash) {
+    public Optional<LogManagerService.CurrentProcessingFileInformation> get(String fileHash) {
         if (cache.containsKey(fileHash)) {
             Node existingNode = cache.get(fileHash);
 

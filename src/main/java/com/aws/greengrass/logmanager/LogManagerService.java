@@ -26,7 +26,6 @@ import com.aws.greengrass.logmanager.model.EventType;
 import com.aws.greengrass.logmanager.model.LogFile;
 import com.aws.greengrass.logmanager.model.LogFileGroup;
 import com.aws.greengrass.logmanager.model.LogFileInformation;
-import com.aws.greengrass.logmanager.model.ProcessingFileInformation;
 import com.aws.greengrass.logmanager.model.ProcessingFileLRU;
 import com.aws.greengrass.util.Coerce;
 import com.aws.greengrass.util.NucleusPaths;
@@ -428,7 +427,7 @@ public class LogManagerService extends PluginService {
             ProcessingFileLRU lru =  new ProcessingFileLRU(DEFAULT_MAX_FILES_TO_TRACK_PER_COMPONENT);
 
             currentProcessingComponentTopics.iterator().forEachRemaining(node -> {
-                ProcessingFileInformation fileInformation = ProcessingFileInformation.builder().build();
+                CurrentProcessingFileInformation fileInformation = CurrentProcessingFileInformation.builder().build();
 
                 // Handle legacy format of configuration before 2.3.0 and below
 
@@ -568,8 +567,8 @@ public class LogManagerService extends PluginService {
         // Track each file that got uploaded. So that if modified in the future we can still track upload
         // the new contents starting from the last upload position.
 
-        ProcessingFileInformation processingFileInformation =
-                ProcessingFileInformation.builder()
+        CurrentProcessingFileInformation processingFileInformation =
+                CurrentProcessingFileInformation.builder()
                         .fileName(file.getSourcePath()) // @deprecated
                         .startPosition(bytesUploaded)
                         .lastModifiedTime(cloudWatchAttemptLogFileInformation.getLastModifiedTime())
@@ -661,7 +660,7 @@ public class LogManagerService extends PluginService {
                         // new log lines.
                         if (processingFilesInformation.containsKey(componentName)) {
                             ProcessingFileLRU lru = processingFilesInformation.get(componentName);
-                            Optional<ProcessingFileInformation> info = lru.get(fileHash);
+                            Optional<CurrentProcessingFileInformation> info = lru.get(fileHash);
 
                             if (info.isPresent()) {
                                 startPosition = info.get().getStartPosition();
@@ -878,7 +877,7 @@ public class LogManagerService extends PluginService {
     @Builder
     @Getter
     @Data
-    static class CurrentProcessingFileInformation {
+    public static class CurrentProcessingFileInformation {
         //This is deprecated value in versions greater than 2.2, but keep it here to avoid
         // upgrade-downgrade issues.
         @JsonProperty(PERSISTED_CURRENT_PROCESSING_FILE_NAME)

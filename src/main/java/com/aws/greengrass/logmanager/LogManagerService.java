@@ -438,7 +438,8 @@ public class LogManagerService extends PluginService {
                     LogManagerService.CurrentProcessingFileInformation processingFileInformation =
                             LogManagerService.CurrentProcessingFileInformation.builder().build();
 
-                    currentProcessingComponentTopics.lookupTopics(node.getName()).iterator().forEachRemaining(subNode -> {
+                    currentProcessingComponentTopics.lookupTopics(node.getName()).iterator()
+                            .forEachRemaining(subNode -> {
                         processingFileInformation.updateFromTopic((Topic) subNode);
                     });
 
@@ -894,6 +895,9 @@ public class LogManagerService extends PluginService {
         private boolean isDirty;
         private static final Logger logger = LogManager.getLogger(CurrentProcessingFileInformation.class);
 
+        /**
+         * Serializes a CurrentProcessingFileInformation into a map for storage.
+         */
         public Map<String, Object> convertToMapOfObjects() {
             Map<String, Object> currentProcessingFileInformationMap = new HashMap<>();
             // @deprecated  This is deprecated value in versions greater than 2.2, but keep it here to avoid
@@ -906,6 +910,12 @@ public class LogManagerService extends PluginService {
             return currentProcessingFileInformationMap;
         }
 
+        /**
+         * Updates the instance of CurrentProcessingFileInformation from the values stored on a configuration
+         * topic.
+         *
+         * @param topic A configuration topic
+         */
         public void updateFromTopic(Topic topic) {
             switch (topic.getName()) {
                 //  @deprecated  This is deprecated value in versions greater than 2.2, but keep it here to avoid
@@ -928,6 +938,12 @@ public class LogManagerService extends PluginService {
             }
         }
 
+        /**
+         * Builds a CurrentProcessingFileInformation from a map.
+         *
+         * @param currentProcessingFileInformationMap A map containing attributes to build an instance of
+         *                                           CurrentProcessingFileInformation
+         */
         public static CurrentProcessingFileInformation convertFromMapOfObjects(
                 Map<String, Object> currentProcessingFileInformationMap) {
             return CurrentProcessingFileInformation.builder()

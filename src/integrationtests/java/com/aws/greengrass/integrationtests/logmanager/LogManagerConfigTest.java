@@ -5,7 +5,6 @@
 
 package com.aws.greengrass.integrationtests.logmanager;
 
-import com.aws.greengrass.config.Topic;
 import com.aws.greengrass.config.Topics;
 import com.aws.greengrass.config.UpdateBehaviorTree;
 import com.aws.greengrass.dependency.State;

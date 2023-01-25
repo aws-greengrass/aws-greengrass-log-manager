@@ -12,6 +12,7 @@ import java.util.Map;
  * and can be found, we can't know for sure if that file won't get new contents written to it in the future.
  */
 public class ProcessingFileLRU extends LinkedHashMap<String, LogManagerService.CurrentProcessingFileInformation> {
+    static final long serialVersionUID = 1L;
     private final int capacity;
 
     public ProcessingFileLRU(int capacity) {
@@ -24,6 +25,10 @@ public class ProcessingFileLRU extends LinkedHashMap<String, LogManagerService.C
         return size() > capacity;
     }
 
+    /**
+     * Converts the objects stored in the LRY into a map. Used serialize the LRU to be stored
+     * on the runtime config
+     */
     public Map<String, Object> toMap() {
         HashMap<String, Object> map = new HashMap<>();
 

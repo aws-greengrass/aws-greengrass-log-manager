@@ -157,6 +157,7 @@ public class FileSteps {
         }
         List<File> sortedFileList = getComponentLogFiles(componentName, logsDirectory);
         String expectedActiveFilePath = scenarioContext.get(componentName + this.ACTIVEFILE);
+
         File activeFile = sortedFileList.get(sortedFileList.size() - 1);
         assertEquals(1, sortedFileList.size());
         assertEquals(expectedActiveFilePath, activeFile.getAbsolutePath());

@@ -5,6 +5,9 @@
 
 package com.aws.greengrass.integrationtests.logmanager;
 
+import com.aws.greengrass.config.Topic;
+import com.aws.greengrass.config.Topics;
+import com.aws.greengrass.config.UpdateBehaviorTree;
 import com.aws.greengrass.dependency.State;
 import com.aws.greengrass.deployment.DeviceConfiguration;
 import com.aws.greengrass.deployment.exceptions.AWSIotException;
@@ -13,6 +16,7 @@ import com.aws.greengrass.integrationtests.BaseITCase;
 import com.aws.greengrass.integrationtests.util.ConfigPlatformResolver;
 import com.aws.greengrass.lifecyclemanager.Kernel;
 import com.aws.greengrass.logmanager.LogManagerService;
+import com.aws.greengrass.logmanager.model.ProcessingFileLRU;
 import com.aws.greengrass.util.exceptions.TLSAuthException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
@@ -32,12 +36,16 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Duration;
+import java.time.Instant;
 import java.time.format.DateTimeParseException;
+import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
 import static com.aws.greengrass.componentmanager.KernelConfigResolver.CONFIGURATION_CONFIG_KEY;
+import static com.aws.greengrass.lifecyclemanager.GreengrassService.RUNTIME_STORE_NAMESPACE_TOPIC;
 import static com.aws.greengrass.logmanager.LogManagerService.COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME;
 import static com.aws.greengrass.logmanager.LogManagerService.DELETE_LOG_FILES_AFTER_UPLOAD_CONFIG_TOPIC_NAME;
 import static com.aws.greengrass.logmanager.LogManagerService.DISK_SPACE_LIMIT_CONFIG_TOPIC_NAME;
@@ -46,8 +54,10 @@ import static com.aws.greengrass.logmanager.LogManagerService.FILE_DIRECTORY_PAT
 import static com.aws.greengrass.logmanager.LogManagerService.FILE_REGEX_CONFIG_TOPIC_NAME;
 import static com.aws.greengrass.logmanager.LogManagerService.LOGS_UPLOADER_CONFIGURATION_TOPIC;
 import static com.aws.greengrass.logmanager.LogManagerService.LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC;
+import static com.aws.greengrass.logmanager.LogManagerService.LOGS_UPLOADER_SERVICE_TOPICS;
 import static com.aws.greengrass.logmanager.LogManagerService.MIN_LOG_LEVEL_CONFIG_TOPIC_NAME;
 import static com.aws.greengrass.logmanager.LogManagerService.MULTILINE_PATTERN_CONFIG_TOPIC_NAME;
+import static com.aws.greengrass.logmanager.LogManagerService.PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION;
 import static com.aws.greengrass.logmanager.LogManagerService.SYSTEM_LOGS_COMPONENT_NAME;
 import static com.aws.greengrass.logmanager.LogManagerService.SYSTEM_LOGS_CONFIG_TOPIC_NAME;
 import static com.aws.greengrass.logmanager.LogManagerService.UPLOAD_TO_CW_CONFIG_TOPIC_NAME;
@@ -56,6 +66,7 @@ import static com.github.grantwest.eventually.EventuallyLambdaMatcher.eventually
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.is;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SuppressWarnings("PMD.UnsynchronizedStaticFormatter")
@@ -76,7 +87,6 @@ class LogManagerConfigTest extends BaseITCase {
         tempDirectoryPath = Files.createTempDirectory(tempRootDir, "IntegrationTestsTemporaryLogFiles");
 
         CountDownLatch logManagerRunning = new CountDownLatch(1);
-        kernel = new Kernel();
 
         Path testRecipePath = Paths.get(LogManagerTest.class.getResource("configsDifferentFromDefaults.yaml").toURI());
         String content = new String(Files.readAllBytes(testRecipePath), StandardCharsets.UTF_8);
@@ -88,7 +98,7 @@ class LogManagerConfigTest extends BaseITCase {
         kernel.getConfig().mergeMap(System.currentTimeMillis(), ConfigPlatformResolver.resolvePlatformMap(objectMap));
 
         kernel.getContext().addGlobalStateChangeListener((service, oldState, newState) -> {
-            if (service.getName().equals(LogManagerService.LOGS_UPLOADER_SERVICE_TOPICS)
+            if (service.getName().equals(LOGS_UPLOADER_SERVICE_TOPICS)
                     && newState.equals(State.RUNNING)) {
                 logManagerRunning.countDown();
                 logManagerService = (LogManagerService) service;
@@ -103,8 +113,7 @@ class LogManagerConfigTest extends BaseITCase {
     }
 
     @BeforeEach
-    void beforeEach(ExtensionContext context)
-            throws DeviceConfigurationException, URISyntaxException, IOException, InterruptedException {
+    void beforeEach(ExtensionContext context) {
         ignoreExceptionOfType(context, TLSAuthException.class);
         ignoreExceptionOfType(context, InterruptedException.class);
         ignoreExceptionOfType(context, DateTimeParseException.class);
@@ -112,7 +121,7 @@ class LogManagerConfigTest extends BaseITCase {
         ignoreExceptionOfType(context, InvocationTargetException.class);
         ignoreExceptionOfType(context, AWSIotException.class);
         ignoreExceptionOfType(context, SdkClientException.class);
-        setupKernel();
+        kernel = new Kernel();
     }
 
     @AfterEach
@@ -121,8 +130,10 @@ class LogManagerConfigTest extends BaseITCase {
     }
 
     @Test
-    void GIVEN_periodicUploadIntervalSec_config_WHEN_value_is_reset_and_replaced_THEN_correct_values_are_used()
-            throws InterruptedException {
+    void GIVEN_periodicUploadIntervalSec_config_WHEN_value_is_reset_and_replaced_THEN_correct_values_are_used() throws
+            Exception {
+        setupKernel();
+
         assertThat(()-> logManagerService.getPeriodicUpdateIntervalSec(), eventuallyEval(is(60),
                 Duration.ofSeconds(30)));
 
@@ -136,8 +147,10 @@ class LogManagerConfigTest extends BaseITCase {
     }
 
     @Test
-    void GIVEN_uploadToCloudWatch_config_WHEN_value_is_reset_and_replaced_THEN_correct_values_are_used()
-            throws InterruptedException {
+    void GIVEN_uploadToCloudWatch_config_WHEN_value_is_reset_and_replaced_THEN_correct_values_are_used() throws
+            Exception {
+        setupKernel();
+
         // uploadToCloudWatch=true in recipe, so system configs expected in componentLogConfigurations map
         assertTrue(logManagerService.getComponentLogConfigurations().containsKey(SYSTEM_LOGS_COMPONENT_NAME));
 
@@ -154,7 +167,9 @@ class LogManagerConfigTest extends BaseITCase {
 
     @Test
     void GIVEN_system_minimumLogLevel_config_WHEN_value_is_reset_and_replaced_THEN_correct_values_are_used()
-            throws InterruptedException {
+            throws Exception {
+        setupKernel();
+
         assertThat(()-> logManagerService.getComponentLogConfigurations().get(SYSTEM_LOGS_COMPONENT_NAME).getMinimumLogLevel(),
                 eventuallyEval(is(Level.TRACE), Duration.ofSeconds(30)));
 
@@ -171,7 +186,9 @@ class LogManagerConfigTest extends BaseITCase {
 
     @Test
     void GIVEN_system_deleteLogFileAfterCloudUpload_config_WHEN_value_is_reset_and_replaced_THEN_correct_values_are_used()
-            throws InterruptedException {
+             throws Exception {
+        setupKernel();
+
         assertThat(()-> logManagerService.getComponentLogConfigurations().get(SYSTEM_LOGS_COMPONENT_NAME).isDeleteLogFileAfterCloudUpload(),
                 eventuallyEval(is(true), Duration.ofSeconds(30)));
 
@@ -188,8 +205,10 @@ class LogManagerConfigTest extends BaseITCase {
 
     @Test
     void GIVEN_system_diskSpaceLimit_and_diskSpaceLimitUnit_config_WHEN_values_are_reset_and_replaced_THEN_correct_values_are_used()
-            throws InterruptedException {
-        // diskSpaceLimit=25 and diskSpaceLimitUnit=MB in config file, so expected value is 26214400 bytes
+             throws Exception {
+        setupKernel();
+
+                 // diskSpaceLimit=25 and diskSpaceLimitUnit=MB in config file, so expected value is 26214400 bytes
         assertThat(()-> logManagerService.getComponentLogConfigurations().get(SYSTEM_LOGS_COMPONENT_NAME).getDiskSpaceLimit(),
                 eventuallyEval(is(26214400L), Duration.ofSeconds(30)));
 
@@ -220,7 +239,9 @@ class LogManagerConfigTest extends BaseITCase {
 
     @Test
     void GIVEN_component_fileNameRegex_config_WHEN_value_is_reset_and_replaced_THEN_correct_values_are_used()
-            throws InterruptedException {
+            throws Exception{
+        setupKernel();
+
         String fileNameRegexDefault = "^\\QUserComponentA\\E\\w*.log";
         String fileNameRegexNew = "RandomLogFileName\\w*.log";
 
@@ -240,7 +261,9 @@ class LogManagerConfigTest extends BaseITCase {
 
     @Test
     void GIVEN_component_directoryPath_config_WHEN_value_is_reset_and_replaced_THEN_correct_values_are_used()
-            throws IOException, InterruptedException {
+            throws Exception {
+        setupKernel();
+
         Path logFileDirectoryPathDefault = tempRootDir.resolve("logs");
         Path logFileDirectoryPathNew = tempRootDir.resolve("newLogDir");
         Files.createDirectory(logFileDirectoryPathNew);
@@ -262,7 +285,9 @@ class LogManagerConfigTest extends BaseITCase {
 
     @Test
     void GIVEN_component_minimumLogLevel_config_WHEN_value_is_reset_and_replaced_THEN_correct_values_are_used()
-            throws InterruptedException {
+            throws Exception {
+        setupKernel();
+
         assertThat(()-> logManagerService.getComponentLogConfigurations().get(componentName).getMinimumLogLevel(),
                 eventuallyEval(is(Level.TRACE), Duration.ofSeconds(30)));
 
@@ -279,7 +304,9 @@ class LogManagerConfigTest extends BaseITCase {
 
     @Test
     void GIVEN_component_deleteLogFileAfterCloudUpload_config_WHEN_value_is_reset_and_replaced_THEN_correct_values_are_used()
-            throws InterruptedException {
+             throws Exception {
+        setupKernel();
+
         boolean deleteLogFileAfterCloudUploadDefault = false;
         assertThat(()-> logManagerService.getComponentLogConfigurations().get(componentName).isDeleteLogFileAfterCloudUpload(),
                 eventuallyEval(is(true), Duration.ofSeconds(30)));
@@ -297,7 +324,9 @@ class LogManagerConfigTest extends BaseITCase {
 
     @Test
     void GIVEN_component_diskSpaceLimit_anddiskSpaceLimitUnit_config_WHEN_values_are_reset_and_replaced_THEN_correct_values_are_used()
-            throws InterruptedException {
+             throws Exception {
+        setupKernel();
+
         // diskSpaceLimit=10 diskSpaceLimitUnit=GB in config file, so expected value is 10737418240 bytes
         assertThat(() -> logManagerService.getComponentLogConfigurations().get(componentName).getDiskSpaceLimit(),
                 eventuallyEval(is(10737418240L), Duration.ofSeconds(30)));
@@ -330,7 +359,8 @@ class LogManagerConfigTest extends BaseITCase {
 
     @Test
     void GIVEN_component_multiLineStartPattern_config_WHEN_value_is_reset_and_replaced_THEN_correct_values_are_used()
-            throws InterruptedException {
+            throws Exception {
+        setupKernel();
         String multiLineStartPatternNew = "[0-9].*";
 
         assertThat(()-> logManagerService.getComponentLogConfigurations().get(componentName).getMultiLineStartPattern().pattern(),
@@ -345,5 +375,117 @@ class LogManagerConfigTest extends BaseITCase {
                 COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME, componentName, MULTILINE_PATTERN_CONFIG_TOPIC_NAME).withValue(multiLineStartPatternNew);
         assertThat(()-> logManagerService.getComponentLogConfigurations().get(componentName).getMultiLineStartPattern().pattern(),
                 eventuallyEval(is(multiLineStartPatternNew), Duration.ofSeconds(30)));
+    }
+
+    /**
+     * From version 2.3.1 the LM supports storing multiple currently processing active files on the runtime configuration
+     * as follows:
+     *
+     * currentComponentFileProcessingInformation:
+     *   [componentName]:
+     *      [fileOneHash]:
+     *        currentProcessingFileName: ...
+     *        currentProcessingFileHash: ...
+     *        currentProcessingFileStartPosition: ...
+     *        componentLastFileProcessedTimeStamp: ...
+     *      [fileTwoHash]:
+     *        currentProcessingFileName: ...
+     *        currentProcessingFileHash: ...
+     *        currentProcessingFileStartPosition: ...
+     *        componentLastFileProcessedTimeStamp: ...
+     */
+    @Test
+    void GIVEN_runtimeAConfiguration_withMultipleCurrentProcessingFiles_WHEN_onStartUp_THEN_loadsConfiguration()
+            throws Exception {
+        // Given - Setup multiple processing files stored in the runtime config
+        Topics componentTopics = kernel.getConfig().lookupTopics(
+                "services",
+                LOGS_UPLOADER_SERVICE_TOPICS,
+                RUNTIME_STORE_NAMESPACE_TOPIC,
+                PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION,
+                componentName);
+
+        ProcessingFileLRU lru = new ProcessingFileLRU(2);
+        LogManagerService.CurrentProcessingFileInformation infoOne =
+                LogManagerService.CurrentProcessingFileInformation.builder()
+                .fileName("test.log")
+                .fileHash(UUID.randomUUID().toString())
+                .startPosition(1000)
+                .lastModifiedTime(Instant.now().toEpochMilli())
+                .build();
+        lru.put(infoOne.getFileHash(), infoOne);
+        LogManagerService.CurrentProcessingFileInformation infoTwo =
+                LogManagerService.CurrentProcessingFileInformation.builder()
+                        .fileName("test_2.log")
+                        .fileHash(UUID.randomUUID().toString())
+                        .startPosition(1000)
+                        .lastModifiedTime(Instant.now().toEpochMilli())
+                        .build();
+        lru.put(infoTwo.getFileHash(), infoTwo);
+
+        componentTopics.updateFromMap(lru.toMap(),
+                new UpdateBehaviorTree(UpdateBehaviorTree.UpdateBehavior.REPLACE, System.currentTimeMillis()));
+
+        // When
+        setupKernel();
+
+
+        // Then - Assert configuration loaded
+        // TODO: Improve this test we should not be accessing LogManagerService attributes
+        ProcessingFileLRU processingFiles = logManagerService.processingFilesInformation.get(componentName);
+        Map<String, Object> expected = new HashMap<String, Object>(){{
+            put(infoOne.getFileHash(), infoOne.convertToMapOfObjects());
+            put(infoTwo.getFileHash(), infoTwo.convertToMapOfObjects());
+        }};
+        assertEquals(expected, processingFiles.toMap());
+    }
+
+    /**
+     * On version 2.3.0 and lower each component configuration only supported tracking a single currently processing
+     * file. It was stored on the runtime config as follows:
+     *
+     * currentComponentFileProcessingInformation:
+     *   [componentName]:
+     *      currentProcessingFileName: ...
+     *      currentProcessingFileHash: ...
+     *      currentProcessingFileStartPosition: ...
+     *      componentLastFileProcessedTimeStamp: ...
+     *
+     * @throws Exception
+     */
+    @Test
+    void GIVEN_runtimeConfiguration_withOldProcessingFileFormat_WHEN_onStartUp_THEN_configurationLoaded()
+            throws Exception {
+        // Given - Setup multiple processing files stored in the runtime config
+        Topics componentTopics = kernel.getConfig().lookupTopics(
+                "services",
+                LOGS_UPLOADER_SERVICE_TOPICS,
+                RUNTIME_STORE_NAMESPACE_TOPIC,
+                PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION,
+                componentName);
+
+        LogManagerService.CurrentProcessingFileInformation infoOne =
+                LogManagerService.CurrentProcessingFileInformation.builder()
+                        .fileName("test.log")
+                        .fileHash(UUID.randomUUID().toString())
+                        .startPosition(1000)
+                        .lastModifiedTime(Instant.now().toEpochMilli())
+                        .build();
+
+        componentTopics.updateFromMap(infoOne.convertToMapOfObjects(),
+                new UpdateBehaviorTree(UpdateBehaviorTree.UpdateBehavior.REPLACE, System.currentTimeMillis()));
+
+
+        // When
+        setupKernel();
+
+        // Then - Assert configuration loaded
+        // TODO: Improve this test we should not be accessing LogManagerService attributes
+        ProcessingFileLRU processingFiles = logManagerService.processingFilesInformation.get(componentName);
+        Map<String, Object> expected = new HashMap<String, Object>(){{
+            put(infoOne.getFileHash(), infoOne.convertToMapOfObjects());
+        }};
+        assertEquals(expected, processingFiles.toMap());
+
     }
 }

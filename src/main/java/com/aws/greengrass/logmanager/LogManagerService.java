@@ -6,6 +6,7 @@
 package com.aws.greengrass.logmanager;
 
 import ch.qos.logback.core.util.FileSize;
+import com.aws.greengrass.config.CaseInsensitiveString;
 import com.aws.greengrass.config.Topic;
 import com.aws.greengrass.config.Topics;
 import com.aws.greengrass.config.UpdateBehaviorTree;
@@ -59,7 +60,6 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -121,7 +121,7 @@ public class LogManagerService extends PluginService {
     // TODO: Remove - OLD
     final Map<String, CurrentProcessingFileInformation> componentCurrentProcessingLogFile =
             new ConcurrentHashMap<>();
-    final Map<String, ProcessingFileLRU> processingFilesInformation =
+    public final Map<String, ProcessingFileLRU> processingFilesInformation =
             new ConcurrentHashMap<>();
 
 
@@ -421,27 +421,35 @@ public class LogManagerService extends PluginService {
                 .lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION, componentName);
 
         if (!currentProcessingComponentTopics.isEmpty()) {
-//            ProcessingFileLRU lru =  new ProcessingFileLRU(DEFAULT_MAX_FILES_TO_TRACK_PER_COMPONENT);
-//
-//            currentProcessingComponentTopics.iterator().forEachRemaining(node -> {
-//                CurrentProcessingFileInformation fileInformation = CurrentProcessingFileInformation.builder().build();
-//
-//                // Handle legacy format of configuration before 2.3.0 and below
-//
-//                fileInformation.updateFromTopic((Topic) node);
-//
-//                // Handle new configuration 2.3.1 and above
-//
-//                currentProcessingComponentTopics.lookupTopics(node.getName()).iterator().forEachRemaining(subNode -> {
-//                    fileInformation.updateFromTopic((Topic) node);
-//                });
-//
-//                if (Utils.isNotEmpty(fileInformation.getFileHash())) {
-//                    lru.put(fileInformation);
-//                }
-//            });
-//
-//            processingFilesInformation.put(componentName, lru);
+            ProcessingFileLRU lru =  new ProcessingFileLRU(DEFAULT_MAX_FILES_TO_TRACK_PER_COMPONENT);
+
+            if (currentProcessingComponentTopics.children
+                    .containsKey(new CaseInsensitiveString(PERSISTED_CURRENT_PROCESSING_FILE_START_POSITION))) {
+                // Handle legacy format of configuration before 2.3.0 and below
+
+                CurrentProcessingFileInformation processingFileInformation =
+                        CurrentProcessingFileInformation.builder().build();
+
+                currentProcessingComponentTopics.iterator().forEachRemaining(node ->
+                        processingFileInformation.updateFromTopic((Topic) node));
+
+                lru.put(processingFileInformation.getFileHash(), processingFileInformation);
+            } else {
+                // Handle version 2.3.1 and above
+
+                currentProcessingComponentTopics.iterator().forEachRemaining(node -> {
+                    LogManagerService.CurrentProcessingFileInformation processingFileInformation =
+                            LogManagerService.CurrentProcessingFileInformation.builder().build();
+
+                    currentProcessingComponentTopics.lookupTopics(node.getName()).iterator().forEachRemaining(subNode -> {
+                        processingFileInformation.updateFromTopic((Topic) subNode);
+                    });
+
+                    lru.put(processingFileInformation.getFileHash(), processingFileInformation);
+                });
+            }
+
+            processingFilesInformation.put(componentName, lru);
         }
 
         Topics lastFileProcessedComponentTopics = getRuntimeConfig()
@@ -505,8 +513,6 @@ public class LogManagerService extends PluginService {
                 Topics componentTopics =
                         getRuntimeConfig().lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION,
                                 componentName);
-
-                logger.info("LRU {}", lru.toMap());
 
                 componentTopics.updateFromMap(lru.toMap(),
                         new UpdateBehaviorTree(UpdateBehaviorTree.UpdateBehavior.REPLACE, System.currentTimeMillis()));
@@ -582,7 +588,7 @@ public class LogManagerService extends PluginService {
         }
 
         ProcessingFileLRU lru  = processingFilesInformation.get(componentName);
-        lru.put(processingFileInformation);
+        lru.put(fileHash, processingFileInformation);
     }
 
     /**
@@ -660,10 +666,10 @@ public class LogManagerService extends PluginService {
                         // new log lines.
                         if (processingFilesInformation.containsKey(componentName)) {
                             ProcessingFileLRU lru = processingFilesInformation.get(componentName);
-                            Optional<CurrentProcessingFileInformation> info = lru.get(fileHash);
+                            CurrentProcessingFileInformation info = lru.get(fileHash);
 
-                            if (info.isPresent()) {
-                                startPosition = info.get().getStartPosition();
+                            if (info != null) {
+                                startPosition = info.getStartPosition();
                             }
                         }
 
@@ -888,6 +894,7 @@ public class LogManagerService extends PluginService {
         private long lastModifiedTime;
         @JsonProperty(PERSISTED_CURRENT_PROCESSING_FILE_HASH)
         private String fileHash;
+        private boolean isDirty;
         private static final Logger logger = LogManager.getLogger(CurrentProcessingFileInformation.class);
 
         public Map<String, Object> convertToMapOfObjects() {

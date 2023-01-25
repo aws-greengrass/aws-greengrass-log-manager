@@ -38,4 +38,17 @@ public class ProcessingFileLRU extends LinkedHashMap<String, LogManagerService.C
 
         return map;
     }
+
+    @Override
+    public ProcessingFileLRU clone() {
+       super.clone();
+       ProcessingFileLRU clone = new ProcessingFileLRU(capacity);
+
+       this.forEach((hash, processingFileInfo) -> {
+           clone.put(hash, LogManagerService.CurrentProcessingFileInformation.convertFromMapOfObjects(
+                   processingFileInfo.convertToMapOfObjects()));
+       });
+
+       return clone;
+    }
 }

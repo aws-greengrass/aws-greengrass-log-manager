@@ -3,6 +3,7 @@ package com.aws.greengrass.logmanager.model;
 import com.aws.greengrass.logmanager.LogManagerService;
 
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -39,16 +40,34 @@ public class ProcessingFileLRU extends LinkedHashMap<String, LogManagerService.C
         return map;
     }
 
+    /**
+     * Returns the head of the LRU.
+     */
+    public LogManagerService.CurrentProcessingFileInformation head() {
+        Map.Entry<String, LogManagerService.CurrentProcessingFileInformation> entry = null;
+        Iterator<Map.Entry<String, LogManagerService.CurrentProcessingFileInformation>> it = entrySet().iterator();
+
+        while (it.hasNext()) {
+            entry = it.next();
+        }
+
+        if (entry != null) {
+            return  entry.getValue();
+        }
+
+        return null;
+    }
+
     @Override
+    @SuppressWarnings("PMD.CloneThrowsCloneNotSupportedException")
     public ProcessingFileLRU clone() {
-       super.clone();
-       ProcessingFileLRU clone = new ProcessingFileLRU(capacity);
+        ProcessingFileLRU clone = (ProcessingFileLRU) super.clone();
 
-       this.forEach((hash, processingFileInfo) -> {
-           clone.put(hash, LogManagerService.CurrentProcessingFileInformation.convertFromMapOfObjects(
-                   processingFileInfo.convertToMapOfObjects()));
-       });
+        this.forEach((hash, processingFileInfo) -> {
+            clone.put(hash, LogManagerService.CurrentProcessingFileInformation.convertFromMapOfObjects(
+                    processingFileInfo.convertToMapOfObjects()));
+        });
 
-       return clone;
+        return clone;
     }
 }

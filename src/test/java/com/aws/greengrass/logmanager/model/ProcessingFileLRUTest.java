@@ -72,4 +72,27 @@ public class ProcessingFileLRUTest {
         assertNotNull(lru.get("54321"));
     }
 
+
+    @Test
+    void GIVEN_filledLRU_WHEN_head_THEN_mostRecentValueReturned() {
+        // Given
+        ProcessingFileLRU lru = new ProcessingFileLRU(2);
+
+        lru.put("12345", LogManagerService.CurrentProcessingFileInformation.builder()
+                .fileName("test.log")
+                .fileHash("12345")
+                .startPosition(1000)
+                .lastModifiedTime(Instant.now().toEpochMilli())
+                .build());
+        lru.put("54321", LogManagerService.CurrentProcessingFileInformation.builder()
+                .fileName("test_2023.log")
+                .fileHash("54321")
+                .startPosition(1000)
+                .lastModifiedTime(Instant.now().toEpochMilli())
+                .build());
+
+        // Then
+        assertEquals(lru.head().getFileHash(), "54321");
+    }
+
 }

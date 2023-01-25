@@ -57,6 +57,7 @@ import static com.aws.greengrass.logmanager.LogManagerService.LOGS_UPLOADER_SERV
 import static com.aws.greengrass.logmanager.LogManagerService.MIN_LOG_LEVEL_CONFIG_TOPIC_NAME;
 import static com.aws.greengrass.logmanager.LogManagerService.MULTILINE_PATTERN_CONFIG_TOPIC_NAME;
 import static com.aws.greengrass.logmanager.LogManagerService.PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION;
+import static com.aws.greengrass.logmanager.LogManagerService.PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION_V2;
 import static com.aws.greengrass.logmanager.LogManagerService.SYSTEM_LOGS_COMPONENT_NAME;
 import static com.aws.greengrass.logmanager.LogManagerService.SYSTEM_LOGS_CONFIG_TOPIC_NAME;
 import static com.aws.greengrass.logmanager.LogManagerService.UPLOAD_TO_CW_CONFIG_TOPIC_NAME;
@@ -380,7 +381,7 @@ class LogManagerConfigTest extends BaseITCase {
      * From version 2.3.1 the LM supports storing multiple currently processing active files on the runtime configuration
      * as follows:
      *
-     * currentComponentFileProcessingInformation:
+     * currentComponentFileProcessingInformationV2:
      *   [componentName]:
      *      [fileOneHash]:
      *        currentProcessingFileName: ...
@@ -401,7 +402,7 @@ class LogManagerConfigTest extends BaseITCase {
                 "services",
                 LOGS_UPLOADER_SERVICE_TOPICS,
                 RUNTIME_STORE_NAMESPACE_TOPIC,
-                PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION,
+                PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION_V2,
                 componentName);
 
         ProcessingFileLRU lru = new ProcessingFileLRU(2);
@@ -485,6 +486,5 @@ class LogManagerConfigTest extends BaseITCase {
             put(infoOne.getFileHash(), infoOne.convertToMapOfObjects());
         }};
         assertEquals(expected, processingFiles.toMap());
-
     }
 }

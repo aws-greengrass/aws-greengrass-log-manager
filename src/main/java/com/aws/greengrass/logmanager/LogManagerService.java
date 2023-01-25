@@ -6,7 +6,6 @@
 package com.aws.greengrass.logmanager;
 
 import ch.qos.logback.core.util.FileSize;
-import com.aws.greengrass.config.CaseInsensitiveString;
 import com.aws.greengrass.config.Topic;
 import com.aws.greengrass.config.Topics;
 import com.aws.greengrass.config.UpdateBehaviorTree;
@@ -88,8 +87,13 @@ public class LogManagerService extends PluginService {
     public static final String PERSISTED_CURRENT_PROCESSING_FILE_NAME = "currentProcessingFileName";
     public static final String PERSISTED_CURRENT_PROCESSING_FILE_HASH = "currentProcessingFileHash";
     public static final String PERSISTED_CURRENT_PROCESSING_FILE_START_POSITION = "currentProcessingFileStartPosition";
+
+    // @deprecated - used for versions below 2.3.1
     public static final String PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION =
             "currentComponentFileProcessingInformation";
+    // used on versions 2.3.1 and above
+    public static final String PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION_V2 =
+            "currentComponentFileProcessingInformationV2";
     public static final String PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP =
             "componentLastFileProcessedTimeStamp";
     public static final String PERSISTED_LAST_FILE_PROCESSED_TIMESTAMP =
@@ -414,41 +418,48 @@ public class LogManagerService extends PluginService {
     }
 
     private void loadStateFromConfiguration(String componentName) {
-        Topics currentProcessingComponentTopics = getRuntimeConfig()
+        ProcessingFileLRU lru =  new ProcessingFileLRU(DEFAULT_MAX_FILES_TO_TRACK_PER_COMPONENT);
+
+        // Versions 2.3.0 and below
+
+        Topics currentProcessingComponentTopicsDeprecated = getRuntimeConfig()
                 .lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION, componentName);
 
+
+        if (!currentProcessingComponentTopicsDeprecated.isEmpty()) {
+            CurrentProcessingFileInformation processingFileInformation =
+                    CurrentProcessingFileInformation.builder().build();
+
+            currentProcessingComponentTopicsDeprecated.iterator().forEachRemaining(node ->
+                    processingFileInformation.updateFromTopic((Topic) node));
+
+            lru.put(processingFileInformation.getFileHash(), processingFileInformation);
+        }
+
+        // Versions 2.3.1 and above
+
+        Topics currentProcessingComponentTopics = getRuntimeConfig()
+                .lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION_V2, componentName);
+
         if (!currentProcessingComponentTopics.isEmpty()) {
-            ProcessingFileLRU lru =  new ProcessingFileLRU(DEFAULT_MAX_FILES_TO_TRACK_PER_COMPONENT);
-
-            if (currentProcessingComponentTopics.children
-                    .containsKey(new CaseInsensitiveString(PERSISTED_CURRENT_PROCESSING_FILE_START_POSITION))) {
-                // Handle legacy format of configuration before 2.3.0 and below
-
-                CurrentProcessingFileInformation processingFileInformation =
-                        CurrentProcessingFileInformation.builder().build();
-
-                currentProcessingComponentTopics.iterator().forEachRemaining(node ->
-                        processingFileInformation.updateFromTopic((Topic) node));
-
-                lru.put(processingFileInformation.getFileHash(), processingFileInformation);
-            } else {
-                // Handle version 2.3.1 and above
-
-                currentProcessingComponentTopics.iterator().forEachRemaining(node -> {
+            currentProcessingComponentTopics.iterator().forEachRemaining(node -> {
+                if (node instanceof Topics) { // Ignore leaf nodes (use by versions before 2.3.1)
                     LogManagerService.CurrentProcessingFileInformation processingFileInformation =
                             LogManagerService.CurrentProcessingFileInformation.builder().build();
 
                     currentProcessingComponentTopics.lookupTopics(node.getName()).iterator()
                             .forEachRemaining(subNode -> {
-                        processingFileInformation.updateFromTopic((Topic) subNode);
-                    });
+                                processingFileInformation.updateFromTopic((Topic) subNode);
+                            });
 
                     lru.put(processingFileInformation.getFileHash(), processingFileInformation);
-                });
-            }
-
-            processingFilesInformation.put(componentName, lru);
+                }
+            });
         }
+
+        processingFilesInformation.put(componentName, lru);
+
+        // Load last file modified timestamp
 
         Topics lastFileProcessedComponentTopics = getRuntimeConfig()
                 .lookupTopics(PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP, componentName);
@@ -508,8 +519,20 @@ public class LogManagerService extends PluginService {
 
         context.runOnPublishQueueAndWait(() -> {
             processingFilesInformation.forEach((componentName, lru) -> {
-                Topics componentTopics =
+                // Update old config value to handle downgrade from v 2.3.1 to older ones
+                Topics componentTopicsDeprecated =
                         getRuntimeConfig().lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION,
+                                componentName);
+
+                if (lru.head() != null) {
+                    componentTopicsDeprecated.updateFromMap(lru.head().convertToMapOfObjects(),
+                        new UpdateBehaviorTree(UpdateBehaviorTree.UpdateBehavior.REPLACE, System.currentTimeMillis()));
+                }
+
+                // Handle version 2.3.1 and above
+
+                Topics componentTopics =
+                        getRuntimeConfig().lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION_V2,
                                 componentName);
 
                 componentTopics.updateFromMap(lru.toMap(),

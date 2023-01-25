@@ -77,6 +77,7 @@ import static com.aws.greengrass.logmanager.LogManagerService.LOGS_UPLOADER_CONF
 import static com.aws.greengrass.logmanager.LogManagerService.LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC;
 import static com.aws.greengrass.logmanager.LogManagerService.MIN_LOG_LEVEL_CONFIG_TOPIC_NAME;
 import static com.aws.greengrass.logmanager.LogManagerService.PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION;
+import static com.aws.greengrass.logmanager.LogManagerService.PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION_V2;
 import static com.aws.greengrass.logmanager.LogManagerService.PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP;
 import static com.aws.greengrass.logmanager.LogManagerService.PERSISTED_CURRENT_PROCESSING_FILE_NAME;
 import static com.aws.greengrass.logmanager.LogManagerService.PERSISTED_LAST_FILE_PROCESSED_TIMESTAMP;
@@ -223,14 +224,28 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         Topics currentProcessingComponentTopics3 =
                 Topics.of(context, "UserComponentB", allCurrentProcessingComponentTopics1);
 
+        // 2.3.0 and prior
         lenient().when(config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC)
                 .lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION, SYSTEM_LOGS_COMPONENT_NAME))
                 .thenReturn(currentProcessingComponentTopics1);
+        // 2.3.1 and after
+        lenient().when(config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC)
+                        .lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION_V2, SYSTEM_LOGS_COMPONENT_NAME))
+                .thenReturn(currentProcessingComponentTopics1);
+        // 2.3.0 and prior
         lenient().when(config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC)
                 .lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION, "UserComponentA"))
                 .thenReturn(currentProcessingComponentTopics2);
+        // 2.3.1 and after
+        lenient().when(config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC)
+                        .lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION_V2, "UserComponentA"))
+                .thenReturn(currentProcessingComponentTopics2);
+        // 2.3.0 and prior
         lenient().when(config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC)
                 .lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION, "UserComponentB"))
+                .thenReturn(currentProcessingComponentTopics3);
+        lenient().when(config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC)
+                .lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION_V2, "UserComponentB"))
                 .thenReturn(currentProcessingComponentTopics3);
 
         Topics allLastFileProcessedComponentTopics =
@@ -603,13 +618,23 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         when(config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC))
                 .thenReturn(runtimeConfig);
 
+        // 2.3.0 and below
         lenient().when(runtimeConfig.lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION,
                 "TestComponent2")).thenReturn(component2ProcessingTopics);
+        // After 2.3.1
+        lenient().when(runtimeConfig.lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION_V2,
+                "TestComponent2")).thenReturn(component2ProcessingTopics);
+
         lenient().when(runtimeConfig.lookupTopics(PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP, "TestComponent"))
                 .thenReturn(component1ProcessedTopics);
 
+        // 2.3.0 and below
         lenient().when(runtimeConfig.lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION,
                 "TestComponent")).thenReturn(component1ProcessingTopics);
+        // After 2.3.1
+        lenient().when(runtimeConfig.lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION_V2,
+                "TestComponent")).thenReturn(component1ProcessingTopics);
+
         lenient().when(runtimeConfig.lookupTopics(PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP, "TestComponent2"))
                 .thenReturn(component2ProcessedTopics);
 
@@ -686,12 +711,12 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         List<Number> completedComponentLastProcessedFileInformation = numberObjectCaptor.getAllValues();
         List<Map<String, Object>> partiallyReadComponentLogFileInformation = updateFromMapCaptor.getAllValues();
         assertEquals(1, completedComponentLastProcessedFileInformation.size());
-        assertEquals(1, partiallyReadComponentLogFileInformation.size());
+        assertEquals(2, partiallyReadComponentLogFileInformation.size());
         assertEquals(lastProcessedFile.lastModified(), Coerce.toLong(completedComponentLastProcessedFileInformation.get(0)));
 
         LogManagerService.CurrentProcessingFileInformation currentProcessingFileInformation =
                 LogManagerService.CurrentProcessingFileInformation.convertFromMapOfObjects(
-                        (Map<String, Object>) partiallyReadComponentLogFileInformation.get(0).get(processingFile.hashString()));
+                        (Map<String, Object>) partiallyReadComponentLogFileInformation.get(1).get(processingFile.hashString()));
         assertEquals(processingFile.hashString(), currentProcessingFileInformation.getFileHash());
         assertEquals(1061, currentProcessingFileInformation.getStartPosition());
         assertEquals(processingFile.lastModified(), currentProcessingFileInformation.getLastModifiedTime());
@@ -828,7 +853,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
     @Test
     void GIVEN_user_component_logs_delete_file_after_upload_set_WHEN_upload_logs_THEN_deletes_uploaded_log_files(
             ExtensionContext ec)
-            throws InterruptedException, IOException, UnsupportedInputTypeException, InvalidLogGroupException {
+            throws InterruptedException, IOException, InvalidLogGroupException {
         ignoreExceptionOfType(ec, NoSuchFileException.class);
         mockDefaultPersistedState();
         Topic periodicUpdateIntervalMsTopic = Topic.of(context, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC, "3");
@@ -917,6 +942,8 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         when(config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC)
                 .lookupTopics(PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP, "UserComponentA"))
                 .thenReturn(componentTopics1);
+
+
 
         logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor, nucleusPaths);
         startServiceOnAnotherThread();
@@ -1051,11 +1078,19 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         when(config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC)
                 .lookupTopics(PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP, "UserComponentA"))
                 .thenReturn(lastFileProcessedComponentTopics2);
+        // mock deprecated topic version 2.3.0 and below
         when(config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC)
                 .lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION, SYSTEM_LOGS_COMPONENT_NAME))
                 .thenReturn(currentProcessingComponentTopics1);
         when(config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC)
                 .lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION, "UserComponentA"))
+                .thenReturn(currentProcessingComponentTopics2);
+        // mock topic for version 2.3.1 and above
+        when(config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC)
+                .lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION_V2, SYSTEM_LOGS_COMPONENT_NAME))
+                .thenReturn(currentProcessingComponentTopics1);
+        when(config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC)
+                .lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION_V2, "UserComponentA"))
                 .thenReturn(currentProcessingComponentTopics2);
 
         logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor, nucleusPaths);

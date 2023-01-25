@@ -913,7 +913,6 @@ public class LogManagerService extends PluginService {
         private long lastModifiedTime;
         @JsonProperty(PERSISTED_CURRENT_PROCESSING_FILE_HASH)
         private String fileHash;
-        private boolean isDirty;
         private static final Logger logger = LogManager.getLogger(CurrentProcessingFileInformation.class);
 
         /**

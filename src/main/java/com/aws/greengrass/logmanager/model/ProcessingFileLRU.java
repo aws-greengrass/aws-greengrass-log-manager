@@ -27,7 +27,7 @@ public class ProcessingFileLRU extends LinkedHashMap<String, LogManagerService.C
     }
 
     /**
-     * Converts the objects stored in the LRY into a map. Used serialize the LRU to be stored
+     * Converts the objects stored in the LRU into a map. Used serialize the LRU to be stored
      * on the runtime config
      */
     public Map<String, Object> toMap() {

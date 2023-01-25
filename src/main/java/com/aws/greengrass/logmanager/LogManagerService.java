@@ -603,11 +603,8 @@ public class LogManagerService extends PluginService {
                         .fileHash(fileHash)
                         .build();
 
-        if (!processingFilesInformation.containsKey(componentName)) {
-            // TODO: need to figure a smarter mechanism to adjust the LRU capacity. Add an adjust capacity method
-            processingFilesInformation.put(componentName, new ProcessingFileLRU(
-                    Math.max(logFileGroup.getLogFiles().size(), DEFAULT_MAX_FILES_TO_TRACK_PER_COMPONENT)));
-        }
+        processingFilesInformation.putIfAbsent(componentName, new ProcessingFileLRU(
+                Math.max(logFileGroup.getLogFiles().size(), DEFAULT_MAX_FILES_TO_TRACK_PER_COMPONENT)));
 
         ProcessingFileLRU lru  = processingFilesInformation.get(componentName);
         lru.put(fileHash, processingFileInformation);

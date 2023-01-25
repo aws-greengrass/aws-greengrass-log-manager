@@ -20,8 +20,8 @@ Feature: Greengrass V2 LogManager
         """
         {
             "MERGE": {
-                "FileSize": "10MB",
-                "LogSpeed": "1"
+                "FileSize": "20MB",
+                "LogSpeed": "2"
             }
         }
         """

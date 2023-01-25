@@ -104,7 +104,7 @@ public class ProcessingFileLRUTest {
         assertEquals(lru.getCapacity(), 10);
 
         lru.adjustCapacity(1);
-        assertEquals(lru.getCapacity(), 5);
+        assertEquals(lru.getCapacity(), 10);
     }
 
     @Test

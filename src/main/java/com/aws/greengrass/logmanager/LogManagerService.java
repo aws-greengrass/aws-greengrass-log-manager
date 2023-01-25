@@ -114,7 +114,7 @@ public class LogManagerService extends PluginService {
     public static final String UPLOAD_TO_CW_CONFIG_TOPIC_NAME = "uploadToCloudWatch";
     public static final String MULTILINE_PATTERN_CONFIG_TOPIC_NAME = "multiLineStartPattern";
     public static final int DEFAULT_PERIODIC_UPDATE_INTERVAL_SEC = 300;
-    public static final int DEFAULT_MAX_FILES_TO_TRACK_PER_COMPONENT = 5;
+    public static final int MIN_NUMBER_OF_FILES_TO_TRACK = 5;
     private final Object spaceManagementLock = new Object();
     private final List<Consumer<EventType>> serviceStatusListeners = new ArrayList<>();
 
@@ -417,10 +417,11 @@ public class LogManagerService extends PluginService {
         }
     }
 
-    private void loadStateFromConfiguration(String componentName) {
-        ProcessingFileLRU lru =  new ProcessingFileLRU(DEFAULT_MAX_FILES_TO_TRACK_PER_COMPONENT);
-
+    private void loadProcessingFilesConfigDeprecated(String componentName) {
         // Versions 2.3.0 and below
+        processingFilesInformation
+               .putIfAbsent(componentName, new ProcessingFileLRU(MIN_NUMBER_OF_FILES_TO_TRACK));
+       ProcessingFileLRU lru = processingFilesInformation.get(componentName);
 
         Topics currentProcessingComponentTopicsDeprecated = getRuntimeConfig()
                 .lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION, componentName);
@@ -436,13 +437,20 @@ public class LogManagerService extends PluginService {
 
             lru.put(processingFileInformation.getFileHash(), processingFileInformation);
         }
+    }
 
-        // Versions 2.3.1 and above
+    private void loadProcessingFilesConfig(String componentName) {
+        processingFilesInformation
+                .putIfAbsent(componentName, new ProcessingFileLRU(MIN_NUMBER_OF_FILES_TO_TRACK));
+        ProcessingFileLRU lru = processingFilesInformation.get(componentName);
 
         Topics currentProcessingComponentTopics = getRuntimeConfig()
                 .lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION_V2, componentName);
 
         if (currentProcessingComponentTopics != null && !currentProcessingComponentTopics.isEmpty()) {
+            // Adjust the lru capacity so that it can fit all the nodes from memory
+            lru.adjustCapacity(currentProcessingComponentTopics.children.size());
+
             currentProcessingComponentTopics.iterator().forEachRemaining(node -> {
                 if (node instanceof Topics) { // Ignore leaf nodes (use by versions before 2.3.1)
                     LogManagerService.CurrentProcessingFileInformation processingFileInformation =
@@ -457,8 +465,14 @@ public class LogManagerService extends PluginService {
                 }
             });
         }
+    }
 
-        processingFilesInformation.put(componentName, lru);
+    private void loadStateFromConfiguration(String componentName) {
+        // Versions 2.3.1 and above
+        loadProcessingFilesConfig(componentName);
+
+        // Versions 2.3.0 and below
+        loadProcessingFilesConfigDeprecated(componentName);
 
         // Load last file modified timestamp
 
@@ -525,8 +539,8 @@ public class LogManagerService extends PluginService {
                         getRuntimeConfig().lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION,
                                 componentName);
 
-                if (lru.head() != null) {
-                    componentTopicsDeprecated.updateFromMap(lru.head().convertToMapOfObjects(),
+                if (lru.getMostRecentlyUsed() != null) {
+                    componentTopicsDeprecated.updateFromMap(lru.getMostRecentlyUsed().convertToMapOfObjects(),
                         new UpdateBehaviorTree(UpdateBehaviorTree.UpdateBehavior.REPLACE, System.currentTimeMillis()));
                 }
 
@@ -603,10 +617,12 @@ public class LogManagerService extends PluginService {
                         .fileHash(fileHash)
                         .build();
 
-        processingFilesInformation.putIfAbsent(componentName, new ProcessingFileLRU(
-                Math.max(logFileGroup.getLogFiles().size(), DEFAULT_MAX_FILES_TO_TRACK_PER_COMPONENT)));
+        processingFilesInformation
+                .putIfAbsent(componentName, new ProcessingFileLRU(MIN_NUMBER_OF_FILES_TO_TRACK));
 
         ProcessingFileLRU lru  = processingFilesInformation.get(componentName);
+        lru.adjustCapacity(logFileGroup.getLogFiles().size());
+
         lru.put(fileHash, processingFileInformation);
     }
 

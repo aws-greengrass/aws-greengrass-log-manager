@@ -1,6 +1,7 @@
 package com.aws.greengrass.logmanager.model;
 
 import com.aws.greengrass.logmanager.LogManagerService;
+import lombok.Getter;
 
 import java.util.HashMap;
 import java.util.Iterator;
@@ -14,11 +15,21 @@ import java.util.Map;
  */
 public class ProcessingFileLRU extends LinkedHashMap<String, LogManagerService.CurrentProcessingFileInformation> {
     static final long serialVersionUID = 1L;
-    private final int capacity;
+    private final int originalCapacity;
 
+    @Getter
+    private int capacity;
+
+    /**
+     * Creates an instance of the LRU.
+     *
+     * @param capacity - min capacity of the LRY. Even if the capacity gets adjusted later on, it will never go below
+     *                 this value
+     */
     public ProcessingFileLRU(int capacity) {
         super(5, 0.75f, true);
         this.capacity = capacity;
+        this.originalCapacity = capacity;
     }
 
     @Override
@@ -28,7 +39,7 @@ public class ProcessingFileLRU extends LinkedHashMap<String, LogManagerService.C
 
     /**
      * Converts the objects stored in the LRU into a map. Used serialize the LRU to be stored
-     * on the runtime config
+     * on the runtime config.
      */
     public Map<String, Object> toMap() {
         HashMap<String, Object> map = new HashMap<>();
@@ -41,9 +52,9 @@ public class ProcessingFileLRU extends LinkedHashMap<String, LogManagerService.C
     }
 
     /**
-     * Returns the head of the LRU.
+     * Returns the most recently used item of the LRU.
      */
-    public LogManagerService.CurrentProcessingFileInformation head() {
+    public LogManagerService.CurrentProcessingFileInformation getMostRecentlyUsed() {
         Map.Entry<String, LogManagerService.CurrentProcessingFileInformation> entry = null;
         Iterator<Map.Entry<String, LogManagerService.CurrentProcessingFileInformation>> it = entrySet().iterator();
 
@@ -69,5 +80,16 @@ public class ProcessingFileLRU extends LinkedHashMap<String, LogManagerService.C
         });
 
         return clone;
+    }
+
+
+    /**
+     * Adjusts the capacity by to a value that must be greater than the original capacity value used to create
+     * the LRU.
+     *
+     * @param desiredCapacity - desired capacity of the LRU
+     */
+    public void adjustCapacity(int desiredCapacity) {
+        capacity = Math.max(Math.max(desiredCapacity, originalCapacity), capacity);
     }
 }

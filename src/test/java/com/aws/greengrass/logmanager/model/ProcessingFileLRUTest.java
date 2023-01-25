@@ -92,7 +92,49 @@ public class ProcessingFileLRUTest {
                 .build());
 
         // Then
-        assertEquals(lru.head().getFileHash(), "54321");
+        assertEquals(lru.getMostRecentlyUsed().getFileHash(), "54321");
+    }
+
+    @Test
+    void GIVEN_lruCreatedWithOriginalCapacity_WHEN_capacityIncreaseAndOrDecreases_THEN_adjustAccordingly() {
+        ProcessingFileLRU lru = new ProcessingFileLRU(5);
+        assertEquals(lru.getCapacity(), 5);
+
+        lru.adjustCapacity(10);
+        assertEquals(lru.getCapacity(), 10);
+
+        lru.adjustCapacity(1);
+        assertEquals(lru.getCapacity(), 5);
+    }
+
+    @Test
+    void GIVEN_elementsInLRU_WHEN_capacityLowerThantStoredElement_THEN_oldElementsGetRemoved() {
+        ProcessingFileLRU lru = new ProcessingFileLRU(1);
+
+        // Fit 2 elements after the capacity increased
+        lru.adjustCapacity(2);
+
+        lru.put("12345", LogManagerService.CurrentProcessingFileInformation.builder()
+                .fileName("test.log")
+                .fileHash("12345")
+                .startPosition(1000)
+                .lastModifiedTime(Instant.now().toEpochMilli())
+                .build());
+        lru.put("54321", LogManagerService.CurrentProcessingFileInformation.builder()
+                .fileName("test_2023.log")
+                .fileHash("54321")
+                .startPosition(1000)
+                .lastModifiedTime(Instant.now().toEpochMilli())
+                .build());
+
+        assertEquals(lru.size(), 2);
+        assertEquals(lru.getCapacity(), 2);
+
+        // Capacity decreased remove the oldest elements
+        lru.adjustCapacity(1);
+        assertEquals(lru.size(), 2);
+        assertNotNull(lru.get("54321"));
+        assertNotNull(lru.get("12345"));
     }
 
 }

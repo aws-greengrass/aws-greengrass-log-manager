@@ -118,9 +118,6 @@ public class LogManagerService extends PluginService {
     public final Map<String, Instant> lastComponentUploadedLogFileInstantMap =
             Collections.synchronizedMap(new LinkedHashMap<>());
 
-    // TODO: Remove - OLD
-    final Map<String, CurrentProcessingFileInformation> componentCurrentProcessingLogFile =
-            new ConcurrentHashMap<>();
     public final Map<String, ProcessingFileLRU> processingFilesInformation =
             new ConcurrentHashMap<>();
 

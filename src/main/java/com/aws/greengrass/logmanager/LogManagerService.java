@@ -426,7 +426,8 @@ public class LogManagerService extends PluginService {
                 .lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION, componentName);
 
 
-        if (!currentProcessingComponentTopicsDeprecated.isEmpty()) {
+        if (currentProcessingComponentTopicsDeprecated != null
+                && !currentProcessingComponentTopicsDeprecated.isEmpty()) {
             CurrentProcessingFileInformation processingFileInformation =
                     CurrentProcessingFileInformation.builder().build();
 
@@ -441,7 +442,7 @@ public class LogManagerService extends PluginService {
         Topics currentProcessingComponentTopics = getRuntimeConfig()
                 .lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION_V2, componentName);
 
-        if (!currentProcessingComponentTopics.isEmpty()) {
+        if (currentProcessingComponentTopics != null && !currentProcessingComponentTopics.isEmpty()) {
             currentProcessingComponentTopics.iterator().forEachRemaining(node -> {
                 if (node instanceof Topics) { // Ignore leaf nodes (use by versions before 2.3.1)
                     LogManagerService.CurrentProcessingFileInformation processingFileInformation =

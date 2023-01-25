@@ -266,7 +266,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
 
     @Test
     void GIVEN_system_log_files_to_be_uploaded_WHEN_merger_merges_THEN_we_get_all_log_files()
-            throws InterruptedException, UnsupportedInputTypeException, IOException {
+            throws InterruptedException, IOException {
         mockDefaultPersistedState();
         Topic periodicUpdateIntervalMsTopic = Topic.of(context, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC, "1");
         when(config.lookup(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC))

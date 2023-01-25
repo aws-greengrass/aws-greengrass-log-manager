@@ -27,18 +27,28 @@ public class ProcessingFileLRUTest {
     void GIVEN_filledLRU_WHEN_toMap_returnsMapRepresentation() {
         // Given
         ProcessingFileLRU lru = new ProcessingFileLRU(5);
-        LogManagerService.CurrentProcessingFileInformation fileInformation =
+        LogManagerService.CurrentProcessingFileInformation fileInformationOne =
                 LogManagerService.CurrentProcessingFileInformation.builder()
                 .fileName("test.log")
                 .fileHash("kj35435")
                 .startPosition(1000)
                 .lastModifiedTime(Instant.now().toEpochMilli())
                 .build();
-        lru.put(fileInformation);
+        lru.put(fileInformationOne);
+        LogManagerService.CurrentProcessingFileInformation fileInformationTwo =
+        LogManagerService.CurrentProcessingFileInformation.builder()
+                .fileName("test_2023.log")
+                .fileHash("54321")
+                .startPosition(1000)
+                .lastModifiedTime(Instant.now().toEpochMilli())
+                .build();
+        lru.put(fileInformationTwo);
+
 
         // Then
         Map<String, Object> expected = new HashMap<String, Object>(){{
-            put("kj35435", fileInformation.convertToMapOfObjects());
+            put("kj35435", fileInformationOne.convertToMapOfObjects());
+            put("54321", fileInformationTwo.convertToMapOfObjects());
         }};
         assertEquals(expected, lru.toMap());
     }

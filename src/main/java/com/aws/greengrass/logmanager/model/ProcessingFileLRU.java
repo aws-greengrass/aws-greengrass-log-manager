@@ -43,6 +43,11 @@ public class ProcessingFileLRU {
             this.fileHash = fileHash;
             this.fileInformation = fileInformation;
         }
+
+        Node(String fileHash, LogManagerService.CurrentProcessingFileInformation fileInformation, Node next) {
+            this(fileHash, fileInformation);
+            this.next = next;
+        }
     }
 
 
@@ -53,6 +58,7 @@ public class ProcessingFileLRU {
             this.detach(cache.get(fileHash));
             this.size--;
         } else if (this.size == this.capacity) {
+            this.cache.remove(fileHash);
             this.detach(this.tail);
             this.size--;
         }
@@ -60,7 +66,7 @@ public class ProcessingFileLRU {
         if (this.head == null) {
             this.head = this.tail = new Node(fileHash, info);
         } else {
-            Node node = new Node(fileHash, info);
+            Node node = new Node(fileHash, info, this.head);
             this.head.prev = node;
             this.head = node;
         }
@@ -84,7 +90,6 @@ public class ProcessingFileLRU {
     }
 
     private void detach(Node node) {
-
         if (node.prev != null) {
             node.prev.next = node.next;
         } else {
@@ -96,17 +101,16 @@ public class ProcessingFileLRU {
         } else {
             this.tail = node.prev;
         }
-
-        cache.remove(node.fileHash);
     }
 
     public Map<String, Object> toMap() {
         HashMap<String, Object> map = new HashMap<>();
 
-        Node node = this.head;
+        Node node = head;
         while (node != null) {
+            System.out.println(node.fileHash);
             map.put(node.fileHash, node.fileInformation.convertToMapOfObjects());
-            node = head.next;
+            node = node.next;
         }
 
         return map;

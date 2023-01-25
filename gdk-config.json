@@ -2,7 +2,7 @@
   "component": {
     "aws.greengrass.LogManager": {
       "author": "AWS",
-      "version": "2.3.8",
+      "version": "2.3.9",
       "build": {
         "build_system": "maven"
       },

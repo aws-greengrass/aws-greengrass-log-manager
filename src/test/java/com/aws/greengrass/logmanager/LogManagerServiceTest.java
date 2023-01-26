@@ -77,6 +77,7 @@ import static com.aws.greengrass.logmanager.LogManagerService.LOGS_UPLOADER_CONF
 import static com.aws.greengrass.logmanager.LogManagerService.LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC;
 import static com.aws.greengrass.logmanager.LogManagerService.MIN_LOG_LEVEL_CONFIG_TOPIC_NAME;
 import static com.aws.greengrass.logmanager.LogManagerService.PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION;
+import static com.aws.greengrass.logmanager.LogManagerService.PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION_V2;
 import static com.aws.greengrass.logmanager.LogManagerService.PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP;
 import static com.aws.greengrass.logmanager.LogManagerService.PERSISTED_CURRENT_PROCESSING_FILE_NAME;
 import static com.aws.greengrass.logmanager.LogManagerService.PERSISTED_LAST_FILE_PROCESSED_TIMESTAMP;
@@ -223,14 +224,28 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         Topics currentProcessingComponentTopics3 =
                 Topics.of(context, "UserComponentB", allCurrentProcessingComponentTopics1);
 
+        // 2.3.0 and prior
         lenient().when(config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC)
                 .lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION, SYSTEM_LOGS_COMPONENT_NAME))
                 .thenReturn(currentProcessingComponentTopics1);
+        // 2.3.1 and after
+        lenient().when(config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC)
+                        .lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION_V2, SYSTEM_LOGS_COMPONENT_NAME))
+                .thenReturn(currentProcessingComponentTopics1);
+        // 2.3.0 and prior
         lenient().when(config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC)
                 .lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION, "UserComponentA"))
                 .thenReturn(currentProcessingComponentTopics2);
+        // 2.3.1 and after
+        lenient().when(config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC)
+                        .lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION_V2, "UserComponentA"))
+                .thenReturn(currentProcessingComponentTopics2);
+        // 2.3.0 and prior
         lenient().when(config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC)
                 .lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION, "UserComponentB"))
+                .thenReturn(currentProcessingComponentTopics3);
+        lenient().when(config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC)
+                .lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION_V2, "UserComponentB"))
                 .thenReturn(currentProcessingComponentTopics3);
 
         Topics allLastFileProcessedComponentTopics =
@@ -256,7 +271,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
     @AfterEach
     public void cleanup() throws InterruptedException {
         if (logsUploaderService != null) {
-            logsUploaderService.componentCurrentProcessingLogFile.clear();
+            logsUploaderService.processingFilesInformation.clear();
             logsUploaderService.lastComponentUploadedLogFileInstantMap.clear();
             logsUploaderService.shutdown();
         }
@@ -266,7 +281,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
 
     @Test
     void GIVEN_system_log_files_to_be_uploaded_WHEN_merger_merges_THEN_we_get_all_log_files()
-            throws InterruptedException, UnsupportedInputTypeException, IOException {
+            throws InterruptedException, IOException {
         mockDefaultPersistedState();
         Topic periodicUpdateIntervalMsTopic = Topic.of(context, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC, "1");
         when(config.lookup(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC))
@@ -558,13 +573,15 @@ class LogManagerServiceTest extends GGServiceTestUtil {
 
         logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor, nucleusPaths);
         startServiceOnAnotherThread();
-        assertThat(logsUploaderService.componentCurrentProcessingLogFile.values(), IsEmptyCollection.empty());
+        assertThat(logsUploaderService.processingFilesInformation.values(), IsEmptyCollection.empty());
     }
 
     @Test
     void GIVEN_cloud_watch_attempt_handler_WHEN_attempt_completes_THEN_successfully_updates_states_for_each_component()
             throws IOException, InvalidLogGroupException, InterruptedException {
         mockDefaultPersistedState();
+        LogFile processingFile = createLogFileWithSize(directoryPath.resolve("testlogs1.log").toUri(), 1061);
+        LogFile lastProcessedFile = createLogFileWithSize(directoryPath.resolve("testlogs2.log").toUri(), 2943);
         Topic periodicUpdateIntervalMsTopic = Topic.of(context, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC, "1000");
         when(config.lookup(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC))
                 .thenReturn(periodicUpdateIntervalMsTopic);
@@ -601,13 +618,23 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         when(config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC))
                 .thenReturn(runtimeConfig);
 
+        // 2.3.0 and below
         lenient().when(runtimeConfig.lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION,
                 "TestComponent2")).thenReturn(component2ProcessingTopics);
+        // After 2.3.1
+        lenient().when(runtimeConfig.lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION_V2,
+                "TestComponent2")).thenReturn(component2ProcessingTopics);
+
         lenient().when(runtimeConfig.lookupTopics(PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP, "TestComponent"))
                 .thenReturn(component1ProcessedTopics);
 
+        // 2.3.0 and below
         lenient().when(runtimeConfig.lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION,
                 "TestComponent")).thenReturn(component1ProcessingTopics);
+        // After 2.3.1
+        lenient().when(runtimeConfig.lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION_V2,
+                "TestComponent")).thenReturn(component1ProcessingTopics);
+
         lenient().when(runtimeConfig.lookupTopics(PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP, "TestComponent2"))
                 .thenReturn(component2ProcessedTopics);
 
@@ -615,7 +642,6 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         CloudWatchAttempt attempt = new CloudWatchAttempt();
         Map<String, CloudWatchAttemptLogInformation> logStreamsToLogInformationMap = new HashMap<>();
 
-        LogFile lastProcessedFile = createLogFileWithSize(directoryPath.resolve("testlogs2.log").toUri(), 2943);
         Pattern pattern1 = Pattern.compile("^testlogs2.log\\w*$");
         // Create another file intentionally, so that the lastProcessedFile will be processed.
         TimeUnit.SECONDS.sleep(5);
@@ -631,7 +657,6 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         createLogFileWithSize(directoryPath.resolve("testlogs1.log_processed").toUri(), 1061);
         // Intentionally sleep to differ the creation time of two files
         TimeUnit.SECONDS.sleep(5);
-        LogFile processingFile = createLogFileWithSize(directoryPath.resolve("testlogs1.log").toUri(), 1061);
         Pattern pattern2 = Pattern.compile("^testlogs1.log$");
         ComponentLogConfiguration compLogInfo2 = ComponentLogConfiguration.builder()
                 .directoryPath(directoryPath)
@@ -686,11 +711,12 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         List<Number> completedComponentLastProcessedFileInformation = numberObjectCaptor.getAllValues();
         List<Map<String, Object>> partiallyReadComponentLogFileInformation = updateFromMapCaptor.getAllValues();
         assertEquals(1, completedComponentLastProcessedFileInformation.size());
-        assertEquals(1, partiallyReadComponentLogFileInformation.size());
+        assertEquals(2, partiallyReadComponentLogFileInformation.size());
         assertEquals(lastProcessedFile.lastModified(), Coerce.toLong(completedComponentLastProcessedFileInformation.get(0)));
+
         LogManagerService.CurrentProcessingFileInformation currentProcessingFileInformation =
-                LogManagerService.CurrentProcessingFileInformation
-                        .convertFromMapOfObjects(partiallyReadComponentLogFileInformation.get(0));
+                LogManagerService.CurrentProcessingFileInformation.convertFromMapOfObjects(
+                        (Map<String, Object>) partiallyReadComponentLogFileInformation.get(1).get(processingFile.hashString()));
         assertEquals(processingFile.hashString(), currentProcessingFileInformation.getFileHash());
         assertEquals(1061, currentProcessingFileInformation.getStartPosition());
         assertEquals(processingFile.lastModified(), currentProcessingFileInformation.getLastModifiedTime());
@@ -699,12 +725,13 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         assertThat(logsUploaderService.lastComponentUploadedLogFileInstantMap.entrySet(), IsNot.not(IsEmptyCollection.empty()));
         assertTrue(logsUploaderService.lastComponentUploadedLogFileInstantMap.containsKey("TestComponent"));
         assertEquals(Instant.ofEpochMilli(lastProcessedFile.lastModified()), logsUploaderService.lastComponentUploadedLogFileInstantMap.get("TestComponent"));
-        assertNotNull(logsUploaderService.componentCurrentProcessingLogFile);
-        assertThat(logsUploaderService.componentCurrentProcessingLogFile.entrySet(), IsNot.not(IsEmptyCollection.empty()));
-        assertTrue(logsUploaderService.componentCurrentProcessingLogFile.containsKey("TestComponent2"));
-        assertEquals(processingFile.hashString(), logsUploaderService.componentCurrentProcessingLogFile.get(
-                "TestComponent2").getFileHash());
-        assertEquals(1061, logsUploaderService.componentCurrentProcessingLogFile.get("TestComponent2").getStartPosition());
+        assertNotNull(logsUploaderService.processingFilesInformation);
+        assertThat(logsUploaderService.processingFilesInformation.entrySet(), IsNot.not(IsEmptyCollection.empty()));
+        assertTrue(logsUploaderService.processingFilesInformation.containsKey("TestComponent2"));
+        assertEquals(processingFile.hashString(), logsUploaderService.processingFilesInformation.get(
+                "TestComponent2").get(processingFile.hashString()).getFileHash());
+        assertEquals(1061, logsUploaderService.processingFilesInformation.get("TestComponent2")
+                .get(processingFile.hashString()).getStartPosition());
     }
 
     @Test
@@ -734,12 +761,13 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         LogFile currentProcessingFile = new LogFile(directoryPath.resolve("greengrass_test_3.log").toUri());
         logsUploaderService.lastComponentUploadedLogFileInstantMap.put(SYSTEM_LOGS_COMPONENT_NAME,
                 Instant.ofEpochMilli(file.lastModified()));
-        logsUploaderService.componentCurrentProcessingLogFile.put(SYSTEM_LOGS_COMPONENT_NAME,
-                LogManagerService.CurrentProcessingFileInformation.builder()
-                        .fileHash(currentProcessingFile.hashString())
-                        .lastModifiedTime(currentProcessingFile.lastModified())
-                        .startPosition(2)
-                        .build());
+        ProcessingFiles processingFiles = new ProcessingFiles(5);
+        processingFiles.put(LogManagerService.CurrentProcessingFileInformation.builder()
+                .fileHash(currentProcessingFile.hashString())
+                .lastModifiedTime(currentProcessingFile.lastModified())
+                .startPosition(2)
+                .build());
+        logsUploaderService.processingFilesInformation.put(SYSTEM_LOGS_COMPONENT_NAME, processingFiles);
 
         startServiceOnAnotherThread();
         TimeUnit.SECONDS.sleep(5);
@@ -825,7 +853,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
     @Test
     void GIVEN_user_component_logs_delete_file_after_upload_set_WHEN_upload_logs_THEN_deletes_uploaded_log_files(
             ExtensionContext ec)
-            throws InterruptedException, IOException, UnsupportedInputTypeException, InvalidLogGroupException {
+            throws InterruptedException, IOException, InvalidLogGroupException {
         ignoreExceptionOfType(ec, NoSuchFileException.class);
         mockDefaultPersistedState();
         Topic periodicUpdateIntervalMsTopic = Topic.of(context, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC, "3");
@@ -915,6 +943,8 @@ class LogManagerServiceTest extends GGServiceTestUtil {
                 .lookupTopics(PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP, "UserComponentA"))
                 .thenReturn(componentTopics1);
 
+
+
         logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor, nucleusPaths);
         startServiceOnAnotherThread();
 
@@ -958,12 +988,13 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         LogFile currentProcessingFile = new LogFile(directoryPath.resolve("greengrass.log_test-3").toUri());
         logsUploaderService.lastComponentUploadedLogFileInstantMap.put(SYSTEM_LOGS_COMPONENT_NAME,
                 Instant.ofEpochMilli(file.lastModified()));
-        logsUploaderService.componentCurrentProcessingLogFile.put(SYSTEM_LOGS_COMPONENT_NAME,
-                LogManagerService.CurrentProcessingFileInformation.builder()
-                        .fileHash(currentProcessingFile.hashString())
-                        .lastModifiedTime(currentProcessingFile.lastModified() - 1000)
-                        .startPosition(2)
-                        .build());
+        ProcessingFiles processingFiles = new ProcessingFiles(5);
+        processingFiles.put(LogManagerService.CurrentProcessingFileInformation.builder()
+                .fileHash(currentProcessingFile.hashString())
+                .lastModifiedTime(currentProcessingFile.lastModified() - 1000)
+                .startPosition(2)
+                .build());
+        logsUploaderService.processingFilesInformation .put(SYSTEM_LOGS_COMPONENT_NAME, processingFiles);
 
         TimeUnit.SECONDS.sleep(5);
 
@@ -982,7 +1013,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
     }
 
     @Test
-    void GIVEN_persisted_data_WHEN_log_uploader_initialises_THEN_correctly_sets_the_persisted_data() throws UnsupportedInputTypeException, IOException {
+    void GIVEN_persisted_data_WHEN_log_uploader_initialises_THEN_correctly_sets_the_persisted_data() throws IOException {
         Topic periodicUpdateIntervalMsTopic = Topic.of(context, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC, "3");
         when(config.lookup(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC))
                 .thenReturn(periodicUpdateIntervalMsTopic);
@@ -1047,31 +1078,43 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         when(config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC)
                 .lookupTopics(PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP, "UserComponentA"))
                 .thenReturn(lastFileProcessedComponentTopics2);
+        // mock deprecated topic version 2.3.0 and below
         when(config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC)
                 .lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION, SYSTEM_LOGS_COMPONENT_NAME))
                 .thenReturn(currentProcessingComponentTopics1);
         when(config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC)
                 .lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION, "UserComponentA"))
                 .thenReturn(currentProcessingComponentTopics2);
+        // mock topic for version 2.3.1 and above
+        when(config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC)
+                .lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION_V2, SYSTEM_LOGS_COMPONENT_NAME))
+                .thenReturn(currentProcessingComponentTopics1);
+        when(config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC)
+                .lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION_V2, "UserComponentA"))
+                .thenReturn(currentProcessingComponentTopics2);
 
         logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor, nucleusPaths);
 
-        assertNotNull(logsUploaderService.componentCurrentProcessingLogFile);
+        assertNotNull(logsUploaderService.processingFilesInformation);
         assertNotNull(logsUploaderService.lastComponentUploadedLogFileInstantMap);
         assertTrue(logsUploaderService.lastComponentUploadedLogFileInstantMap.containsKey(SYSTEM_LOGS_COMPONENT_NAME));
         assertFalse(logsUploaderService.lastComponentUploadedLogFileInstantMap.containsKey("UserComponentA"));
         assertEquals(tenSecondsAgo.toEpochMilli(),
                 logsUploaderService.lastComponentUploadedLogFileInstantMap.get(SYSTEM_LOGS_COMPONENT_NAME).toEpochMilli());
 
-        assertTrue(logsUploaderService.componentCurrentProcessingLogFile.containsKey(SYSTEM_LOGS_COMPONENT_NAME));
-        assertTrue(logsUploaderService.componentCurrentProcessingLogFile.containsKey("UserComponentA"));
+        assertTrue(logsUploaderService.processingFilesInformation.containsKey(SYSTEM_LOGS_COMPONENT_NAME));
+        assertTrue(logsUploaderService.processingFilesInformation.containsKey("UserComponentA"));
         LogManagerService.CurrentProcessingFileInformation systemInfo =
-                logsUploaderService.componentCurrentProcessingLogFile.get(SYSTEM_LOGS_COMPONENT_NAME);
+                logsUploaderService.processingFilesInformation
+                        .get(SYSTEM_LOGS_COMPONENT_NAME)
+                        .get(currentProcessingFileInformation1.getFileHash());
         assertEquals("TestFileHash", systemInfo.getFileHash());
         assertEquals(200, systemInfo.getStartPosition());
         assertEquals(Instant.EPOCH.toEpochMilli(), systemInfo.getLastModifiedTime());
         LogManagerService.CurrentProcessingFileInformation userComponentInfo =
-                logsUploaderService.componentCurrentProcessingLogFile.get("UserComponentA");
+                logsUploaderService.processingFilesInformation
+                        .get("UserComponentA")
+                        .get(currentProcessingFileInformation2.getFileHash());
         assertEquals("TestFileHash2", userComponentInfo.getFileHash());
         assertEquals(10000, userComponentInfo.getStartPosition());
         assertEquals(now.toEpochMilli(), userComponentInfo.getLastModifiedTime());

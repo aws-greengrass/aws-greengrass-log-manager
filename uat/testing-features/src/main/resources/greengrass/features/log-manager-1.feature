@@ -16,16 +16,17 @@ Feature: Greengrass V2 LogManager
         And I deploy the Greengrass deployment configuration
         Then I wait 120 seconds
         Then the Greengrass deployment is COMPLETED on the device after 2 minutes
-        When I install the component logGenerator from local store with configuration
+        When I install the component logGeneratorDiffName from local store with configuration
         """
         {
             "MERGE": {
-                "FileSize": "20MB",
-                "LogSpeed": "2"
+                "FileSize": "15",
+                "FileSizeUnit": "KB"
             }
         }
         """
         Then the local Greengrass deployment is SUCCEEDED on the device after 120 seconds
+        Then I wait 30 seconds
 
     Scenario: LogManager-1-T1: configure the log manager component using a componentLogsConfiguration list and logs are uploaded to
     CloudWatch

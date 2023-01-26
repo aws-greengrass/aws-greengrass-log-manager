@@ -761,13 +761,13 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         LogFile currentProcessingFile = new LogFile(directoryPath.resolve("greengrass_test_3.log").toUri());
         logsUploaderService.lastComponentUploadedLogFileInstantMap.put(SYSTEM_LOGS_COMPONENT_NAME,
                 Instant.ofEpochMilli(file.lastModified()));
-        ProcessingFileLRU lru = new ProcessingFileLRU(5);
-        lru.put(currentProcessingFile.hashString(), LogManagerService.CurrentProcessingFileInformation.builder()
+        ProcessingFiles processingFiles = new ProcessingFiles(5);
+        processingFiles.put(LogManagerService.CurrentProcessingFileInformation.builder()
                 .fileHash(currentProcessingFile.hashString())
                 .lastModifiedTime(currentProcessingFile.lastModified())
                 .startPosition(2)
                 .build());
-        logsUploaderService.processingFilesInformation.put(SYSTEM_LOGS_COMPONENT_NAME, lru);
+        logsUploaderService.processingFilesInformation.put(SYSTEM_LOGS_COMPONENT_NAME, processingFiles);
 
         startServiceOnAnotherThread();
         TimeUnit.SECONDS.sleep(5);
@@ -988,13 +988,13 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         LogFile currentProcessingFile = new LogFile(directoryPath.resolve("greengrass.log_test-3").toUri());
         logsUploaderService.lastComponentUploadedLogFileInstantMap.put(SYSTEM_LOGS_COMPONENT_NAME,
                 Instant.ofEpochMilli(file.lastModified()));
-        ProcessingFileLRU lru = new ProcessingFileLRU(5);
-        lru.put(currentProcessingFile.hashString(), LogManagerService.CurrentProcessingFileInformation.builder()
+        ProcessingFiles processingFiles = new ProcessingFiles(5);
+        processingFiles.put(LogManagerService.CurrentProcessingFileInformation.builder()
                 .fileHash(currentProcessingFile.hashString())
                 .lastModifiedTime(currentProcessingFile.lastModified() - 1000)
                 .startPosition(2)
                 .build());
-        logsUploaderService.processingFilesInformation .put(SYSTEM_LOGS_COMPONENT_NAME, lru);
+        logsUploaderService.processingFilesInformation .put(SYSTEM_LOGS_COMPONENT_NAME, processingFiles);
 
         TimeUnit.SECONDS.sleep(5);
 

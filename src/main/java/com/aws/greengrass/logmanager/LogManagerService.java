@@ -26,7 +26,7 @@ import com.aws.greengrass.logmanager.model.EventType;
 import com.aws.greengrass.logmanager.model.LogFile;
 import com.aws.greengrass.logmanager.model.LogFileGroup;
 import com.aws.greengrass.logmanager.model.LogFileInformation;
-import com.aws.greengrass.logmanager.model.ProcessingFileLRU;
+import com.aws.greengrass.logmanager.model.ProcessingFiles;
 import com.aws.greengrass.util.Coerce;
 import com.aws.greengrass.util.NucleusPaths;
 import com.aws.greengrass.util.Utils;
@@ -114,7 +114,7 @@ public class LogManagerService extends PluginService {
     public static final String UPLOAD_TO_CW_CONFIG_TOPIC_NAME = "uploadToCloudWatch";
     public static final String MULTILINE_PATTERN_CONFIG_TOPIC_NAME = "multiLineStartPattern";
     public static final int DEFAULT_PERIODIC_UPDATE_INTERVAL_SEC = 300;
-    public static final int MAX_CACHE_INACTIVE_TIME_SECONDS = 60 * 60 * 24 * 5; // 5 days
+    public static final int MAX_CACHE_INACTIVE_TIME_SECONDS = 60 * 60 * 24 * 2; // 2 days
 
     private final Object spaceManagementLock = new Object();
     private final List<Consumer<EventType>> serviceStatusListeners = new ArrayList<>();
@@ -123,7 +123,7 @@ public class LogManagerService extends PluginService {
     public final Map<String, Instant> lastComponentUploadedLogFileInstantMap =
             Collections.synchronizedMap(new LinkedHashMap<>());
 
-    public final Map<String, ProcessingFileLRU> processingFilesInformation =
+    public final Map<String, ProcessingFiles> processingFilesInformation =
             new ConcurrentHashMap<>();
 
 
@@ -421,8 +421,8 @@ public class LogManagerService extends PluginService {
     private void loadProcessingFilesConfigDeprecated(String componentName) {
         // Versions 2.3.0 and below
         processingFilesInformation
-               .putIfAbsent(componentName, new ProcessingFileLRU(MAX_CACHE_INACTIVE_TIME_SECONDS));
-       ProcessingFileLRU lru = processingFilesInformation.get(componentName);
+               .putIfAbsent(componentName, new ProcessingFiles(MAX_CACHE_INACTIVE_TIME_SECONDS));
+       ProcessingFiles processingFiles = processingFilesInformation.get(componentName);
 
         Topics currentProcessingComponentTopicsDeprecated = getRuntimeConfig()
                 .lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION, componentName);
@@ -436,14 +436,14 @@ public class LogManagerService extends PluginService {
             currentProcessingComponentTopicsDeprecated.iterator().forEachRemaining(node ->
                     processingFileInformation.updateFromTopic((Topic) node));
 
-            lru.put(processingFileInformation.getFileHash(), processingFileInformation);
+            processingFiles.put(processingFileInformation);
         }
     }
 
     private void loadProcessingFilesConfig(String componentName) {
         processingFilesInformation
-                .putIfAbsent(componentName, new ProcessingFileLRU(MAX_CACHE_INACTIVE_TIME_SECONDS));
-        ProcessingFileLRU lru = processingFilesInformation.get(componentName);
+                .putIfAbsent(componentName, new ProcessingFiles(MAX_CACHE_INACTIVE_TIME_SECONDS));
+        ProcessingFiles processingFiles = processingFilesInformation.get(componentName);
 
         Topics currentProcessingComponentTopics = getRuntimeConfig()
                 .lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION_V2, componentName);
@@ -459,7 +459,7 @@ public class LogManagerService extends PluginService {
                                 processingFileInformation.updateFromTopic((Topic) subNode);
                             });
 
-                    lru.put(processingFileInformation.getFileHash(), processingFileInformation);
+                    processingFiles.put(processingFileInformation);
                 }
             });
         }
@@ -616,10 +616,10 @@ public class LogManagerService extends PluginService {
                         .build();
 
         processingFilesInformation
-                .putIfAbsent(componentName, new ProcessingFileLRU(MAX_CACHE_INACTIVE_TIME_SECONDS));
+                .putIfAbsent(componentName, new ProcessingFiles(MAX_CACHE_INACTIVE_TIME_SECONDS));
 
-        ProcessingFileLRU lru  = processingFilesInformation.get(componentName);
-        lru.put(fileHash, processingFileInformation);
+        ProcessingFiles processingFiles  = processingFilesInformation.get(componentName);
+        processingFiles.put(processingFileInformation);
     }
 
     /**
@@ -696,8 +696,8 @@ public class LogManagerService extends PluginService {
                         // If the file was partially read in the previous run, then get the starting position for
                         // new log lines.
                         if (processingFilesInformation.containsKey(componentName)) {
-                            ProcessingFileLRU lru = processingFilesInformation.get(componentName);
-                            CurrentProcessingFileInformation info = lru.get(fileHash);
+                            ProcessingFiles processingFiles = processingFilesInformation.get(componentName);
+                            CurrentProcessingFileInformation info = processingFiles.get(fileHash);
 
                             if (info != null) {
                                 startPosition = info.getStartPosition();

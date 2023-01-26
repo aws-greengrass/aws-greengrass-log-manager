@@ -15,7 +15,7 @@ import com.aws.greengrass.integrationtests.BaseITCase;
 import com.aws.greengrass.integrationtests.util.ConfigPlatformResolver;
 import com.aws.greengrass.lifecyclemanager.Kernel;
 import com.aws.greengrass.logmanager.LogManagerService;
-import com.aws.greengrass.logmanager.model.ProcessingFileLRU;
+import com.aws.greengrass.logmanager.model.ProcessingFiles;
 import com.aws.greengrass.util.exceptions.TLSAuthException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
@@ -405,7 +405,7 @@ class LogManagerConfigTest extends BaseITCase {
                 PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION_V2,
                 componentName);
 
-        ProcessingFileLRU lru = new ProcessingFileLRU(2);
+        ProcessingFiles processingFiles = new ProcessingFiles(2);
         LogManagerService.CurrentProcessingFileInformation infoOne =
                 LogManagerService.CurrentProcessingFileInformation.builder()
                 .fileName("test.log")
@@ -413,7 +413,7 @@ class LogManagerConfigTest extends BaseITCase {
                 .startPosition(1000)
                 .lastModifiedTime(Instant.now().toEpochMilli())
                 .build();
-        lru.put(infoOne.getFileHash(), infoOne);
+        processingFiles.put(infoOne);
         LogManagerService.CurrentProcessingFileInformation infoTwo =
                 LogManagerService.CurrentProcessingFileInformation.builder()
                         .fileName("test_2.log")
@@ -421,9 +421,9 @@ class LogManagerConfigTest extends BaseITCase {
                         .startPosition(1000)
                         .lastModifiedTime(Instant.now().toEpochMilli())
                         .build();
-        lru.put(infoTwo.getFileHash(), infoTwo);
+        processingFiles.put(infoTwo);
 
-        componentTopics.updateFromMap(lru.toMap(),
+        componentTopics.updateFromMap(processingFiles.toMap(),
                 new UpdateBehaviorTree(UpdateBehaviorTree.UpdateBehavior.REPLACE, System.currentTimeMillis()));
 
         // When
@@ -431,8 +431,7 @@ class LogManagerConfigTest extends BaseITCase {
 
 
         // Then - Assert configuration loaded
-        // TODO: Improve this test we should not be accessing LogManagerService attributes
-        ProcessingFileLRU processingFiles = logManagerService.processingFilesInformation.get(componentName);
+        processingFiles = logManagerService.processingFilesInformation.get(componentName);
         Map<String, Object> expected = new HashMap<String, Object>(){{
             put(infoOne.getFileHash(), infoOne.convertToMapOfObjects());
             put(infoTwo.getFileHash(), infoTwo.convertToMapOfObjects());
@@ -480,8 +479,7 @@ class LogManagerConfigTest extends BaseITCase {
         setupKernel();
 
         // Then - Assert configuration loaded
-        // TODO: Improve this test we should not be accessing LogManagerService attributes
-        ProcessingFileLRU processingFiles = logManagerService.processingFilesInformation.get(componentName);
+        ProcessingFiles processingFiles = logManagerService.processingFilesInformation.get(componentName);
         Map<String, Object> expected = new HashMap<String, Object>(){{
             put(infoOne.getFileHash(), infoOne.convertToMapOfObjects());
         }};

@@ -114,7 +114,7 @@ public class LogManagerService extends PluginService {
     public static final String UPLOAD_TO_CW_CONFIG_TOPIC_NAME = "uploadToCloudWatch";
     public static final String MULTILINE_PATTERN_CONFIG_TOPIC_NAME = "multiLineStartPattern";
     public static final int DEFAULT_PERIODIC_UPDATE_INTERVAL_SEC = 300;
-    public static final int MAX_CACHE_INACTIVE_TIME_SECONDS = 60 * 60 * 24 * 2; // 2 days
+    public static final int MAX_CACHE_INACTIVE_TIME_SECONDS = 60 * 60 * 24; // 1 day
 
     private final Object spaceManagementLock = new Object();
     private final List<Consumer<EventType>> serviceStatusListeners = new ArrayList<>();
@@ -531,14 +531,15 @@ public class LogManagerService extends PluginService {
         // Update the runtime configuration and store the last processed file information
 
         context.runOnPublishQueueAndWait(() -> {
-            processingFilesInformation.forEach((componentName, lru) -> {
+            processingFilesInformation.forEach((componentName, processingFiles) -> {
                 // Update old config value to handle downgrade from v 2.3.1 to older ones
                 Topics componentTopicsDeprecated =
                         getRuntimeConfig().lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION,
                                 componentName);
 
-                if (lru.getMostRecentlyUsed() != null) {
-                    componentTopicsDeprecated.updateFromMap(lru.getMostRecentlyUsed().convertToMapOfObjects(),
+                if (processingFiles.getMostRecentlyUsed() != null) {
+                    componentTopicsDeprecated.updateFromMap(
+                            processingFiles.getMostRecentlyUsed().convertToMapOfObjects(),
                         new UpdateBehaviorTree(UpdateBehaviorTree.UpdateBehavior.REPLACE, System.currentTimeMillis()));
                 }
 
@@ -548,7 +549,7 @@ public class LogManagerService extends PluginService {
                         getRuntimeConfig().lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION_V2,
                                 componentName);
 
-                componentTopics.updateFromMap(lru.toMap(),
+                componentTopics.updateFromMap(processingFiles.toMap(),
                         new UpdateBehaviorTree(UpdateBehaviorTree.UpdateBehavior.REPLACE, System.currentTimeMillis()));
             });
         });

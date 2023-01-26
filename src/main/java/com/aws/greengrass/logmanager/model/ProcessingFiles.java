@@ -85,7 +85,7 @@ public class ProcessingFiles  {
 
 
     /**
-     * Converts the objects stored in the LRU into a map. Used serialize the LRU to be stored
+     * Converts the objects stored in the cache into a map. Used serialize the processing files to be stored
      * on the runtime config.
      */
     public Map<String, Object> toMap() {

@@ -48,7 +48,7 @@ public class ProcessingFilesTest {
     }
 
     @Test
-    void GIVEN_filledLRU_WHEN_toMap_returnsMapRepresentation() {
+    void GIVEN_filledProcessingFiles_WHEN_toMap_returnsMapRepresentation() {
         // Given
         ProcessingFiles processingFiles = new ProcessingFiles(5);
         LogManagerService.CurrentProcessingFileInformation fileInformationOne =
@@ -78,17 +78,17 @@ public class ProcessingFilesTest {
     }
 
     @Test
-    void GIVEN_filledLRU_WHEN_head_THEN_mostRecentValueReturned() {
+    void GIVEN_filledProcessingFiles_WHEN_getMostRecentlyUsed_THEN_mostRecentValueReturned() {
         // Given
-        ProcessingFiles lru = new ProcessingFiles(60);
+        ProcessingFiles processingFiles = new ProcessingFiles(60);
 
-        lru.put(LogManagerService.CurrentProcessingFileInformation.builder()
+        processingFiles.put(LogManagerService.CurrentProcessingFileInformation.builder()
                 .fileName("test.log")
                 .fileHash("12345")
                 .startPosition(1000)
                 .lastModifiedTime(Instant.now().toEpochMilli())
                 .build());
-        lru.put(LogManagerService.CurrentProcessingFileInformation.builder()
+        processingFiles.put(LogManagerService.CurrentProcessingFileInformation.builder()
                 .fileName("test_2023.log")
                 .fileHash("54321")
                 .startPosition(1000)
@@ -96,11 +96,12 @@ public class ProcessingFilesTest {
                 .build());
 
         // Then
-        assertEquals(lru.getMostRecentlyUsed().getFileHash(), "54321");
+        assertEquals(processingFiles.getMostRecentlyUsed().getFileHash(), "54321");
     }
 
     @Test
-    void GIVEN_lruWithValue_WHEN_newValueAdded_THEN_stateEntriesGetCleared() {
+    void GIVEN_processingFilesWithValue_WHEN_newValueAdded_THEN_stateEntriesGetCleared() {
+
         // Hold entries for a max of 1 day, unless accessed before that time
         ProcessingFiles processingFiles = new ProcessingFiles( 60 * 60 * 24);
         Instant now = Instant.now();

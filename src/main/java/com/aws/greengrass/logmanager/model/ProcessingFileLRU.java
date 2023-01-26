@@ -3,6 +3,7 @@ package com.aws.greengrass.logmanager.model;
 import com.aws.greengrass.logmanager.LogManagerService;
 import lombok.Getter;
 
+import java.time.Instant;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -11,31 +12,51 @@ import java.util.Map;
 
 /**
  * LRU cache that holds information about each file that is being processed. As long as a log file is in the file system
- * and can be found, we can't know for sure if that file won't get new contents written to it in the future.
+ * and can be found, we can't know for sure if that file won't get new contents written to it in the future. The LRU
+ * will remove entries when adding a new element it will remove any entry that has not been modified in the
+ * last maxInactiveTimeSeconds
  */
 public class ProcessingFileLRU extends LinkedHashMap<String, LogManagerService.CurrentProcessingFileInformation> {
     static final long serialVersionUID = 1L;
-    private final int originalCapacity;
 
-    @Getter
-    private int capacity;
+
+    private final int maxInactiveTimeSeconds;
+
 
     /**
      * Creates an instance of the LRU.
      *
-     * @param capacity - min capacity of the LRY. Even if the capacity gets adjusted later on, it will never go below
-     *                 this value
+     * @param maxInactiveTimeSeconds - the maximum amount of seconds an entry can be in the cache since the last
+     *                               modified
      */
-    public ProcessingFileLRU(int capacity) {
+    public ProcessingFileLRU(int maxInactiveTimeSeconds) {
         super(5, 0.75f, true);
-        this.capacity = capacity;
-        this.originalCapacity = capacity;
+        this.maxInactiveTimeSeconds = maxInactiveTimeSeconds;
     }
 
     @Override
-    protected boolean removeEldestEntry(Map.Entry eldest) {
-        return size() > capacity;
+    public LogManagerService.CurrentProcessingFileInformation put(
+            String key,
+            LogManagerService.CurrentProcessingFileInformation value) {
+        LogManagerService.CurrentProcessingFileInformation result = super.put(key, value);
+        evictStaleEntries();
+        return result;
     }
+
+    private void evictStaleEntries() {
+        Iterator<Map.Entry<String, LogManagerService.CurrentProcessingFileInformation>> it = entrySet().iterator();
+        Instant deadline = Instant.now().minusSeconds(maxInactiveTimeSeconds);
+
+        while (it.hasNext()) {
+            LogManagerService.CurrentProcessingFileInformation fileInfo = it.next().getValue();
+            Instant lastModified = Instant.ofEpochMilli(fileInfo.getLastModifiedTime());
+
+            if (lastModified.isBefore(deadline)) {
+                remove(fileInfo.getFileHash());
+            }
+        }
+    }
+
 
     /**
      * Converts the objects stored in the LRU into a map. Used serialize the LRU to be stored
@@ -80,16 +101,5 @@ public class ProcessingFileLRU extends LinkedHashMap<String, LogManagerService.C
         });
 
         return clone;
-    }
-
-
-    /**
-     * Adjusts the capacity by to a value that must be greater than the original capacity value used to create
-     * the LRU.
-     *
-     * @param desiredCapacity - desired capacity of the LRU
-     */
-    public void adjustCapacity(int desiredCapacity) {
-        capacity = Math.max(Math.max(desiredCapacity, originalCapacity), capacity);
     }
 }

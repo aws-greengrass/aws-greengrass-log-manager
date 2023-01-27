@@ -16,7 +16,7 @@ Feature: Greengrass V2 LogManager
         And I deploy the Greengrass deployment configuration
         Then I wait 120 seconds
         Then the Greengrass deployment is COMPLETED on the device after 2 minutes
-        When I install the component logGeneratorDiffName from local store with configuration
+        When I install the component logGenerator from local store with configuration
         """
         {
             "MERGE": {

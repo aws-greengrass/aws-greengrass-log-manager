@@ -5,7 +5,7 @@
 
 ---
 RecipeFormatVersion: '2020-01-25'
-ComponentName: logGeneratorDiffName
+ComponentName: logGenerator
 ComponentVersion: '0.0.0'
 ComponentDescription: Component to generate log files with random log messages. Log files rotate with different name.
 ComponentPublisher: AWS
@@ -16,15 +16,14 @@ ComponentConfiguration:
     "FileSize": 10
     "FileSizeUnit": "KB"
     "LogWriteFrequencySeconds": 1
-    "RandomLogMsgSizeByte": 1024
     "TotalLogNumbers": 20
 Manifests:
   - Artifacts:
       - URI: classpath:/local-store/artifacts/custom-components.jar
     Lifecycle:
       Run: >-
-        java -Dlog.level=INFO -DcomponentName="logGeneratorDiffName" -jar {artifacts:path}/custom-components.jar 
+        java -Dlog.level=INFO -DcomponentName="logGenerator" -jar {artifacts:path}/custom-components.jar 
         "{configuration:/LogFileName}" "{configuration:/LogFileExtension}" 
         "{configuration:/FileSize}" "{configuration:/FileSizeUnit}" 
-        "{configuration:/LogWriteFrequencySeconds}" "{configuration:/RandomLogMsgSizeByte}"
+        "{configuration:/LogWriteFrequencySeconds}" 
         "{configuration:/TotalLogNumbers}"

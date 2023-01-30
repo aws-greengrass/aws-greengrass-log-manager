@@ -20,12 +20,13 @@ Feature: Greengrass V2 LogManager
         """
         {
             "MERGE": {
-                "FileSize": "10MB",
-                "LogSpeed": "1"
+                "FileSize": "15",
+                "FileSizeUnit": "KB"
             }
         }
         """
         Then the local Greengrass deployment is SUCCEEDED on the device after 120 seconds
+        Then I wait 30 seconds
 
     Scenario: LogManager-1-T1: configure the log manager component using a componentLogsConfiguration list and logs are uploaded to
     CloudWatch

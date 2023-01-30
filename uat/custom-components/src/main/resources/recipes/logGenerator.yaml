@@ -17,6 +17,7 @@ ComponentConfiguration:
     "FileSizeUnit": "KB"
     "LogWriteFrequencySeconds": 1
     "TotalLogNumbers": 20
+    "TargetLogFilePath": ""
 Manifests:
   - Artifacts:
       - URI: classpath:/local-store/artifacts/custom-components.jar
@@ -26,4 +27,4 @@ Manifests:
         "{configuration:/LogFileName}" "{configuration:/LogFileExtension}" 
         "{configuration:/FileSize}" "{configuration:/FileSizeUnit}" 
         "{configuration:/LogWriteFrequencySeconds}" 
-        "{configuration:/TotalLogNumbers}"
+        "{configuration:/TotalLogNumbers}" "{configuration:/TargetLogFilePath}"

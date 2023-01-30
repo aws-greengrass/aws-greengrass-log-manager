@@ -34,8 +34,7 @@ public class logGenerator implements Consumer<String[]> {
     private int logMsgSizeBytes;
     private int fileSizeBytes;
     private int totalLogNumbers;
-    // public only for unit testing
-    public String currentPath = System.getProperty("user.dir");
+    private String targetLogFilePath;
 
     @Override
     public void accept(String[] args) {
@@ -45,18 +44,29 @@ public class logGenerator implements Consumer<String[]> {
         fileSizeUnit = args[3];
         logWriteFreqSeconds = Double.parseDouble(args[4]);
         totalLogNumbers = Integer.parseInt(args[5]);
+        targetLogFilePath = args[6];
 
-        fileSizeBytes = getFileSizeInBytes(fileSize, fileSizeUnit);
+        // the default log FIle path is where this instance locates. If running OTF, it will be on DUT. If running
+        // the uni testing, it would be on the local machine.
+        if (targetLogFilePath.isEmpty()) {
+            targetLogFilePath = System.getProperty("user.dir");
+        }
+
+        try {
+            fileSizeBytes = getFileSizeInBytes(fileSize, fileSizeUnit);
+        } catch (UnsupportedOperationException e) {
+            System.exit(0);
+        }
 
         // configure the logger by setting the context, rolling policy, encoder
-        Logger logger = configureLogger(currentPath, logFileName, logFileExtension, fileSizeBytes);
+        Logger logger = configureLogger(targetLogFilePath, logFileName, logFileExtension, fileSizeBytes);
 
         // starting logging message
         performLogging(logger, totalLogNumbers, logWriteFreqSeconds);
 
     }
 
-    public static Logger configureLogger(String currentPath, String fileName, String extension, int fileSizeBytes) {
+    private static Logger configureLogger(String currentPath, String fileName, String extension, int fileSizeBytes) {
         LoggerContext loggerContext = new LoggerContext();
         Logger logger = loggerContext.getLogger("logGenerator");
 
@@ -93,7 +103,7 @@ public class logGenerator implements Consumer<String[]> {
         return logger;
     }
 
-    public static void performLogging(Logger logger, int totalLogNumbers, double logWriteFreqSeconds) {
+    private static void performLogging(Logger logger, int totalLogNumbers, double logWriteFreqSeconds) {
         for (int i=0; i < totalLogNumbers; i++) {
             random = Math.random();
             StringBuilder sb = generateLogMessage(i, logger.getName());
@@ -101,7 +111,7 @@ public class logGenerator implements Consumer<String[]> {
             try {
                 TimeUnit.MILLISECONDS.sleep(Double.valueOf(logWriteFreqSeconds * 1000).longValue());
             } catch (InterruptedException e) {
-                e.printStackTrace();
+                System.exit(0);
             }
         }
     }
@@ -137,7 +147,7 @@ public class logGenerator implements Consumer<String[]> {
                 fileSizeBytes = (int) (fileSize * FileSize.GB_COEFFICIENT);
                 break;
             default:
-                break;
+                throw new UnsupportedOperationException("Unsupported file size unit");
         }
         return fileSizeBytes;
     }

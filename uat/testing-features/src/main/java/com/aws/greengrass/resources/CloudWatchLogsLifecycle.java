@@ -11,6 +11,9 @@ import com.google.auto.service.AutoService;
 import software.amazon.awssdk.services.cloudwatchlogs.CloudWatchLogsClient;
 import software.amazon.awssdk.services.cloudwatchlogs.model.DescribeLogStreamsRequest;
 import software.amazon.awssdk.services.cloudwatchlogs.model.DescribeLogStreamsResponse;
+import software.amazon.awssdk.services.cloudwatchlogs.model.FilterLogEventsRequest;
+import software.amazon.awssdk.services.cloudwatchlogs.model.FilterLogEventsResponse;
+import software.amazon.awssdk.services.cloudwatchlogs.model.FilteredLogEvent;
 import software.amazon.awssdk.services.cloudwatchlogs.model.LogStream;
 
 import java.util.List;
@@ -38,5 +41,15 @@ public class CloudWatchLogsLifecycle extends AbstractAWSResourceLifecycle<CloudW
 
         DescribeLogStreamsResponse response = client.describeLogStreams(request);
         return response.logStreams();
+    }
+
+    public List<FilteredLogEvent> getAllLogEvents(String groupName, String logStreamNamePattern) {
+        FilterLogEventsRequest request = FilterLogEventsRequest.builder()
+                .logGroupName(groupName)
+                .logStreamNamePrefix(logStreamNamePattern)
+                .build();
+
+        FilterLogEventsResponse response = client.filterLogEvents(request);
+        return response.events();
     }
 }

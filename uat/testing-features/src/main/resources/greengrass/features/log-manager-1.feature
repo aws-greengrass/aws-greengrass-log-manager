@@ -6,8 +6,8 @@ Feature: Greengrass V2 LogManager
     Background:
         Given my device is registered as a Thing
         And my device is running Greengrass
-        And 5 temporary rotated log files for component aws.greengrass.Nucleus have been created
-        And 5 temporary rotated log files for component UserComponentA have been created
+        #And 5 temporary rotated log files for component aws.greengrass.Nucleus have been created
+        #And 5 temporary rotated log files for component UserComponentA have been created
 
     @local
     Scenario: LogManager-1-T0: install the local custom component
@@ -20,14 +20,69 @@ Feature: Greengrass V2 LogManager
         """
         {
             "MERGE": {
-                "FileSize": "15",
-                "FileSizeUnit": "KB"
+                "LogFileName": "logGenerator",
+                "LogFileExtension": "log",
+                "FileSize": "10",
+                "FileSizeUnit": "KB",
+                "LogWriteFrequencySeconds": "1",
+                "TotalLogNumbers": "20",
+                "TargetLogFilePath": ""
             }
         }
         """
         Then the local Greengrass deployment is SUCCEEDED on the device after 120 seconds
         Then I wait 30 seconds
 
+    @cloudlogs
+    Scenario: LogManager-1-T99: grab log events from cloud
+        Given I create a Greengrass deployment with components
+            | aws.greengrass.Cli        | LATEST |
+            | aws.greengrass.LogManager | LATEST |
+        When I update my Greengrass deployment configuration, setting the component aws.greengrass.LogManager configuration to:
+        """
+        {
+            "MERGE": {
+                "logsUploaderConfiguration": {
+                     "componentLogsConfigurationMap": {
+                        "logGenerator": {
+                            "logFileRegex": "logGeneratorLogger\\w*.log",
+                            "deleteLogFileAfterCloudUpload": "false"
+                        }
+                    },
+                    "systemLogsConfiguration": {
+                        "uploadToCloudWatch": "false",
+                        "minimumLogLevel": "INFO",
+                        "diskSpaceLimit": "25",
+                        "diskSpaceLimitUnit": "MB",
+                        "deleteLogFileAfterCloudUpload": "true"
+                    }
+                },
+                "periodicUploadIntervalSec": "2"
+            }
+        }
+        """
+        And I deploy the Greengrass deployment configuration
+        Then the Greengrass deployment is COMPLETED on the device after 4 minutes
+        Then I verify the aws.greengrass.LogManager component is RUNNING using the greengrass-cli
+        When I install the component logGenerator from local store with configuration
+        """
+        {
+            "MERGE": {
+                "LogFileName": "logGeneratorLogger",
+                "LogFileExtension": "log",
+                "FileSize": "5",
+                "FileSizeUnit": "KB",
+                "LogWriteFrequencySeconds": "1",
+                "TotalLogNumbers": "20",
+                "TargetLogFilePath": ""
+            }
+        }
+        """
+        Then the local Greengrass deployment is SUCCEEDED on the device after 120 seconds
+        Then I wait 120 seconds
+        And I verify that it created a log group for component type UserComponent for component logGenerator, and uploaded 20 log events within 120 seconds in CloudWatch
+
+    @smoketest
     Scenario: LogManager-1-T1: configure the log manager component using a componentLogsConfiguration list and logs are uploaded to
     CloudWatch
         Given I create a Greengrass deployment with components

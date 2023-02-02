@@ -14,6 +14,7 @@ import ch.qos.logback.core.rolling.RollingFileAppender;
 import ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy;
 import ch.qos.logback.core.util.FileSize;
 
+import java.io.File;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
@@ -48,8 +49,15 @@ public class logGenerator implements Consumer<String[]> {
 
         // the default log FIle path is where this instance locates. If running OTF, it will be on DUT. If running
         // the uni testing, it would be on the local machine.
+        String logFilePath = null;
         if (targetLogFilePath.isEmpty()) {
             targetLogFilePath = System.getProperty("user.dir");
+            System.out.println("file path in logGenerator: " + System.getProperty("user.dir"));
+            System.out.println("user home: " + System.getProperty("user.home"));
+            File currentFile = new File(targetLogFilePath);
+            File logFileParent = currentFile.getParentFile().getParentFile();
+            logFilePath = logFileParent.getAbsolutePath() + "/logs";
+            System.out.println("new file path: " + logFilePath);
         }
 
         try {
@@ -59,11 +67,17 @@ public class logGenerator implements Consumer<String[]> {
         }
 
         // configure the logger by setting the context, rolling policy, encoder
-        Logger logger = configureLogger(targetLogFilePath, logFileName, logFileExtension, fileSizeBytes);
+        Logger logger = configureLogger(logFilePath, logFileName, logFileExtension, fileSizeBytes);
 
         // starting logging message
         performLogging(logger, totalLogNumbers, logWriteFreqSeconds);
 
+        //verify
+        File logFileFolder = new File(logFilePath);
+        System.out.println("files in the path: " + logFileFolder.listFiles().length);
+        for (File file : logFileFolder.listFiles()) {
+            System.out.println(file.getName());
+        }
     }
 
     private static Logger configureLogger(String currentPath, String fileName, String extension, int fileSizeBytes) {

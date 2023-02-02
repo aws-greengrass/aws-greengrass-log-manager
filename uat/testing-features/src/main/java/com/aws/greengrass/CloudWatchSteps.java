@@ -16,14 +16,24 @@ import io.cucumber.guice.ScenarioScoped;
 import io.cucumber.java.en.Then;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import software.amazon.awssdk.services.cloudwatchlogs.model.FilteredLogEvent;
 import software.amazon.awssdk.services.cloudwatchlogs.model.LogStream;
 
+import java.io.File;
+import java.io.FilenameFilter;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.TimeZone;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 @ScenarioScoped
 public class CloudWatchSteps {
@@ -57,14 +67,17 @@ public class CloudWatchSteps {
      *
      * @param componentType           The type of the component {GreengrassSystemComponent, UserComponent}
      * @param componentName           The name of your component e.g. ComponentA, aws.greengrass.LogManager
+     * @param logEventsNumber         Number of log events uploaded to the logGroup and specified log stream pattern
      * @param timeout                 Number of seconds to wait before timing out the operation
      * @throws InterruptedException   {@link InterruptedException}
      */
 
-    @Then("I verify that it created a log group for component type {word} for component {word}, with streams within "
+    @Then("I verify that it created a log group for component type {word} for component {word}, and uploaded {int} "
+            + "log events within "
             + "{int} seconds in CloudWatch")
-    public void verifyCloudWatchGroupWithStreams(String componentType, String componentName, int timeout) throws
-            InterruptedException {
+    public void verifyCloudWatchGroupWithStreams(String componentType, String componentName, int
+                                                 logEventsNumber, int timeout) throws InterruptedException,
+            IOException {
         SimpleDateFormat formatter = new SimpleDateFormat("yyyy/MM/dd", Locale.ENGLISH);
         formatter.setTimeZone(TimeZone.getTimeZone("UTC")); // All dates are UTC, not local time
 
@@ -83,6 +96,15 @@ public class CloudWatchSteps {
         LOGGER.info("Verifying log group {} with stream {} was created", logGroupName, logStreamNamePattern);
         waitSteps.untilTrue(() -> doesStreamExistInGroup(logGroupName, logStreamNamePattern), timeout,
                 TimeUnit.SECONDS);
+
+        Set<String> messages = getLocalLogs("logGeneratorLogger\\w*.log");
+
+        LOGGER.info("Getting log events from log group {} with stream pattern {}", logGroupName,
+                logStreamNamePattern);
+
+        waitSteps.untilTrue(() -> isLogEventsSufficient(logGroupName, logStreamNamePattern, logEventsNumber, messages),
+                timeout,
+                TimeUnit.SECONDS);
     }
 
     private boolean doesStreamExistInGroup(String logGroupName, String streamName) {
@@ -94,5 +116,50 @@ public class CloudWatchSteps {
         }
 
         return exists;
+    }
+
+    private boolean isLogEventsSufficient(String logGroupName, String streamName, int targetNumber,
+                                          Set<String> messages) {
+        List<FilteredLogEvent> events = logsLifecycle.getAllLogEvents(logGroupName, streamName);
+        LOGGER.info("events number: " + events.size() + " target number: {}", targetNumber);
+
+        for (FilteredLogEvent event : events) {
+            messages.add(event.message());
+            LOGGER.info("add one message {}", event.message());
+        }
+
+        boolean amountMatched = events.size() == targetNumber;
+        if (amountMatched) {
+            LOGGER.info("events number: " + events.size());
+        }
+
+        return amountMatched;
+    }
+
+    private Set<String> getLocalLogs(String pattern) throws IOException {
+        Path logsDirectory = testContext.installRoot().resolve("logs");
+        File logFiles = logsDirectory.toFile();
+        LOGGER.info("grabbing {} file from DUT: ", logFiles.listFiles().length);
+
+        FilenameFilter filter = (d, s) -> {
+            return s.matches(pattern);
+        };
+
+        File[] filteredFiles = logFiles.listFiles(filter);
+
+        Set<String> localLogs = new HashSet<>();
+        LOGGER.info("grabbing file {} matches pattern", filteredFiles.length);
+        for (File logfile : filteredFiles) {
+            LOGGER.info(logfile.getName());
+            localLogs =
+                    Files.lines(logfile.toPath()).collect(Collectors.toSet());
+
+        }
+        Iterator itr = localLogs.iterator();
+        while (itr.hasNext()) {
+            LOGGER.info(itr.next());
+        }
+
+        return localLogs;
     }
 }

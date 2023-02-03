@@ -96,7 +96,8 @@ public class CloudWatchSteps {
         LOGGER.info("Verifying log group {} with stream {} was created", logGroupName, logStreamNamePattern);
         waitSteps.untilTrue(() -> doesStreamExistInGroup(logGroupName, logStreamNamePattern), timeout,
                 TimeUnit.SECONDS);
-
+// Note: this only works on assumption that the log files are not deleted yet. And there are several ways we could achieve this: 1) do not delete files after uploading 2) adjust steps to make sure we get log first before start uploading when allowing deletion of logs from logmanager. 
+// The perfect solution will be grabbing the log dynamically when uploading. 
         Set<String> messages = getLocalLogs("logGeneratorLogger\\w*.log");
 
         LOGGER.info("Getting log events from log group {} with stream pattern {}", logGroupName,

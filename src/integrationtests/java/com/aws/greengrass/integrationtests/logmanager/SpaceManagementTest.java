@@ -5,12 +5,14 @@
 
 package com.aws.greengrass.integrationtests.logmanager;
 
+import ch.qos.logback.core.util.FileSize;
+import com.aws.greengrass.config.Topics;
+import com.aws.greengrass.config.UpdateBehaviorTree;
 import com.aws.greengrass.dependency.State;
 import com.aws.greengrass.deployment.DeviceConfiguration;
 import com.aws.greengrass.deployment.exceptions.DeviceConfigurationException;
 import com.aws.greengrass.integrationtests.BaseITCase;
 import com.aws.greengrass.lifecyclemanager.Kernel;
-import com.aws.greengrass.logging.impl.LogManager;
 import com.aws.greengrass.logmanager.LogManagerService;
 import com.aws.greengrass.logmanager.exceptions.InvalidLogGroupException;
 import com.aws.greengrass.logmanager.model.ComponentLogConfiguration;
@@ -25,12 +27,12 @@ import org.junit.jupiter.api.extension.ExtensionContext;
 import org.junit.jupiter.api.io.TempDir;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.slf4j.event.Level;
 import software.amazon.awssdk.crt.CrtRuntimeException;
 import software.amazon.awssdk.services.cloudwatchlogs.CloudWatchLogsClient;
 import software.amazon.awssdk.services.cloudwatchlogs.model.PutLogEventsRequest;
 import software.amazon.awssdk.services.cloudwatchlogs.model.PutLogEventsResponse;
 
+import java.io.File;
 import java.io.IOException;
 import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
@@ -42,15 +44,22 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.time.temporal.ChronoUnit;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
+import static com.aws.greengrass.componentmanager.KernelConfigResolver.CONFIGURATION_CONFIG_KEY;
 import static com.aws.greengrass.integrationtests.logmanager.util.LogFileHelper.createTempFileAndWriteData;
+import static com.aws.greengrass.logmanager.LogManagerService.COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME;
+import static com.aws.greengrass.logmanager.LogManagerService.DELETE_LOG_FILES_AFTER_UPLOAD_CONFIG_TOPIC_NAME;
+import static com.aws.greengrass.logmanager.LogManagerService.LOGS_UPLOADER_CONFIGURATION_TOPIC;
 import static com.aws.greengrass.testcommons.testutilities.ExceptionLogProtector.ignoreExceptionOfType;
 import static com.github.grantwest.eventually.EventuallyLambdaMatcher.eventuallyEval;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
@@ -64,6 +73,7 @@ class SpaceManagementTest extends BaseITCase {
     private static final Instant mockInstant = Instant.EPOCH;
     @TempDir
     private Path workDir;
+    private static final String componentName = "UserComponentA";
 
     @Mock
     private CloudWatchLogsClient cloudWatchLogsClient;
@@ -75,13 +85,50 @@ class SpaceManagementTest extends BaseITCase {
         ignoreExceptionOfType(context, NoSuchFileException.class);
         ignoreExceptionOfType(context, DateTimeParseException.class);
         ignoreExceptionOfType(context, CrtRuntimeException.class);
-        LogManager.getRootLogConfiguration().setLevel(Level.DEBUG);
     }
 
     @AfterEach
     void afterEach() {
         kernel.shutdown();
-        LogManager.getRootLogConfiguration().setLevel(Level.INFO);
+    }
+
+    private long writeNLogFiles(Path path, int numberOfFiles, String pattern) throws IOException {
+        long totalLength = 0;
+
+        for (int i = 0; i < numberOfFiles; i++) {
+            File file = createTempFileAndWriteData(path, pattern, "");
+            totalLength+= file.length();
+        }
+
+        return totalLength;
+    }
+
+    private long getTotalLogFilesBytesFor(ComponentLogConfiguration logConfiguration) throws InvalidLogGroupException {
+        LogFileGroup logFileGroup = LogFileGroup.create(logConfiguration, mockInstant, workDir);
+        return logFileGroup.totalSizeInBytes();
+    }
+
+    private void assertLogFileSizeEventuallyBelowBytes(ComponentLogConfiguration logConfiguration, long bytes) {
+        assertThat(String.format("log group size should eventually be less than %s bytes", bytes),() -> {
+            try {
+                long logFilesSize = getTotalLogFilesBytesFor(logConfiguration);
+                return logFilesSize <=  bytes;
+            } catch (InvalidLogGroupException e) {
+                return false;
+            }
+        }, eventuallyEval(is(true), Duration.ofSeconds(60)));
+    }
+
+    private void assertLogFilesAreNotDeleted(ComponentLogConfiguration logConfiguration) throws
+            InvalidLogGroupException, InterruptedException {
+        long originalBytes = getTotalLogFilesBytesFor(logConfiguration);
+        Instant deadline = Instant.now().plusSeconds(20);
+
+        while (Instant.now().isBefore(deadline)) {
+            long currentBytes = getTotalLogFilesBytesFor(logConfiguration);
+            assertEquals(originalBytes, currentBytes);
+            Thread.sleep(500);
+        }
     }
 
 
@@ -118,7 +165,7 @@ class SpaceManagementTest extends BaseITCase {
         kernel.launch();
         assertTrue(logManagerRunning.await(10, TimeUnit.SECONDS));
         logManagerService.getUploader().setCloudWatchLogsClient(cloudWatchLogsClient);
-        logManagerService.lastComponentUploadedLogFileInstantMap.put("UserComponentA",
+        logManagerService.lastComponentUploadedLogFileInstantMap.put(componentName,
                 Instant.now().plus(10, ChronoUnit.MINUTES));
     }
 
@@ -136,24 +183,58 @@ class SpaceManagementTest extends BaseITCase {
 
         // The total size will be 150kb (each log file written is 10kb * 15) given the max space is 105 kb, then we
         // expect it to delete 5 files for the total log size to be under 105kb
-        for (int i = 0; i < 15; i++) {
-            createTempFileAndWriteData(tempDirectoryPath, "integTestRandomLogFiles.log_", "");
-        }
+        writeNLogFiles(tempDirectoryPath,15, "integTestRandomLogFiles.log_");
 
-        Pattern logFileNamePattern = Pattern.compile("^integTestRandomLogFiles.log\\w*");
+
         // Then
+
         ComponentLogConfiguration compLogInfo = ComponentLogConfiguration.builder()
                 .directoryPath(tempDirectoryPath)
-                .fileNameRegex(logFileNamePattern).name("IntegrationTestsTemporaryLogFiles").build();
-        assertThat("log group size should eventually be less than 105 KB",() -> {
-            try {
-                LogFileGroup logFileGroup =
-                        LogFileGroup.create(compLogInfo, mockInstant, workDir);
-                long kb = logFileGroup.totalSizeInBytes() / 1024;
-                return kb <= 105;
-            } catch (InvalidLogGroupException e) {
-                return false;
-            }
-        }, eventuallyEval(is(true), Duration.ofSeconds(60)));
+                .fileNameRegex(Pattern.compile("^integTestRandomLogFiles.log\\w*"))
+                .name("IntegrationTestsTemporaryLogFiles")
+                .build();
+        assertLogFileSizeEventuallyBelowBytes(compLogInfo, 105 * FileSize.KB_COEFFICIENT);
+    }
+
+    @Test
+    void GIVEN_diskSpaceManagementConfigured_WHEN_configurationRemoved_THEN_logFilesStopBeingDeleted() throws Exception {
+        // Given
+        tempDirectoryPath = Files.createDirectory(tempRootDir.resolve("IntegrationTestsTemporaryLogFiles"));
+        setupKernel(tempDirectoryPath); // starts the LM with the smallSpaceManagementPeriodicIntervalConfig.yaml config
+
+        long totalBytes = writeNLogFiles(tempDirectoryPath,15, "integTestRandomLogFiles.log_");
+        long totalKb = totalBytes / FileSize.KB_COEFFICIENT;
+        assertTrue(totalKb > 105); // 105 Kb is the amount on the configuration
+
+        // Then - wait for the files to be deleted
+
+        ComponentLogConfiguration compLogInfo = ComponentLogConfiguration.builder()
+                .directoryPath(tempDirectoryPath)
+                .fileNameRegex(Pattern.compile("^integTestRandomLogFiles.log\\w*"))
+                .name("IntegrationTestsTemporaryLogFiles")
+                .build();
+        assertLogFileSizeEventuallyBelowBytes(compLogInfo, 105 * FileSize.KB_COEFFICIENT);
+
+        // When
+
+        Topics topics = kernel.locate(LogManagerService.LOGS_UPLOADER_SERVICE_TOPICS).getConfig();
+        Map<String, Object> componentConfig = new HashMap<String, Object>(){{
+            put(componentName, new HashMap<String, String>(){{
+                put(DELETE_LOG_FILES_AFTER_UPLOAD_CONFIG_TOPIC_NAME, "false");
+            }});
+        }};
+        UpdateBehaviorTree behaviour = new UpdateBehaviorTree(UpdateBehaviorTree.UpdateBehavior.REPLACE, System.currentTimeMillis());
+        topics.lookupTopics(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC, COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME)
+            .updateFromMap(componentConfig, behaviour);
+        kernel.getContext().waitForPublishQueueToClear();
+
+        // When
+
+        writeNLogFiles(tempDirectoryPath,5, "integTestRandomLogFiles.log_");
+        long kbInDisk = getTotalLogFilesBytesFor(compLogInfo) * FileSize.KB_COEFFICIENT;
+        assertTrue(kbInDisk > 105); // 105 Kb is the amount on the configuration
+
+        // Then
+        assertLogFilesAreNotDeleted(compLogInfo);
     }
 }

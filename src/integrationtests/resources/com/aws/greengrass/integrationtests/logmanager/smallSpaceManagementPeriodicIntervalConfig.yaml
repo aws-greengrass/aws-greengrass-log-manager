@@ -3,8 +3,8 @@ services:
   aws.greengrass.LogManager:
     configuration:
       logsUploaderConfiguration:
-        componentLogsConfiguration:
-          - componentName: 'UserComponentA'
+        componentLogsConfigurationMap:
+          UserComponentA:
             logFileRegex: '^integTestRandomLogFiles.log\w*'
             logFileDirectoryPath: '{{logFileDirectoryPath}}'
             minimumLogLevel: 'INFO'

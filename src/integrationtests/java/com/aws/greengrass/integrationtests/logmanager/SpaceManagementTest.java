@@ -92,8 +92,8 @@ class SpaceManagementTest extends BaseITCase {
         kernel.shutdown();
     }
 
-    private int writeNLogFiles(Path path, int numberOfFiles, String pattern) throws IOException {
-        int totalLength = 0;
+    private long writeNLogFiles(Path path, int numberOfFiles, String pattern) throws IOException {
+        long totalLength = 0;
 
         for (int i = 0; i < numberOfFiles; i++) {
             File file = createTempFileAndWriteData(path, pattern, "");
@@ -126,7 +126,6 @@ class SpaceManagementTest extends BaseITCase {
 
         while (Instant.now().isBefore(deadline)) {
             long currentBytes = getTotalLogFilesBytesFor(logConfiguration);
-            System.out.println(currentBytes);
             assertEquals(originalBytes, currentBytes);
             Thread.sleep(500);
         }
@@ -203,7 +202,7 @@ class SpaceManagementTest extends BaseITCase {
         tempDirectoryPath = Files.createDirectory(tempRootDir.resolve("IntegrationTestsTemporaryLogFiles"));
         setupKernel(tempDirectoryPath); // starts the LM with the smallSpaceManagementPeriodicIntervalConfig.yaml config
 
-        int totalBytes = writeNLogFiles(tempDirectoryPath,15, "integTestRandomLogFiles.log_");
+        long totalBytes = writeNLogFiles(tempDirectoryPath,15, "integTestRandomLogFiles.log_");
         long totalKb = totalBytes / FileSize.KB_COEFFICIENT;
         assertTrue(totalKb > 105); // 105 Kb is the amount on the configuration
 
@@ -237,6 +236,5 @@ class SpaceManagementTest extends BaseITCase {
 
         // Then
         assertLogFilesAreNotDeleted(compLogInfo);
-
     }
 }

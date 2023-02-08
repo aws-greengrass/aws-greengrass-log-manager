@@ -46,7 +46,7 @@ public final class LogFileHelper {
         return msgs;
     }
 
-    public static void createTempFileAndWriteData(Path tempDirectoryPath, String fileNamePrefix, String fileNameSuffix)
+    public static File createTempFileAndWriteData(Path tempDirectoryPath, String fileNamePrefix, String fileNameSuffix)
             throws IOException {
         Path filePath = Files.createTempFile(tempDirectoryPath, fileNamePrefix, fileNameSuffix);
         File file = filePath.toFile();
@@ -54,6 +54,8 @@ public final class LogFileHelper {
         for (String messageBytes : randomMessages) {
             addDataToFile(messageBytes, file.toPath());
         }
+
+        return file;
     }
 
     public static void createFileAndWriteData(Path tempDirectoryPath, String fileName)

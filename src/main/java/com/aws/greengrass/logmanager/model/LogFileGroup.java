@@ -9,7 +9,6 @@ import lombok.Getter;
 import java.io.File;
 import java.io.IOException;
 import java.net.URI;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -105,7 +104,8 @@ public final class LogFileGroup {
         files = Arrays.stream(files)
                 .filter(File::isFile)
                 .filter(file -> lastUpdated.isBefore(Instant.ofEpochMilli(file.lastModified())))
-                .filter(file -> filePattern.matcher(file.getName()).find()).toArray(File[]::new);
+                .filter(file -> filePattern.matcher(file.getName()).find())
+                .toArray(File[]::new);
 
         // Convert files into log files
 
@@ -123,6 +123,7 @@ public final class LogFileGroup {
         logFiles = logFiles.stream()
                 .filter(logFile -> !logFile.hashString().equals(HASH_VALUE_OF_EMPTY_STRING))
                 .collect(Collectors.toList());
+
 
         // Cache the logFiles by hash
 
@@ -210,6 +211,11 @@ public final class LogFileGroup {
         return bytes;
     }
 
+    /**
+     * Returns a boolean indicating if the total size in bytes of the files in the
+     * group exceed the maximum disk space configured when the LogGroup was created
+     * with the ComponentLogConfiguration.
+     */
     public boolean hasExceededDiskUsage() {
         return this.maxBytes
                 .map((val) -> this.totalSizeInBytes() > val)
@@ -241,18 +247,22 @@ public final class LogFileGroup {
     }
 
     /**
-     * Deletes a log file and stops tacking it
+     * Deletes a log file and stops tacking it.
+     *
+     * @param logFile - A Log File
      */
-    public void remove(LogFile lfile) {
+    public boolean remove(LogFile logFile) {
         // Safely delete the file
-        boolean result = lfile.delete();
+        boolean result = logFile.delete();
 
         if (result) {
-            logger.atInfo().log("Successfully deleted file: {}", lfile.getSourcePath());
+            logger.atInfo().log("Successfully deleted file: {}", logFile.getSourcePath());
 
             // Stop tracking the file
-            logFiles.remove(this.fileHashToLogFile.get(lfile.hashString()));
-            this.fileHashToLogFile.remove(lfile.hashString());
+            logFiles.remove(this.fileHashToLogFile.get(logFile.hashString()));
+            this.fileHashToLogFile.remove(logFile.hashString());
         }
+
+        return result;
     }
 }

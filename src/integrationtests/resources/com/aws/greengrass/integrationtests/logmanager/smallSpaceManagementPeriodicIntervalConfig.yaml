@@ -11,6 +11,7 @@ services:
             diskSpaceLimit: '105'
             diskSpaceLimitUnit: 'KB'
             deleteLogFileAfterCloudUpload: 'true'
+      periodicUploadIntervalSec: 1
   main:
     lifecycle:
       install: echo All installed

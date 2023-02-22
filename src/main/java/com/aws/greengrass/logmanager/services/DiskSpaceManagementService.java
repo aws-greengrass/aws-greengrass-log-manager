@@ -14,13 +14,16 @@ import java.util.stream.Collectors;
 
 
 public class DiskSpaceManagementService {
-    /**
-     * Constructor.
-     */
-    public DiskSpaceManagementService() {}
 
+    /**
+     * Deleted the file to make sure the log group is below its configured
+     * disk space usage limit.
+     *
+     * @param group - a Log File group
+     * @param lastUpdated - the timestamp of the last processed file
+     */
     public void freeDiskSpace(LogFileGroup group, Instant lastUpdated) {
-        if (group.hasExceededDiskUsage()) {
+        if (!group.hasExceededDiskUsage()) {
             return;
         }
 
@@ -33,11 +36,18 @@ public class DiskSpaceManagementService {
 
         List<LogFile> deletableFiles = group.getLogFiles().stream()
                 .filter(file ->  lastUpdated.isAfter(Instant.ofEpochMilli(file.lastModified())))
+                .filter(file -> !group.isActiveFile(file))
                 .collect(Collectors.toList());
 
         for (LogFile logFile: deletableFiles) {
-            if (bytesDeleted < minimumBytesToBeDeleted) break;
-            group.remove(logFile);
+            if (bytesDeleted >= minimumBytesToBeDeleted) {
+                break;
+            }
+            long filesSize = logFile.length();
+
+            if (group.remove(logFile)) {
+                bytesDeleted += filesSize;
+            }
         }
     }
 }

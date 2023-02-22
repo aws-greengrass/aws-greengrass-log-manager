@@ -53,7 +53,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -479,13 +478,12 @@ public class LogManagerService extends PluginService {
 
             // Update the last updated
             String componentName = attemptLogInformation.getComponentName();
-            Set<LogFile> completedFiles = completedLogFilePerComponent.get(componentName);
+            Set<LogFile> completedFiles = completedLogFilePerComponent.getOrDefault(componentName, new HashSet<>());
 
             // Record the last processed file timestamp
             completedFiles.forEach(file -> {
                 updatelastComponentUploadedLogFile(lastComponentUploadedLogFileInstantMap, componentName, file);
             });
-
 
             if (!componentLogConfigurations.containsKey(componentName)) {
                 return;

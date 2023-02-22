@@ -792,65 +792,6 @@ class LogManagerServiceTest extends GGServiceTestUtil {
     }
 
     @Test
-    void GIVEN_user_component_with_space_management_WHEN_log_file_size_exceeds_limit_THEN_deletes_excess_log_files()
-            throws InterruptedException, IOException {
-        mockDefaultPersistedState();
-        Topic periodicUpdateIntervalMsTopic = Topic.of(context, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC, "3");
-        when(config.lookup(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC))
-                .thenReturn(periodicUpdateIntervalMsTopic);
-
-        Topics configTopics = Topics.of(context, CONFIGURATION_CONFIG_KEY, null);
-        when(config.lookupTopics(CONFIGURATION_CONFIG_KEY)).thenReturn(configTopics);
-        Topics logsUploaderConfigTopics = Topics.of(context, LOGS_UPLOADER_CONFIGURATION_TOPIC, null);
-
-        Topics componentConfigTopics = logsUploaderConfigTopics.createInteriorChild(COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME);
-        Topics componentATopic = componentConfigTopics.createInteriorChild("UserComponentA");
-        componentATopic.createLeafChild(FILE_REGEX_CONFIG_TOPIC_NAME).withValue("^log.txt\\w*");
-        componentATopic.createLeafChild(FILE_DIRECTORY_PATH_CONFIG_TOPIC_NAME).withValue(directoryPath.toAbsolutePath().toString());
-        componentATopic.createLeafChild(MIN_LOG_LEVEL_CONFIG_TOPIC_NAME).withValue("DEBUG");
-        componentATopic.createLeafChild(DISK_SPACE_LIMIT_CONFIG_TOPIC_NAME).withValue("2");
-        componentATopic.createLeafChild(DISK_SPACE_LIMIT_UNIT_CONFIG_TOPIC_NAME).withValue("KB");
-        componentATopic.createLeafChild(DELETE_LOG_FILES_AFTER_UPLOAD_CONFIG_TOPIC_NAME).withValue("false");
-
-        Topics systemConfigTopics = logsUploaderConfigTopics.createInteriorChild(SYSTEM_LOGS_CONFIG_TOPIC_NAME);
-        systemConfigTopics.createLeafChild(UPLOAD_TO_CW_CONFIG_TOPIC_NAME).withValue("true");
-        systemConfigTopics.createLeafChild(MIN_LOG_LEVEL_CONFIG_TOPIC_NAME).withValue("INFO");
-        systemConfigTopics.createLeafChild(DISK_SPACE_LIMIT_CONFIG_TOPIC_NAME).withValue("25");
-        systemConfigTopics.createLeafChild(DISK_SPACE_LIMIT_UNIT_CONFIG_TOPIC_NAME).withValue("KB");
-        when(config.lookupTopics(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC))
-                .thenReturn(logsUploaderConfigTopics);
-
-        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, nucleusPaths);
-        startServiceOnAnotherThread();
-        TimeUnit.SECONDS.sleep(5);
-        List<String> fileNames = new ArrayList<>();
-        for (int i = 0; i < 5; i++) {
-            Path fileNamePath = directoryPath.resolve("log.txt_" + UUID.randomUUID());
-            fileNames.add(fileNamePath.toAbsolutePath().toString());
-            File file1 = new File(fileNamePath.toUri());
-            assertTrue(file1.createNewFile());
-            assertTrue(file1.setReadable(true));
-            assertTrue(file1.setWritable(true));
-
-            try (OutputStream fileOutputStream = Files.newOutputStream(file1.toPath())) {
-                String generatedString = RandomStringUtils.randomAlphabetic(1024);
-                fileOutputStream.write(generatedString.getBytes(StandardCharsets.UTF_8));
-            }
-            TimeUnit.SECONDS.sleep(1);
-        }
-        TimeUnit.SECONDS.sleep(5);
-
-        for (int i = 0; i < 3; i++) {
-            assertTrue(Files.notExists(Paths.get(fileNames.get(i))));
-        }
-
-        for (int i = 3; i < 5; i++) {
-            assertTrue(Files.exists(Paths.get(fileNames.get(i))));
-            assertEquals(1024, new File(Paths.get(fileNames.get(i)).toUri()).length());
-        }
-    }
-
-    @Test
     void GIVEN_user_component_logs_delete_file_after_upload_set_WHEN_upload_logs_THEN_deletes_uploaded_log_files(
             ExtensionContext ec)
             throws InterruptedException, IOException, InvalidLogGroupException {

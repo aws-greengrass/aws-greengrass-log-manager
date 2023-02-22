@@ -310,7 +310,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
                 .thenReturn(logsUploaderConfigTopics);
         doNothing().when(mockUploader).registerAttemptStatus(anyString(), callbackCaptor.capture());
 
-        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor, nucleusPaths);
+        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, nucleusPaths);
         startServiceOnAnotherThread();
 
         TimeUnit.SECONDS.sleep(5);
@@ -365,7 +365,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
 
         doNothing().when(mockUploader).registerAttemptStatus(anyString(), callbackCaptor.capture());
 
-        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor, nucleusPaths);
+        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, nucleusPaths);
         startServiceOnAnotherThread();
 
         TimeUnit.SECONDS.sleep(5);
@@ -416,7 +416,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
 
         doNothing().when(mockUploader).registerAttemptStatus(anyString(), callbackCaptor.capture());
 
-        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor, nucleusPaths);
+        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, nucleusPaths);
         startServiceOnAnotherThread();
 
         TimeUnit.SECONDS.sleep(5);
@@ -468,7 +468,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
 
         doNothing().when(mockUploader).registerAttemptStatus(anyString(), callbackCaptor.capture());
 
-        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor, nucleusPaths);
+        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, nucleusPaths);
         startServiceOnAnotherThread();
 
         TimeUnit.SECONDS.sleep(5);
@@ -528,7 +528,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
 
         doNothing().when(mockUploader).registerAttemptStatus(anyString(), callbackCaptor.capture());
 
-        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor, nucleusPaths);
+        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, nucleusPaths);
         startServiceOnAnotherThread();
 
         TimeUnit.SECONDS.sleep(5);
@@ -571,7 +571,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
                 .thenReturn(logsUploaderConfigTopic);
 
 
-        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor, nucleusPaths);
+        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, nucleusPaths);
         startServiceOnAnotherThread();
         assertThat(logsUploaderService.processingFilesInformation.values(), IsEmptyCollection.empty());
     }
@@ -702,7 +702,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         ComponentLogFileInformation info1 = ComponentLogFileInformation.builder().build();
         lenient().doReturn(attempt1).when(mockMerger).processLogFiles(info1);
         lenient().doNothing().when(mockUploader).upload(attempt1, 1);
-        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor, nucleusPaths);
+        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, nucleusPaths);
         startServiceOnAnotherThread();
         callbackCaptor.getValue().accept(attempt);
 
@@ -755,7 +755,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         when(config.lookupTopics(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC))
                 .thenReturn(logsUploaderConfigTopics);
 
-        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor, nucleusPaths);
+        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, nucleusPaths);
         // These two files are existed, and the active file is greengrass.log
         LogFile file = new LogFile(directoryPath.resolve("greengrass_test_2.log").toUri());
         LogFile currentProcessingFile = new LogFile(directoryPath.resolve("greengrass_test_3.log").toUri());
@@ -820,7 +820,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         when(config.lookupTopics(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC))
                 .thenReturn(logsUploaderConfigTopics);
 
-        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor, nucleusPaths);
+        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, nucleusPaths);
         startServiceOnAnotherThread();
         TimeUnit.SECONDS.sleep(5);
         List<String> fileNames = new ArrayList<>();
@@ -943,9 +943,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
                 .lookupTopics(PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP, "UserComponentA"))
                 .thenReturn(componentTopics1);
 
-
-
-        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor, nucleusPaths);
+        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, nucleusPaths);
         startServiceOnAnotherThread();
 
         callbackCaptor.getValue().accept(attempt);
@@ -981,7 +979,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         when(config.lookupTopics(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC))
                 .thenReturn(logsUploaderConfigTopics);
 
-        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor, nucleusPaths);
+        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, nucleusPaths);
         startServiceOnAnotherThread();
 
         LogFile file = new LogFile(directoryPath.resolve("greengrass.log_test_2").toUri());
@@ -1093,7 +1091,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
                 .lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION_V2, "UserComponentA"))
                 .thenReturn(currentProcessingComponentTopics2);
 
-        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, executor, nucleusPaths);
+        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, nucleusPaths);
 
         assertNotNull(logsUploaderService.processingFilesInformation);
         assertNotNull(logsUploaderService.lastComponentUploadedLogFileInstantMap);

@@ -122,7 +122,6 @@ public class LogManagerService extends PluginService {
     @Getter
     private final CloudWatchLogsUploader uploader;
     private final CloudWatchAttemptLogsProcessor logsProcessor;
-    private final ExecutorService executorService;
     private final AtomicBoolean isCurrentlyUploading = new AtomicBoolean(false);
     @Getter
     private int periodicUpdateIntervalSec;
@@ -134,16 +133,14 @@ public class LogManagerService extends PluginService {
      * @param topics          The configuration coming from the nucleus.
      * @param uploader        {@link CloudWatchLogsUploader}
      * @param logProcessor    {@link CloudWatchAttemptLogsProcessor}
-     * @param executorService {@link ExecutorService}
      */
     @Inject
     LogManagerService(Topics topics, CloudWatchLogsUploader uploader, CloudWatchAttemptLogsProcessor logProcessor,
-                      ExecutorService executorService, NucleusPaths nucleusPaths) throws IOException {
+                       NucleusPaths nucleusPaths) throws IOException {
         super(topics);
         this.uploader = uploader;
         this.logsProcessor = logProcessor;
-        this.executorService = executorService;
-        this.diskSpaceManagementService = new DiskSpaceManagementService(this.executorService);
+        this.diskSpaceManagementService = new DiskSpaceManagementService();
         this.workDir = nucleusPaths.workPath(LOGS_UPLOADER_SERVICE_TOPICS);
 
         topics.lookupTopics(CONFIGURATION_CONFIG_KEY).subscribe((why, newv) -> {
@@ -242,8 +239,6 @@ public class LogManagerService extends PluginService {
 
         this.componentLogConfigurations = newComponentLogConfigurations;
         logger.atInfo().log("Finished processing LogManager configuration");
-
-        this.diskSpaceManagementService.start(this.componentLogConfigurations);
     }
 
     private void handleUserComponentConfiguration(Object componentConfigObject,
@@ -470,33 +465,44 @@ public class LogManagerService extends PluginService {
     private void handleCloudWatchAttemptStatus(CloudWatchAttempt cloudWatchAttempt) {
         Map<String, Set<LogFile>> completedLogFilePerComponent = new ConcurrentHashMap<>();
 
+        // Compute completed files (we only create 1 attempt per component)
         cloudWatchAttempt.getLogStreamUploadedSet().forEach((streamName) -> {
             CloudWatchAttemptLogInformation attemptLogInformation =
                     cloudWatchAttempt.getLogStreamsToLogEventsMap().get(streamName);
+
+            // Each attempt holds a map mapping hash to file information
             attemptLogInformation.getAttemptLogFileInformationMap().forEach(
                     (fileHash, cloudWatchAttemptLogFileInformation) ->
                             processCloudWatchAttemptLogInformation(completedLogFilePerComponent,
                                     attemptLogInformation, fileHash,
                                     cloudWatchAttemptLogFileInformation));
-        });
 
-        completedLogFilePerComponent.forEach((componentName, completedFiles) -> {
+            // Update the last updated
+            String componentName = attemptLogInformation.getComponentName();
+            Set<LogFile> completedFiles = completedLogFilePerComponent.get(componentName);
+
+            // Record the last processed file timestamp
             completedFiles.forEach(file -> {
-                updatelastComponentUploadedLogFile(lastComponentUploadedLogFileInstantMap, componentName,
-                        file);
+                updatelastComponentUploadedLogFile(lastComponentUploadedLogFileInstantMap, componentName, file);
             });
+
 
             if (!componentLogConfigurations.containsKey(componentName)) {
                 return;
             }
 
+            // Delete files based on diskspace
+            this.diskSpaceManagementService.freeDiskSpace(
+                attemptLogInformation.getLogFileGroup(),
+                lastComponentUploadedLogFileInstantMap.get(componentName)
+            );
+
+            // Delete after upload
             ComponentLogConfiguration componentLogConfiguration = componentLogConfigurations.get(componentName);
             completedFiles.forEach(file -> this.deleteFile(componentLogConfiguration, file));
         });
 
-
         // Update the runtime configuration and store the last processed file information
-
         context.runOnPublishQueueAndWait(() -> {
             processingFilesInformation.forEach((componentName, processingFiles) -> {
                 // Update old config value to handle downgrade from v 2.3.1 to older ones

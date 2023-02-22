@@ -9,6 +9,7 @@ import lombok.Getter;
 import java.io.File;
 import java.io.IOException;
 import java.net.URI;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -18,6 +19,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 import java.util.regex.Pattern;
@@ -30,17 +32,25 @@ public final class LogFileGroup {
     private static final Logger logger = LogManager.getLogger(LogFileGroup.class);
     private final boolean isUsingHardlinks;
     @Getter
+    private final Optional<Long> maxBytes;
+    @Getter
     private List<LogFile> logFiles;
     private final Map<String, LogFile> fileHashToLogFile;
     @Getter
     private final Pattern filePattern;
 
-    private LogFileGroup(List<LogFile> files, Pattern filePattern, Map<String, LogFile> fileHashToLogFile,
-                         boolean isUsingHardlinks) {
+    private LogFileGroup(
+            List<LogFile> files,
+            Pattern filePattern,
+            Map<String, LogFile> fileHashToLogFile,
+            boolean isUsingHardlinks,
+            Optional<Long> maxBytes
+    ) {
         this.logFiles = files;
         this.filePattern = filePattern;
         this.fileHashToLogFile = fileHashToLogFile;
         this.isUsingHardlinks = isUsingHardlinks;
+        this.maxBytes = maxBytes;
     }
 
     /**
@@ -67,6 +77,8 @@ public final class LogFileGroup {
         String componentName = componentLogConfiguration.getName();
         Path componentHardlinksDirectory = workDir.resolve(componentName);
 
+        // TODO: Potential TOCTOU race condition if 2 threads or even the same thread creates a log group
+        //  at different points in time. Files might get deleted beforehand. CAREFUL how we use this for now
         try {
             Utils.deleteFileRecursively(componentHardlinksDirectory.toFile());
             Utils.createPaths(componentHardlinksDirectory);
@@ -84,7 +96,7 @@ public final class LogFileGroup {
             logger.atDebug().kv("component", componentName)
                     .kv("directory", directoryURI)
                     .log("No component logs are found in the directory");
-            return new LogFileGroup(Collections.emptyList(), filePattern, new HashMap<>(), false);
+            return new LogFileGroup(Collections.emptyList(), filePattern, new HashMap<>(), false, Optional.empty());
         }
 
         boolean isUsingHardlinks = true;
@@ -119,7 +131,8 @@ public final class LogFileGroup {
             fileHashToLogFileMap.put(logFile.hashString(), logFile);
         });
 
-        return new LogFileGroup(logFiles, filePattern, fileHashToLogFileMap, isUsingHardlinks);
+        Optional<Long> maxBytes = Optional.ofNullable(componentLogConfiguration.getDiskSpaceLimit());
+        return new LogFileGroup(logFiles, filePattern, fileHashToLogFileMap, isUsingHardlinks, maxBytes);
     }
 
     /**
@@ -197,6 +210,12 @@ public final class LogFileGroup {
         return bytes;
     }
 
+    public boolean hasExceededDiskUsage() {
+        return this.maxBytes
+                .map((val) -> this.totalSizeInBytes() > val)
+                .orElseGet(() -> false);
+    }
+
     /**
      * Validate if the logFile is the active of one logFileGroup.
      *
@@ -219,5 +238,21 @@ public final class LogFileGroup {
         }
 
         return file.hashString().equals(activeFile.hashString());
+    }
+
+    /**
+     * Deletes a log file and stops tacking it
+     */
+    public void remove(LogFile lfile) {
+        // Safely delete the file
+        boolean result = lfile.delete();
+
+        if (result) {
+            logger.atInfo().log("Successfully deleted file: {}", lfile.getSourcePath());
+
+            // Stop tracking the file
+            logFiles.remove(this.fileHashToLogFile.get(lfile.hashString()));
+            this.fileHashToLogFile.remove(lfile.hashString());
+        }
     }
 }

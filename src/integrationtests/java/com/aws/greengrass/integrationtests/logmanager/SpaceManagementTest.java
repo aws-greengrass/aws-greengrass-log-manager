@@ -16,7 +16,6 @@ import com.aws.greengrass.lifecyclemanager.Kernel;
 import com.aws.greengrass.logmanager.LogManagerService;
 import com.aws.greengrass.logmanager.exceptions.InvalidLogGroupException;
 import com.aws.greengrass.logmanager.model.ComponentLogConfiguration;
-import com.aws.greengrass.logmanager.model.LogFileGroup;
 import com.aws.greengrass.testcommons.testutilities.GGExtension;
 import com.aws.greengrass.util.exceptions.TLSAuthException;
 import org.junit.jupiter.api.AfterEach;
@@ -24,7 +23,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.extension.ExtensionContext;
-import org.junit.jupiter.api.io.TempDir;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import software.amazon.awssdk.crt.CrtRuntimeException;
@@ -34,6 +32,7 @@ import software.amazon.awssdk.services.cloudwatchlogs.model.PutLogEventsResponse
 
 import java.io.File;
 import java.io.IOException;
+import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -43,7 +42,6 @@ import java.nio.file.Paths;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
-import java.time.temporal.ChronoUnit;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
@@ -70,9 +68,7 @@ class SpaceManagementTest extends BaseITCase {
     private static DeviceConfiguration deviceConfiguration;
     private LogManagerService logManagerService;
     private Path tempDirectoryPath;
-    private static final Instant mockInstant = Instant.EPOCH;
-    @TempDir
-    private Path workDir;
+
     private static final String componentName = "UserComponentA";
 
     @Mock
@@ -104,8 +100,20 @@ class SpaceManagementTest extends BaseITCase {
     }
 
     private long getTotalLogFilesBytesFor(ComponentLogConfiguration logConfiguration) throws InvalidLogGroupException {
-        LogFileGroup logFileGroup = LogFileGroup.create(logConfiguration, mockInstant, workDir);
-        return logFileGroup.totalSizeInBytes();
+        long bytes = 0;
+        URI directoryURI = logConfiguration.getDirectoryPath().toUri();
+        File folder = new File(directoryURI);
+        File[] files = folder.listFiles();
+
+         if (files == null) {
+             return bytes;
+         }
+
+        for (File log :  files) {
+            bytes += log.length();
+        }
+
+        return bytes;
     }
 
     private void assertLogFileSizeEventuallyBelowBytes(ComponentLogConfiguration logConfiguration, long bytes) {
@@ -165,8 +173,6 @@ class SpaceManagementTest extends BaseITCase {
         kernel.launch();
         assertTrue(logManagerRunning.await(10, TimeUnit.SECONDS));
         logManagerService.getUploader().setCloudWatchLogsClient(cloudWatchLogsClient);
-        logManagerService.lastComponentUploadedLogFileInstantMap.put(componentName,
-                Instant.now().plus(10, ChronoUnit.MINUTES));
     }
 
     @Test

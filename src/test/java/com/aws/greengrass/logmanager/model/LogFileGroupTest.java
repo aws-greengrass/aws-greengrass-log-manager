@@ -14,6 +14,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.Arrays;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
@@ -35,6 +36,14 @@ public class LogFileGroupTest {
     @BeforeEach
     void setup() {
         Arrays.stream(directoryPath.toFile().listFiles()).forEach(File::delete);
+    }
+
+
+    public LogFile arrangeLogFile(String name, int byteSize) throws InterruptedException, IOException {
+        LogFile file = createLogFileWithSize(directoryPath.resolve(name).toUri(), byteSize);
+        // Wait to avoid file's lastModified to be the same if called to fast
+        TimeUnit.MILLISECONDS.sleep(100);
+        return file;
     }
 
     @Test
@@ -83,5 +92,34 @@ public class LogFileGroupTest {
         assertEquals(1, logFileGroup.getLogFiles().size());
         LogFile logFile = logFileGroup.getLogFiles().get(0);
         assertEquals(readFileContent(rotatedFile), readFileContent(logFile));
+    }
+
+    @Test
+    void GIVEN_last_processedTime_THEN_it_returns_the_unprocessed_files_correctly() throws IOException,
+            InterruptedException, InvalidLogGroupException {
+        // Given
+        LogFile cLogFile = arrangeLogFile("test.log.3", 2048);
+        LogFile bLogFile = arrangeLogFile("test.log.2", 2048);
+        LogFile aLogFile = arrangeLogFile("test.log.1", 2048);
+        LogFile activeFile = arrangeLogFile("test.log", 1024);
+        Instant lastProcessedFileInstant = Instant.ofEpochMilli(bLogFile.lastModified());
+
+        // When
+        ComponentLogConfiguration config = ComponentLogConfiguration.builder()
+                .directoryPath(directoryPath)
+                .fileNameRegex(Pattern.compile("test.log\\w*")).name("greengrass_test")
+                .build();
+        LogFileGroup group = LogFileGroup.create(config, lastProcessedFileInstant, workDir);
+
+        // Then
+        List<LogFile> processed = group.getProcessedLogFiles();
+        assertEquals(2, processed.size());
+        assertTrue(processed.stream().anyMatch(f -> f.getName().equals(cLogFile.getName())));
+        assertTrue(processed.stream().anyMatch(f -> f.getName().equals(bLogFile.getName())));
+
+        List<LogFile> unprocessed = group.getLogFiles();
+        assertEquals(2, unprocessed.size());
+        assertTrue(unprocessed.stream().anyMatch(f -> f.getName().equals(aLogFile.getName())));
+        assertTrue(unprocessed.stream().anyMatch(f -> f.getName().equals(activeFile.getName())));
     }
 }

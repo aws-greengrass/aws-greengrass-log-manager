@@ -18,8 +18,8 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.Consumer;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
@@ -30,30 +30,61 @@ public final class LogFileGroup {
     private static final Logger logger = LogManager.getLogger(LogFileGroup.class);
     private final boolean isUsingHardlinks;
     @Getter
-    private List<LogFile> logFiles;
+    private final Optional<Long> maxBytes;
+    private final Instant lastProcessed;
+    private final List<LogFile> logFiles;
     private final Map<String, LogFile> fileHashToLogFile;
     @Getter
     private final Pattern filePattern;
 
-    private LogFileGroup(List<LogFile> files, Pattern filePattern, Map<String, LogFile> fileHashToLogFile,
-                         boolean isUsingHardlinks) {
+
+    /**
+     * Returns a list of log files that have already been processed.
+     */
+    public List<LogFile> getProcessedLogFiles() {
+        return this.logFiles.stream()
+                // Greater than or equal comparison means lastProcessed is afterOrEqual to the file.lastModified
+                .filter(file -> this.lastProcessed.compareTo(Instant.ofEpochMilli(file.lastModified())) >= 0)
+                .filter(file -> !this.isActiveFile(file))
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Returns a list of log files that have not yet bee processed.
+     */
+    public List<LogFile> getLogFiles() {
+        return this.logFiles.stream()
+                .filter(file -> this.lastProcessed.isBefore(Instant.ofEpochMilli(file.lastModified())))
+                .collect(Collectors.toList());
+    }
+
+    private LogFileGroup(
+            List<LogFile> files,
+            Pattern filePattern,
+            Map<String, LogFile> fileHashToLogFile,
+            boolean isUsingHardlinks,
+            Instant lastProcessed,
+            Optional<Long> maxBytes
+    ) {
         this.logFiles = files;
         this.filePattern = filePattern;
         this.fileHashToLogFile = fileHashToLogFile;
         this.isUsingHardlinks = isUsingHardlinks;
+        this.lastProcessed = lastProcessed;
+        this.maxBytes = maxBytes;
     }
 
     /**
      * Create a list of Logfiles that are sorted based on lastModified time.
      *
      * @param componentLogConfiguration component log configuration
-     * @param lastUpdated               the saved updated time of the last uploaded log of a component.
+     * @param lastProcessed               the saved updated time of the last uploaded log of a component.
      * @param workDir                   component work directory
      * @return list of logFile.
      * @throws InvalidLogGroupException the exception if this is not a valid directory.
      */
     public static LogFileGroup create(ComponentLogConfiguration componentLogConfiguration,
-                                      Instant lastUpdated, Path workDir)
+                                      Instant lastProcessed, Path workDir)
             throws InvalidLogGroupException {
         URI directoryURI = componentLogConfiguration.getDirectoryPath().toUri();
         File folder = new File(directoryURI);
@@ -67,6 +98,8 @@ public final class LogFileGroup {
         String componentName = componentLogConfiguration.getName();
         Path componentHardlinksDirectory = workDir.resolve(componentName);
 
+        // TODO: Potential TOCTOU race condition if 2 threads or even the same thread creates a log group
+        //  at different points in time. Files might get deleted beforehand. CAREFUL how we use this for now
         try {
             Utils.deleteFileRecursively(componentHardlinksDirectory.toFile());
             Utils.createPaths(componentHardlinksDirectory);
@@ -84,7 +117,9 @@ public final class LogFileGroup {
             logger.atDebug().kv("component", componentName)
                     .kv("directory", directoryURI)
                     .log("No component logs are found in the directory");
-            return new LogFileGroup(Collections.emptyList(), filePattern, new HashMap<>(), false);
+            return new LogFileGroup(
+                    Collections.emptyList(), filePattern, new HashMap<>(), false,
+                    lastProcessed,Optional.empty());
         }
 
         boolean isUsingHardlinks = true;
@@ -92,8 +127,8 @@ public final class LogFileGroup {
 
         files = Arrays.stream(files)
                 .filter(File::isFile)
-                .filter(file -> lastUpdated.isBefore(Instant.ofEpochMilli(file.lastModified())))
-                .filter(file -> filePattern.matcher(file.getName()).find()).toArray(File[]::new);
+                .filter(file -> filePattern.matcher(file.getName()).find())
+                .toArray(File[]::new);
 
         // Convert files into log files
 
@@ -112,6 +147,7 @@ public final class LogFileGroup {
                 .filter(logFile -> !logFile.hashString().equals(HASH_VALUE_OF_EMPTY_STRING))
                 .collect(Collectors.toList());
 
+
         // Cache the logFiles by hash
 
         Map<String, LogFile> fileHashToLogFileMap = new ConcurrentHashMap<>();
@@ -119,7 +155,8 @@ public final class LogFileGroup {
             fileHashToLogFileMap.put(logFile.hashString(), logFile);
         });
 
-        return new LogFileGroup(logFiles, filePattern, fileHashToLogFileMap, isUsingHardlinks);
+        Optional<Long> maxBytes = Optional.ofNullable(componentLogConfiguration.getDiskSpaceLimit());
+        return new LogFileGroup(logFiles, filePattern, fileHashToLogFileMap, isUsingHardlinks, lastProcessed, maxBytes);
     }
 
     /**
@@ -168,14 +205,6 @@ public final class LogFileGroup {
         return logFiles;
     }
 
-    public void forEach(Consumer<LogFile> callback) {
-        logFiles.forEach(callback::accept);
-    }
-
-    public boolean isEmpty() {
-        return this.logFiles.isEmpty();
-    }
-
     /**
      * Get the LogFile object from the fileHash.
      *
@@ -195,6 +224,17 @@ public final class LogFileGroup {
             bytes += log.length();
         }
         return bytes;
+    }
+
+    /**
+     * Returns a boolean indicating if the total size in bytes of the files in the
+     * group exceed the maximum disk space configured when the LogGroup was created
+     * with the ComponentLogConfiguration.
+     */
+    public boolean hasExceededDiskUsage() {
+        return this.maxBytes
+                .map((val) -> this.totalSizeInBytes() > val)
+                .orElseGet(() -> false);
     }
 
     /**
@@ -219,5 +259,25 @@ public final class LogFileGroup {
         }
 
         return file.hashString().equals(activeFile.hashString());
+    }
+
+    /**
+     * Deletes a log file and stops tacking it.
+     *
+     * @param logFile - A Log File
+     */
+    public boolean remove(LogFile logFile) {
+        // Safely delete the file
+        boolean result = logFile.delete();
+
+        if (result) {
+            logger.atInfo().log("Successfully deleted file: {}", logFile.getSourcePath());
+
+            // Stop tracking the file
+            logFiles.remove(this.fileHashToLogFile.get(logFile.hashString()));
+            this.fileHashToLogFile.remove(logFile.hashString());
+        }
+
+        return result;
     }
 }

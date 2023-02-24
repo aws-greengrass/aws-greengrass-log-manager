@@ -1,0 +1,16 @@
+{
+  "component" :{
+    "aws.greengrass.LogManager": {
+      "author": "AWS",
+      "version": "NEXT_PATCH",
+      "build": {
+        "build_system": "maven"
+      },
+      "publish": {
+        "bucket": "BUCKETNAME",
+        "region": "REGION"
+      }
+    }
+  },
+  "gdk_version": "1.1.0"
+}

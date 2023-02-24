@@ -10,7 +10,6 @@ import com.aws.greengrass.logmanager.model.LogFileGroup;
 
 import java.time.Instant;
 import java.util.List;
-import java.util.stream.Collectors;
 
 
 public class DiskSpaceManagementService {
@@ -23,6 +22,10 @@ public class DiskSpaceManagementService {
      * @param lastUpdated - the timestamp of the last processed file
      */
     public void freeDiskSpace(LogFileGroup group, Instant lastUpdated) {
+        if (lastUpdated == null || group == null) {
+            return;
+        }
+
         if (!group.hasExceededDiskUsage()) {
             return;
         }
@@ -33,11 +36,7 @@ public class DiskSpaceManagementService {
 
         long bytesDeleted = 0;
         long minimumBytesToBeDeleted = Math.max(group.totalSizeInBytes() - group.getMaxBytes().get(), 0);
-
-        List<LogFile> deletableFiles = group.getLogFiles().stream()
-                .filter(file ->  lastUpdated.isAfter(Instant.ofEpochMilli(file.lastModified())))
-                .filter(file -> !group.isActiveFile(file))
-                .collect(Collectors.toList());
+        List<LogFile> deletableFiles = group.getProcessedLogFiles();
 
         for (LogFile logFile: deletableFiles) {
             if (bytesDeleted >= minimumBytesToBeDeleted) {

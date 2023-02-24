@@ -38,21 +38,21 @@ class DiskSpaceManagementServiceTest extends GGServiceTestUtil {
     @TempDir
     private Path workDirPath;
 
-    public LogFileGroup arrangeLogGroup(Pattern pattern, long diskSpaceLimitBytes) throws InvalidLogGroupException {
+    public LogFileGroup arrangeLogGroup(Pattern pattern, Instant lastProcessedFileInstant, long diskSpaceLimitBytes)
+            throws InvalidLogGroupException {
         ComponentLogConfiguration config = ComponentLogConfiguration.builder()
                 .directoryPath(directoryPath)
                 .fileNameRegex(pattern).name("greengrass_test")
                 .diskSpaceLimit(diskSpaceLimitBytes)
                 .build();
-        Instant instant = Instant.EPOCH;
-        return LogFileGroup.create(config, instant, workDirPath);
+        return LogFileGroup.create(config, lastProcessedFileInstant, workDirPath);
     }
 
     public LogFile arrangeLogFile(String name, int byteSize) throws InterruptedException, IOException {
-       LogFile file = createLogFileWithSize(directoryPath.resolve(name).toUri(), byteSize);
+        LogFile file = createLogFileWithSize(directoryPath.resolve(name).toUri(), byteSize);
         // Wait to avoid file's lastModified to be the same if called to fast
         TimeUnit.MILLISECONDS.sleep(100);
-       return file;
+        return file;
     }
 
     @Test
@@ -60,13 +60,15 @@ class DiskSpaceManagementServiceTest extends GGServiceTestUtil {
             InterruptedException {
         // Given
         LogFile aLogFile = arrangeLogFile("test.log.1", 2048);
-        LogFile activeFile = arrangeLogFile("test.log", 1024);
-        LogFileGroup group = arrangeLogGroup(Pattern.compile("test.log\\w*"), 1024L);
+        arrangeLogFile("test.log", 1024);
+        Instant lastProcessedInstant = Instant.ofEpochMilli(aLogFile.lastModified());
+
+        LogFileGroup group = arrangeLogGroup(
+                Pattern.compile("test.log\\w*"), lastProcessedInstant, 1024L);
 
         // When
         DiskSpaceManagementService service = new DiskSpaceManagementService();
-        Instant lastProcessedFileInstant = Instant.ofEpochMilli(activeFile.lastModified());
-        service.freeDiskSpace(group, lastProcessedFileInstant);
+        service.freeDiskSpace(group, lastProcessedInstant);
 
         // Then
         assertEquals(1, group.getLogFiles().size());
@@ -81,11 +83,11 @@ class DiskSpaceManagementServiceTest extends GGServiceTestUtil {
         LogFile bLogFile = arrangeLogFile("test.log.2", 2048);
         LogFile aLogFile = arrangeLogFile("test.log.1", 2048);
         LogFile activeFile = arrangeLogFile("test.log", 1024);
-        LogFileGroup group = arrangeLogGroup(Pattern.compile("test.log\\w*"), 1024L);
+        Instant lastProcessedFileInstant = Instant.ofEpochMilli(bLogFile.lastModified());
+        LogFileGroup group = arrangeLogGroup(Pattern.compile("test.log\\w*"), lastProcessedFileInstant, 1024L);
 
         // When
         DiskSpaceManagementService service = new DiskSpaceManagementService();
-        Instant lastProcessedFileInstant = Instant.ofEpochMilli(aLogFile.lastModified());
         service.freeDiskSpace(group, lastProcessedFileInstant);
 
         // Then
@@ -101,11 +103,29 @@ class DiskSpaceManagementServiceTest extends GGServiceTestUtil {
             throws IOException, InvalidLogGroupException, InterruptedException {
         // Given
         LogFile activeFile = arrangeLogFile("test.log", 1024);
-        LogFileGroup group = arrangeLogGroup(Pattern.compile("test.log\\w*"), 0L);
+        Instant lastProcessedFileInstant = Instant.EPOCH;
+        LogFileGroup group = arrangeLogGroup(Pattern.compile("test.log\\w*"), lastProcessedFileInstant, 0L);
 
         // When
         DiskSpaceManagementService service = new DiskSpaceManagementService();
-        service.freeDiskSpace(group, Instant.now());
+        service.freeDiskSpace(group, lastProcessedFileInstant);
+
+        // Then
+        assertEquals(1, group.getLogFiles().size());
+        assertTrue(Files.exists(activeFile.toPath()));
+    }
+
+    @Test
+    void GIVEN_log_files_WHEN_null_last_updated_THEN_checks_skipped()
+            throws IOException, InvalidLogGroupException, InterruptedException {
+        // Given
+        LogFile activeFile = arrangeLogFile("test.log", 1024);
+        Instant lastProcessedFileInstant = Instant.EPOCH;
+        LogFileGroup group = arrangeLogGroup(Pattern.compile("test.log\\w*"), lastProcessedFileInstant, 0L);
+
+        // When
+        DiskSpaceManagementService service = new DiskSpaceManagementService();
+        service.freeDiskSpace(group, null);
 
         // Then
         assertEquals(1, group.getLogFiles().size());
@@ -118,37 +138,41 @@ class DiskSpaceManagementServiceTest extends GGServiceTestUtil {
         // Given
         LogFile aLogFile = arrangeLogFile("test.log.1", 2048);
         arrangeLogFile("test.log", 1024);
-        LogFileGroup group = arrangeLogGroup(Pattern.compile("test.log\\w*"), 0L);
+        Instant lastProcessedFileInstant =  Instant.ofEpochMilli(aLogFile.lastModified());
+        LogFileGroup group = arrangeLogGroup(Pattern.compile("test.log\\w*"), lastProcessedFileInstant, 0L);
 
         aLogFile.delete(); // Deleted externally
         assertTrue(Files.notExists(aLogFile.toPath()));
 
         // When
         DiskSpaceManagementService service = new DiskSpaceManagementService();
-        service.freeDiskSpace(group, Instant.now());
+        service.freeDiskSpace(group, lastProcessedFileInstant);
 
         // Then
         assertEquals(1, group.getLogFiles().size());
     }
 
     @Test
-    void GIVEN_file_rotates_WHEN_freeing_space_THEN_it_deletes_the_oldest_files_first()
+    void GIVEN_file_rotates_WHEN_freeing_space_THEN_it_deletes_the_correct_file()
             throws IOException, InvalidLogGroupException, InterruptedException {
         // Given
         LogFile aLogFile = arrangeLogFile("test.log.1", 2048);
         LogFile prevActive = arrangeLogFile("test.log", 1024);
-        LogFileGroup group = arrangeLogGroup(Pattern.compile("test.log\\w*"), 0L);
+        Instant lastProcessedFileInstant =  Instant.ofEpochMilli(aLogFile.lastModified());
+        LogFileGroup group = arrangeLogGroup(Pattern.compile("test.log\\w*"), lastProcessedFileInstant, 0L);
 
         // When
-        File newActive = rotateFilesByRenamingThem(prevActive, aLogFile); // Files rotate before freed
+        File newActive = rotateFilesByRenamingThem(prevActive, aLogFile); // Files rotate before diskSpace runs
+        assertTrue(Files.exists(directoryPath.resolve("test.log.2")));
+
         DiskSpaceManagementService service = new DiskSpaceManagementService();
-        service.freeDiskSpace(group, Instant.now());
+        service.freeDiskSpace(group, lastProcessedFileInstant);
 
         // Then
         assertEquals(directoryPath.resolve("test.log"), newActive.toPath());
-        assertEquals(0, group.getLogFiles().size());
+        assertEquals(1, group.getLogFiles().size());
         assertTrue(Files.notExists(directoryPath.resolve("test.log.2")));
-        assertTrue(Files.notExists(directoryPath.resolve("test.log.1")));
+        assertTrue(Files.exists(directoryPath.resolve("test.log.1")));
         assertTrue(Files.exists(directoryPath.resolve("test.log")));
     }
 }

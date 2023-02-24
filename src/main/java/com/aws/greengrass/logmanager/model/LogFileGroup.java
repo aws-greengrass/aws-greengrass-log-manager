@@ -32,23 +32,47 @@ public final class LogFileGroup {
     private final boolean isUsingHardlinks;
     @Getter
     private final Optional<Long> maxBytes;
-    @Getter
-    private List<LogFile> logFiles;
+    private final Instant lastProcessed;
+    private final List<LogFile> logFiles;
     private final Map<String, LogFile> fileHashToLogFile;
     @Getter
     private final Pattern filePattern;
+
+
+    /**
+     * Returns a list of log files that have already been processed.
+     */
+    public List<LogFile> getProcessedLogFiles() {
+        return this.logFiles.stream()
+                // Greater than or equal comparison means lastProcessed is afterOrEqual to the file.lastModified
+                .filter(file -> this.lastProcessed.compareTo(Instant.ofEpochMilli(file.lastModified())) >= 0)
+                .filter(file -> !this.isActiveFile(file))
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Returns a list of log files that have not yet bee processed.
+     */
+    public List<LogFile> getLogFiles() {
+        return this.logFiles.stream()
+                .filter(file -> this.lastProcessed.isBefore(Instant.ofEpochMilli(file.lastModified())))
+                .collect(Collectors.toList());
+    }
+
 
     private LogFileGroup(
             List<LogFile> files,
             Pattern filePattern,
             Map<String, LogFile> fileHashToLogFile,
             boolean isUsingHardlinks,
+            Instant lastProcessed,
             Optional<Long> maxBytes
     ) {
         this.logFiles = files;
         this.filePattern = filePattern;
         this.fileHashToLogFile = fileHashToLogFile;
         this.isUsingHardlinks = isUsingHardlinks;
+        this.lastProcessed = lastProcessed;
         this.maxBytes = maxBytes;
     }
 
@@ -56,13 +80,13 @@ public final class LogFileGroup {
      * Create a list of Logfiles that are sorted based on lastModified time.
      *
      * @param componentLogConfiguration component log configuration
-     * @param lastUpdated               the saved updated time of the last uploaded log of a component.
+     * @param lastProcessed               the saved updated time of the last uploaded log of a component.
      * @param workDir                   component work directory
      * @return list of logFile.
      * @throws InvalidLogGroupException the exception if this is not a valid directory.
      */
     public static LogFileGroup create(ComponentLogConfiguration componentLogConfiguration,
-                                      Instant lastUpdated, Path workDir)
+                                      Instant lastProcessed, Path workDir)
             throws InvalidLogGroupException {
         URI directoryURI = componentLogConfiguration.getDirectoryPath().toUri();
         File folder = new File(directoryURI);
@@ -95,7 +119,9 @@ public final class LogFileGroup {
             logger.atDebug().kv("component", componentName)
                     .kv("directory", directoryURI)
                     .log("No component logs are found in the directory");
-            return new LogFileGroup(Collections.emptyList(), filePattern, new HashMap<>(), false, Optional.empty());
+            return new LogFileGroup(
+                    Collections.emptyList(), filePattern, new HashMap<>(), false,
+                    lastProcessed,Optional.empty());
         }
 
         boolean isUsingHardlinks = true;
@@ -103,7 +129,6 @@ public final class LogFileGroup {
 
         files = Arrays.stream(files)
                 .filter(File::isFile)
-                .filter(file -> lastUpdated.isBefore(Instant.ofEpochMilli(file.lastModified())))
                 .filter(file -> filePattern.matcher(file.getName()).find())
                 .toArray(File[]::new);
 
@@ -133,7 +158,7 @@ public final class LogFileGroup {
         });
 
         Optional<Long> maxBytes = Optional.ofNullable(componentLogConfiguration.getDiskSpaceLimit());
-        return new LogFileGroup(logFiles, filePattern, fileHashToLogFileMap, isUsingHardlinks, maxBytes);
+        return new LogFileGroup(logFiles, filePattern, fileHashToLogFileMap, isUsingHardlinks, lastProcessed, maxBytes);
     }
 
     /**
@@ -184,10 +209,6 @@ public final class LogFileGroup {
 
     public void forEach(Consumer<LogFile> callback) {
         logFiles.forEach(callback::accept);
-    }
-
-    public boolean isEmpty() {
-        return this.logFiles.isEmpty();
     }
 
     /**

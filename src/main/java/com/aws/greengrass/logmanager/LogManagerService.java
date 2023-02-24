@@ -647,7 +647,7 @@ public class LogManagerService extends PluginService {
                     LogFileGroup logFileGroup = LogFileGroup.create(componentLogConfiguration,
                             lastUploadedLogFileTimeMs, workDir);
 
-                    if (logFileGroup.isEmpty()) {
+                    if (logFileGroup.getLogFiles().isEmpty()) {
                         continue;
                     }
 

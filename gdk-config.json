@@ -7,7 +7,7 @@
         "build_system": "maven"
       },
       "publish": {
-        "bucket": "BUCKET_NAME",
+        "bucket": "BUCKETNAME",
         "region": "REGION"
       }
     }

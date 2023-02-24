@@ -8,7 +8,6 @@ package com.aws.greengrass.logmanager.services;
 import com.aws.greengrass.logmanager.model.LogFile;
 import com.aws.greengrass.logmanager.model.LogFileGroup;
 
-import java.time.Instant;
 import java.util.List;
 
 
@@ -19,13 +18,8 @@ public class DiskSpaceManagementService {
      * disk space usage limit.
      *
      * @param group - a Log File group
-     * @param lastUpdated - the timestamp of the last processed file
      */
-    public void freeDiskSpace(LogFileGroup group, Instant lastUpdated) {
-        if (lastUpdated == null || group == null) {
-            return;
-        }
-
+    public void freeDiskSpace(LogFileGroup group) {
         if (!group.hasExceededDiskUsage()) {
             return;
         }

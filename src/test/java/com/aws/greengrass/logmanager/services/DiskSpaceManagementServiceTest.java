@@ -68,7 +68,7 @@ class DiskSpaceManagementServiceTest extends GGServiceTestUtil {
 
         // When
         DiskSpaceManagementService service = new DiskSpaceManagementService();
-        service.freeDiskSpace(group, lastProcessedInstant);
+        service.freeDiskSpace(group);
 
         // Then
         assertEquals(1, group.getLogFiles().size());
@@ -88,7 +88,7 @@ class DiskSpaceManagementServiceTest extends GGServiceTestUtil {
 
         // When
         DiskSpaceManagementService service = new DiskSpaceManagementService();
-        service.freeDiskSpace(group, lastProcessedFileInstant);
+        service.freeDiskSpace(group);
 
         // Then
         assertEquals(2, group.getLogFiles().size());
@@ -108,24 +108,7 @@ class DiskSpaceManagementServiceTest extends GGServiceTestUtil {
 
         // When
         DiskSpaceManagementService service = new DiskSpaceManagementService();
-        service.freeDiskSpace(group, lastProcessedFileInstant);
-
-        // Then
-        assertEquals(1, group.getLogFiles().size());
-        assertTrue(Files.exists(activeFile.toPath()));
-    }
-
-    @Test
-    void GIVEN_log_files_WHEN_null_last_updated_THEN_checks_skipped()
-            throws IOException, InvalidLogGroupException, InterruptedException {
-        // Given
-        LogFile activeFile = arrangeLogFile("test.log", 1024);
-        Instant lastProcessedFileInstant = Instant.EPOCH;
-        LogFileGroup group = arrangeLogGroup(Pattern.compile("test.log\\w*"), lastProcessedFileInstant, 0L);
-
-        // When
-        DiskSpaceManagementService service = new DiskSpaceManagementService();
-        service.freeDiskSpace(group, null);
+        service.freeDiskSpace(group);
 
         // Then
         assertEquals(1, group.getLogFiles().size());
@@ -146,7 +129,7 @@ class DiskSpaceManagementServiceTest extends GGServiceTestUtil {
 
         // When
         DiskSpaceManagementService service = new DiskSpaceManagementService();
-        service.freeDiskSpace(group, lastProcessedFileInstant);
+        service.freeDiskSpace(group);
 
         // Then
         assertEquals(1, group.getLogFiles().size());
@@ -166,7 +149,7 @@ class DiskSpaceManagementServiceTest extends GGServiceTestUtil {
         assertTrue(Files.exists(directoryPath.resolve("test.log.2")));
 
         DiskSpaceManagementService service = new DiskSpaceManagementService();
-        service.freeDiskSpace(group, lastProcessedFileInstant);
+        service.freeDiskSpace(group);
 
         // Then
         assertEquals(directoryPath.resolve("test.log"), newActive.toPath());

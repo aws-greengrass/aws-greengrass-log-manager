@@ -490,10 +490,7 @@ public class LogManagerService extends PluginService {
             }
 
             // Delete files based on diskspace
-            this.diskSpaceManagementService.freeDiskSpace(
-                attemptLogInformation.getLogFileGroup(),
-                lastComponentUploadedLogFileInstantMap.get(componentName)
-            );
+            this.diskSpaceManagementService.freeDiskSpace(attemptLogInformation.getLogFileGroup());
 
             // Delete after upload
             ComponentLogConfiguration componentLogConfiguration = componentLogConfigurations.get(componentName);

@@ -661,7 +661,7 @@ public class LogManagerService extends PluginService {
 
                     componentMetadata.add(logFileInfo);
 
-                    logFileGroup.forEach(file -> {
+                    logFileGroup.getLogFiles().forEach(file -> {
                         long startPosition = 0;
                         String fileHash = file.hashString();
 

@@ -7,8 +7,8 @@
         "build_system": "maven"
       },
       "publish": {
-        "bucket": "gg-dev-artifacts",
-        "region": "us-west-2"
+        "bucket": "BUCKET_NAME",
+        "region": "REGION"
       }
     }
   },

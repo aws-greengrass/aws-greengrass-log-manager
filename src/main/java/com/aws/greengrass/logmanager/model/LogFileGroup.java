@@ -20,7 +20,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.Consumer;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
@@ -58,7 +57,6 @@ public final class LogFileGroup {
                 .filter(file -> this.lastProcessed.isBefore(Instant.ofEpochMilli(file.lastModified())))
                 .collect(Collectors.toList());
     }
-
 
     private LogFileGroup(
             List<LogFile> files,
@@ -205,10 +203,6 @@ public final class LogFileGroup {
         logFiles.remove(logFiles.size() - 1); // remove the active file
 
         return logFiles;
-    }
-
-    public void forEach(Consumer<LogFile> callback) {
-        logFiles.forEach(callback::accept);
     }
 
     /**

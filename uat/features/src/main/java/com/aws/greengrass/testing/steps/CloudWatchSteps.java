@@ -3,10 +3,10 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-package com.aws.greengrass;
+package com.aws.greengrass.testing.steps;
 
-import com.aws.greengrass.resources.CloudWatchLogStreamSpec;
-import com.aws.greengrass.resources.CloudWatchLogsLifecycle;
+import com.aws.greengrass.testing.resources.cloudwatch.CloudWatchLogStreamSpec;
+import com.aws.greengrass.testing.resources.cloudwatch.CloudWatchLogsLifecycle;
 import com.aws.greengrass.testing.features.WaitSteps;
 import com.aws.greengrass.testing.model.TestContext;
 import com.aws.greengrass.testing.modules.model.AWSResourcesContext;

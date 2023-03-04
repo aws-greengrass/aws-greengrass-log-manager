@@ -10,8 +10,8 @@
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
-    <artifactId>log-manager-custom-components</artifactId>
-    <groupId>com.aws.greengrass</groupId>
+    <artifactId>log-manager-artifacts</artifactId>
+    <groupId>com.aws.greengrass.testing</groupId>
     <version>1.0-SNAPSHOT</version>
     <properties>
         <maven.compiler.source>8</maven.compiler.source>
@@ -30,7 +30,7 @@
                             <goal>shade</goal>
                         </goals>
                         <configuration>
-                            <finalName>custom-components</finalName>
+                            <finalName>LocalArtifacts</finalName>
                             <transformers>
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
                                     <mainClass>com.aws.greengrass.Main</mainClass>

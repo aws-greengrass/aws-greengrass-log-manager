@@ -3,10 +3,12 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-package com.aws.greengrass.resources;
+package com.aws.greengrass.testing.resources.cloudwatch;
 
 import com.aws.greengrass.testing.api.model.TestingModel;
 import com.aws.greengrass.testing.resources.AWSResources;
+import com.aws.greengrass.testing.resources.cloudwatch.CloudWatchLogStream;
+import com.aws.greengrass.testing.resources.cloudwatch.CloudWatchLogStreamSpec;
 import com.aws.greengrass.testing.resources.ResourceSpec;
 import org.immutables.value.Value;
 import software.amazon.awssdk.services.cloudwatchlogs.CloudWatchLogsClient;

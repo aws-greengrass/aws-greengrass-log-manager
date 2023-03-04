@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-package com.aws.greengrass.resources;
+package com.aws.greengrass.testing.resources.cloudwatch;
 
 import com.aws.greengrass.testing.modules.AbstractAWSResourceModule;
 import com.aws.greengrass.testing.modules.model.AWSResourcesContext;

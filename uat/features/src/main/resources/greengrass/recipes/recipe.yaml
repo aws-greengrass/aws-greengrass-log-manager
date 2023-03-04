@@ -1,0 +1,13 @@
+---
+RecipeFormatVersion: '2020-01-25'
+ComponentName: 'aws.greengrass.LogManager'
+ComponentDescription: AWS Greengrass Log Manager
+ComponentPublisher: AWS
+ComponentVersion: '2.4.0'
+ComponentType: aws.greengrass.plugin
+Manifests:
+  - Artifacts:
+      - URI: "classpath:/com/aws/greengrass/testing/artifacts/aws.greengrass.LogManager.jar"
+        Permission:
+          Read: ALL
+          Execute: ALL

@@ -20,10 +20,10 @@ ComponentConfiguration:
     "TargetLogFilePath": ""
 Manifests:
   - Artifacts:
-      - URI: classpath:/local-store/artifacts/custom-components.jar
+      - URI: classpath:/local-store/artifacts/LocalArtifacts.jar
     Lifecycle:
       Run: >-
-        java -Dlog.level=INFO -DcomponentName="logGenerator" -jar {artifacts:path}/custom-components.jar 
+        java -Dlog.level=INFO -DcomponentName="logGenerator" -jar {artifacts:path}/LocalArtifacts.jar 
         "{configuration:/LogFileName}" "{configuration:/LogFileExtension}" 
         "{configuration:/FileSize}" "{configuration:/FileSizeUnit}" 
         "{configuration:/LogWriteFrequencySeconds}" 

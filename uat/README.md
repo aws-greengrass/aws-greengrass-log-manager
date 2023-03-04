@@ -39,7 +39,7 @@ curl -s https://d2s8p88vqu9w66.cloudfront.net/releases/greengrass-nucleus-latest
 Execute the UATs by running the following command from the root of the project.
 
 ```
-sudo java -Dggc.archive=<path-to-nucleus-zip> -Dtest.log.path=<path-to-test-results-folder> -Dtags=LogManager -jar uat/target/greengrass-log-manager-uat-artifact.jar
+sudo java -Dggc.archive=<path-to-nucleus-zip> -Dtest.log.path=<path-to-test-results-folder> -Dtags=LogManager -jar uat/features/target/log-manager-uats.jar
 ```
 
 Command arguments:

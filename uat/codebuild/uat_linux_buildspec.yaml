@@ -10,11 +10,11 @@ phases:
       java: corretto11
   build:
     commands:
-      - mvn -U -ntp clean verify -f uat/pom.xml
       - mvn -U -ntp verify -DskipTests=true
+      - mvn -U -ntp clean verify -f uat/pom.xml
       - java -Dggc.archive=./target/aws.greengrass.nucleus.zip
         -Dtags=smoke -Dggc.install.root=$CODEBUILD_SRC_DIR -Dggc.log.level=INFO -Daws.region=us-west-2
-        -jar uat/testing-features/target/greengrass-log-manager-testing-features
+        -jar uat/features/target/log-manager-uats
 
 artifacts:
   files:

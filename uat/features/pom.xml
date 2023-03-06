@@ -79,6 +79,26 @@
     <build>
         <plugins>
             <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-antrun-plugin</artifactId>
+                <version>3.0.0</version>
+                <executions>
+                    <execution>
+                        <id>copy-artifact-to-classpath</id>
+                        <phase>process-classes</phase>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                        <configuration>
+                            <target name="copy component under test artifact">
+                                <copy file="../../target/LogManager.jar"
+                                      tofile="${project.basedir}/target/classes/greengrass/artifacts/aws.greengrass.LogManager.jar"/>
+                            </target>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
                 <artifactId>maven-resources-plugin</artifactId>
                 <version>2.6</version>
                 <executions>
@@ -110,24 +130,6 @@
                                     <directory>${basedir}/../../uat/artifacts/target/</directory>
                                     <includes>
                                         <include>LocalArtifacts.jar</include>
-                                    </includes>
-                                </resource>
-                            </resources>
-                        </configuration>
-                    </execution>
-                    <execution>
-                        <id>copy-component-artifact</id>
-                        <phase>process-classes</phase>
-                        <goals>
-                            <goal>copy-resources</goal>
-                        </goals>
-                        <configuration>
-                            <outputDirectory>${project.basedir}/target/classes/greengrass/artifacts/</outputDirectory>
-                            <resources>
-                                <resource>
-                                    <directory>../../target/</directory>
-                                    <includes>
-                                        <include>LogManager.jar</include>
                                     </includes>
                                 </resource>
                             </resources>

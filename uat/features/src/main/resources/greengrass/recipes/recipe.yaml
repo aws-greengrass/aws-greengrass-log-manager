@@ -7,7 +7,7 @@ ComponentVersion: '2.4.0'
 ComponentType: aws.greengrass.plugin
 Manifests:
   - Artifacts:
-      - URI: "classpath:/com/aws/greengrass/testing/artifacts/aws.greengrass.LogManager.jar"
+      - URI: "classpath:/greengrass/artifacts/aws.greengrass.LogManager.jar"
         Permission:
           Read: ALL
           Execute: ALL

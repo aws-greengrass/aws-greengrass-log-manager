@@ -85,15 +85,14 @@
                 <executions>
                     <execution>
                         <id>copy-artifact-to-classpath</id>
-                        <phase>package</phase>
+                        <phase>process-classes</phase>
                         <goals>
                             <goal>run</goal>
                         </goals>
                         <configuration>
-                            <skip>${skipTests}</skip>
-                            <target name="copy only uat jar">
-                                <copy file="${project.basedir}/target/${project.artifactId}-${project.version}.jar"
-                                      tofile="${project.basedir}/target/classes/greengrass/artifacts/componentArtifact.jar"/>
+                            <target name="copy component under test artifact">
+                                <copy file="../../target/LogManager.jar"
+                                      tofile="${project.basedir}/target/classes/greengrass/artifacts/aws.greengrass.LogManager.jar"/>
                             </target>
                         </configuration>
                     </execution>
@@ -155,10 +154,6 @@
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
                                     <mainClass>com.aws.greengrass.testing.launcher.TestLauncher</mainClass>
-                                </transformer>
-                                <transformer implementation="org.apache.maven.plugins.shade.resource.IncludeResourceTransformer">
-                                    <resource>greengrass/artifacts/componentArtifact.jar</resource>
-                                    <file>${project.basedir}/target/classes/greengrass/artifacts/componentArtifact.jar</file>
                                 </transformer>
                             </transformers>
                         </configuration>

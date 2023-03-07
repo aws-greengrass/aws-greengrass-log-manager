@@ -32,7 +32,7 @@ Feature: Greengrass V2 LogManager
     CloudWatch
         Given I create a Greengrass deployment with components
             | aws.greengrass.Cli        | LATEST |
-            | aws.greengrass.LogManager | LATEST |
+            | aws.greengrass.LogManager |  classpath:/greengrass/recipes/recipe.yaml |
         When I update my Greengrass deployment configuration, setting the component aws.greengrass.LogManager configuration to:
         """
         {
@@ -66,7 +66,7 @@ Feature: Greengrass V2 LogManager
     Scenario: LogManager-1-T1-b: As a customer I can configure the logs uploader component using a componentLogsConfigurationMap and logs are uploaded to CloudWatch
         Given I create a Greengrass deployment with components
             | aws.greengrass.Cli        | LATEST |
-            | aws.greengrass.LogManager     | LATEST |
+            | aws.greengrass.LogManager |  classpath:/greengrass/recipes/recipe.yaml |
         When I update my Greengrass deployment configuration, setting the component aws.greengrass.LogManager configuration to:
         """
         {
@@ -100,7 +100,7 @@ Feature: Greengrass V2 LogManager
     Scenario: LogManager-1-T2: As a customer I can configure the logs uploader to delete log files after all logs from the file have been uploaded to CloudWatch
         Given I create a Greengrass deployment with components
             | aws.greengrass.Cli        | LATEST |
-            | aws.greengrass.LogManager | LATEST |
+            | aws.greengrass.LogManager |  classpath:/greengrass/recipes/recipe.yaml |
         And I update my Greengrass deployment configuration, setting the component aws.greengrass.LogManager configuration to:
          """
         {
@@ -136,7 +136,7 @@ Feature: Greengrass V2 LogManager
         Given 10 temporary rotated log files for component UserComponentB have been created
         Given I create a Greengrass deployment with components
             | aws.greengrass.Cli        | LATEST |
-            | aws.greengrass.LogManager | LATEST |
+            | aws.greengrass.LogManager |  classpath:/greengrass/recipes/recipe.yaml |
         When I update my Greengrass deployment configuration, setting the component aws.greengrass.LogManager configuration to:
         """
         {
@@ -170,7 +170,7 @@ Feature: Greengrass V2 LogManager
 
     Scenario: LogManager-1-T4: As a developer, logs uploader will handle network interruptions gracefully and upload logs from the last uploaded log after network resumes
         Given I create a Greengrass deployment with components
-            | aws.greengrass.LogManager | LATEST |
+            | aws.greengrass.LogManager |  classpath:/greengrass/recipes/recipe.yaml |
         And I deploy the Greengrass deployment configuration
         Then the Greengrass deployment is COMPLETED on the device after 4 minutes
         When device network connectivity is offline

@@ -114,9 +114,6 @@
                                 <resource>
                                     <directory>${basedir}/../../uat/custom-components/target/classes/recipes</directory>
                                 </resource>
-                                <resource>
-                                    <directory>${basedir}/../../uat/testing-features/target/classes/greengrass/recipes</directory>
-                                </resource>
                             </resources>
                         </configuration>
                     </execution>

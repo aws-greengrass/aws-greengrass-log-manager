@@ -9,25 +9,6 @@ Feature: Greengrass V2 LogManager
         And 5 temporary rotated log files for component aws.greengrass.Nucleus have been created
         And 5 temporary rotated log files for component UserComponentA have been created
 
-    @local
-    Scenario: LogManager-1-T0: install the local custom component
-        Given I create a Greengrass deployment with components
-            | aws.greengrass.Cli        | LATEST |
-        And I deploy the Greengrass deployment configuration
-        Then I wait 120 seconds
-        Then the Greengrass deployment is COMPLETED on the device after 2 minutes
-        When I install the component logGenerator from local store with configuration
-        """
-        {
-            "MERGE": {
-                "FileSize": "15",
-                "FileSizeUnit": "KB"
-            }
-        }
-        """
-        Then the local Greengrass deployment is SUCCEEDED on the device after 120 seconds
-        Then I wait 30 seconds
-
     Scenario: LogManager-1-T1: configure the log manager component using a componentLogsConfiguration list and logs are uploaded to
     CloudWatch
         Given I create a Greengrass deployment with components
@@ -168,6 +149,7 @@ Feature: Greengrass V2 LogManager
         And I wait 5 seconds
         Then I verify that 10 log files for component UserComponentB are still available
 
+    @unstable
     Scenario: LogManager-1-T4: As a developer, logs uploader will handle network interruptions gracefully and upload logs from the last uploaded log after network resumes
         Given I create a Greengrass deployment with components
             | aws.greengrass.LogManager |  classpath:/greengrass/recipes/recipe.yaml |

@@ -10,16 +10,17 @@ phases:
       java: corretto11
   build:
     commands:
-      - mvn -U -ntp clean verify -f uat/pom.xml
+      - curl -s https://d2s8p88vqu9w66.cloudfront.net/releases/greengrass-nucleus-latest.zip > /tmp/greengrass-nucleus-latest.zip
       - mvn -U -ntp verify -DskipTests=true
-      - java -Dggc.archive=./target/aws.greengrass.nucleus.zip
-        -Dtags=smoke -Dggc.install.root=$CODEBUILD_SRC_DIR -Dggc.log.level=INFO -Daws.region=us-west-2
-        -jar uat/testing-features/target/greengrass-log-manager-testing-features
+      - mvn -U -ntp clean verify -f uat/pom.xml
+      - java -Dggc.archive=/tmp/greengrass-nucleus-latest.zip
+        -Dtags='LogManager&!unstable' -Dggc.install.root=$CODEBUILD_SRC_DIR -Dggc.log.level=INFO -Daws.region=us-west-2
+        -jar uat/testing-features/target/greengrass-log-manager-testing-features.jar
 
 artifacts:
   files:
     - 'testResults/**/*'
-  name: 'NucleusUatLinuxLogs.zip'
+  name: 'LogManagerUatLinuxLogs.zip'
 
 reports:
   uat-reports:

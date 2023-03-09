@@ -11,6 +11,7 @@ import com.aws.greengrass.testing.platform.Platform;
 import com.google.inject.Inject;
 import io.cucumber.guice.ScenarioScoped;
 import io.cucumber.java.en.And;
+import io.cucumber.java.en.Given;
 import io.cucumber.java.en.Then;
 import org.apache.commons.text.RandomStringGenerator;
 import org.apache.logging.log4j.LogManager;
@@ -102,6 +103,13 @@ public class FileSteps {
             createFileAndWriteData(logsDirectory, fileName, false);
         }
         scenarioContext.put(componentName + ACTIVEFILE, logsDirectory.resolve(fileName).toAbsolutePath().toString());
+    }
+
+    @Given("A log directory for component {word}")
+    public void arrangeLogDirectory(String componentName)  {
+        Path logsDirectory = testContext.installRoot().resolve("logs");
+        LOGGER.info("Log directory for component {} is {}", componentName, logsDirectory);
+        scenarioContext.put(componentName + "LogDirectory", logsDirectory.toString());
     }
 
     private void createFileAndWriteData(Path tempDirectoryPath, String fileNamePrefix, boolean isTemp)

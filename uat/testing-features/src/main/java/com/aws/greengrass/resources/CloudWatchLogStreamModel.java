@@ -33,7 +33,7 @@ public interface CloudWatchLogStreamModel extends AWSResource<CloudWatchLogsClie
         try {
             client.deleteLogStream(request);
         } catch (ResourceNotFoundException notFound) {
-            logger.atInfo().kv("streamName", streamName()).cause(notFound).log("Failed to delete stream");
+            logger.atDebug().kv("streamName", streamName()).cause(notFound).log("Failed to delete stream");
         }
     }
 }

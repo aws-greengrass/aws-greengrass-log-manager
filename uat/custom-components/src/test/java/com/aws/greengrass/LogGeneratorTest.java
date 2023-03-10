@@ -22,7 +22,7 @@ public class LogGeneratorTest {
     String totalLogNumbers = "50";
     String fileSizeBytes = "1024";
     String fileSizeUnit = "KB";
-    String componentName = "com.aws.greengrass.artifacts.logGenerator";
+    String componentName = "com.aws.greengrass.artifacts.LogGenerator";
     String activeFileName = logFileName + "." + logFileExtention;
 
     @Test

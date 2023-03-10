@@ -11,6 +11,7 @@ import com.aws.greengrass.testing.platform.Platform;
 import com.google.inject.Inject;
 import io.cucumber.guice.ScenarioScoped;
 import io.cucumber.java.en.And;
+import io.cucumber.java.en.Given;
 import io.cucumber.java.en.Then;
 import org.apache.commons.text.RandomStringGenerator;
 import org.apache.logging.log4j.LogManager;
@@ -69,11 +70,7 @@ public class FileSteps {
     }
 
     private static List<File> getComponentLogFiles(String componentName, Path logsDirectory) {
-        return Arrays.stream(logsDirectory.toFile().listFiles())
-                .filter(File::isFile)
-                .filter(file -> file.getName().startsWith(componentName))
-                .sorted(Comparator.comparingLong(File::lastModified))
-                .collect(Collectors.toList());
+        return Arrays.stream(logsDirectory.toFile().listFiles()).filter(File::isFile).filter(file -> file.getName().startsWith(componentName)).sorted(Comparator.comparingLong(File::lastModified)).collect(Collectors.toList());
     }
 
     /**
@@ -104,8 +101,17 @@ public class FileSteps {
         scenarioContext.put(componentName + ACTIVEFILE, logsDirectory.resolve(fileName).toAbsolutePath().toString());
     }
 
-    private void createFileAndWriteData(Path tempDirectoryPath, String fileNamePrefix, boolean isTemp)
-            throws IOException {
+    @Given("I create a log directory for component {word}")
+    public void arrangeLogDirectory(String componentName) {
+        Path logsDirectory = testContext.installRoot().resolve("logs");
+        File componentLogsDirectory = new File(logsDirectory.toFile().getAbsolutePath() + "/" + UUID.randomUUID());
+        componentLogsDirectory.mkdirs();
+        LOGGER.info("Log directory for component {} is {}", componentName, componentLogsDirectory.getAbsolutePath());
+        scenarioContext.put(componentName + "LogDirectory", componentLogsDirectory.getAbsolutePath());
+    }
+
+    private void createFileAndWriteData(Path tempDirectoryPath, String fileNamePrefix, boolean isTemp) throws
+            IOException {
         Path filePath;
         if (isTemp) {
             filePath = Files.createTempFile(tempDirectoryPath, fileNamePrefix, "");

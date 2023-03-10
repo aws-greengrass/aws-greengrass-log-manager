@@ -1,0 +1,28 @@
+#
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+
+---
+RecipeFormatVersion: '2020-01-25'
+ComponentName: LogGenerator
+ComponentVersion: '0.0.0'
+ComponentDescription: Component to generate log files with random log messages. Log files rotate with different name.
+ComponentPublisher: AWS
+ComponentConfiguration:
+  DefaultConfiguration:
+    "LogFileName": "testlogs"
+    "FileSize": 5
+    "FileSizeUnit": "KB"
+    "WriteFrequencyMs": 100
+    "NumberOfLogLines": 20
+    "LogsDirectory": ""
+Manifests:
+  - Artifacts:
+      - URI: classpath:/local-store/artifacts/custom-components.jar
+    Lifecycle:
+      Run: >-
+        java -Dlog.level=INFO -DcomponentName="LogGenerator" -jar {artifacts:path}/custom-components.jar 
+        "{configuration:/LogFileName}" "{configuration:/FileSize}" "{configuration:/FileSizeUnit}" 
+        "{configuration:/WriteFrequencyMs}" 
+        "{configuration:/NumberOfLogLines}" "{configuration:/LogsDirectory}"

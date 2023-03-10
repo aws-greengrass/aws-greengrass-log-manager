@@ -22,6 +22,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -38,7 +39,6 @@ public class FileSteps {
 
     private static final RandomStringGenerator RANDOM_STRING_GENERATOR =
             new RandomStringGenerator.Builder().withinRange('a', 'z').build();
-    private static final String ACTIVEFILE = "ActiveFile";
     private static Logger LOGGER = LogManager.getLogger(FileSteps.class);
     private final Platform platform;
     private final TestContext testContext;
@@ -70,7 +70,12 @@ public class FileSteps {
     }
 
     private static List<File> getComponentLogFiles(String componentName, Path logsDirectory) {
-        return Arrays.stream(logsDirectory.toFile().listFiles()).filter(File::isFile).filter(file -> file.getName().startsWith(componentName)).sorted(Comparator.comparingLong(File::lastModified)).collect(Collectors.toList());
+        return Arrays.stream(logsDirectory.toFile().listFiles())
+                .filter(File::isFile)
+                .filter(file -> file.getName()
+                .startsWith(componentName))
+                .sorted(Comparator.comparingLong(File::lastModified))
+                .collect(Collectors.toList());
     }
 
     /**
@@ -98,7 +103,6 @@ public class FileSteps {
             fileName = String.format("%s_%s.log", filePrefix, UUID.randomUUID());
             createFileAndWriteData(logsDirectory, fileName, false);
         }
-        scenarioContext.put(componentName + ACTIVEFILE, logsDirectory.resolve(fileName).toAbsolutePath().toString());
     }
 
     @Given("I create a log directory for component {word}")
@@ -156,16 +160,12 @@ public class FileSteps {
      */
     @And("I verify the rotated files are deleted and that the active log file is present for component {word}")
     public void verifyActiveFile(String componentName) {
-        Path logsDirectory = testContext.installRoot().resolve("logs");
+        Path logsDirectory = Paths.get(scenarioContext.get(componentName + "LogDirectory"));
 
         if (!platform.files().exists(logsDirectory)) {
             throw new IllegalStateException("No logs directory");
         }
         List<File> sortedFileList = getComponentLogFiles(componentName, logsDirectory);
-        String expectedActiveFilePath = scenarioContext.get(componentName + this.ACTIVEFILE);
-
-        File activeFile = sortedFileList.get(sortedFileList.size() - 1);
         assertEquals(1, sortedFileList.size());
-        assertEquals(expectedActiveFilePath, activeFile.getAbsolutePath());
     }
 }

@@ -67,7 +67,7 @@ Feature: Greengrass V2 LogManager
                 "logsUploaderConfiguration": {
                      "componentLogsConfigurationMap": {
                         "UserComponentX": {
-                            "logFileRegex": "UserComponentX\\w+.log",
+                            "logFileRegex": "UserComponentX\\w*.log",
                             "logFileDirectoryPath": "${UserComponentXLogDirectory}",
                             "deleteLogFileAfterCloudUpload": "true"
                         }
@@ -85,15 +85,18 @@ Feature: Greengrass V2 LogManager
         {
            "MERGE":{
                 "LogFileName": "UserComponentX",
-                "WriteFrequencyMs": "1000",
+                "WriteFrequencyMs": "250",
+                "FileSize": "5",
+                "FileSizeUnit": "KB",
                 "LogsDirectory": "${UserComponentXLogDirectory}",
-                "NumberOfLogLines": "20"
+                "NumberOfLogLines": "100"
            }
         }
         """
         And the local Greengrass deployment is SUCCEEDED on the device after 60 seconds
+        Then I verify that it created a log group of type UserComponent for component UserComponentX, with streams within 60 seconds in CloudWatch
+        And I verify 100 logs for UserComponentX of type UserComponent have been uploaded to Cloudwatch within 120 seconds
         And I verify the rotated files are deleted and that the active log file is present for component UserComponentX
-        And I verify 20 logs for UserComponentX of type UserComponent have been uploaded to Cloudwatch within 80 seconds
 
     Scenario: LogManager-1-T3: As a customer I can configure the logs uploader to delete log oldest log files to keep the
         disk space limit configured by the customer
@@ -136,7 +139,7 @@ Feature: Greengrass V2 LogManager
 
     @network
     Scenario: LogManager-1-T4: As a developer, logs uploader will handle network interruptions gracefully and upload logs from the last uploaded log after network resumes
-        Given I create a log directory for component UserComponentX
+        Given I create a log directory for component UserComponentY
         And I create a Greengrass deployment with components
             | aws.greengrass.Cli        | LATEST |
             | aws.greengrass.LogManager |  classpath:/greengrass/recipes/recipe.yaml |
@@ -147,8 +150,8 @@ Feature: Greengrass V2 LogManager
                 "logsUploaderConfiguration": {
                      "componentLogsConfigurationMap": {
                         "UserComponentY": {
-                            "logFileRegex": "UserComponentY\\w+.log",
-                            "logFileDirectoryPath": "${UserComponentBLogDirectory}",
+                            "logFileRegex": "UserComponentY\\w*.log",
+                            "logFileDirectoryPath": "${UserComponentYLogDirectory}"
                         }
                     },
                     "systemLogsConfiguration": {
@@ -169,7 +172,7 @@ Feature: Greengrass V2 LogManager
         {
            "MERGE":{
                 "LogFileName": "UserComponentY",
-                "WriteFrequencyMs": "1000",
+                "WriteFrequencyMs": "500",
                 "LogsDirectory": "${UserComponentYLogDirectory}",
                 "NumberOfLogLines": "20"
            }

@@ -129,6 +129,8 @@ public class CloudWatchSteps {
 
         if (!result) {
             // Print all the cloudwatch logs it fetched, so we can debug what failed to get uploaded.
+            LOGGER.error("Failed to verify {} logs were uploaded to cloudwatch. Below are the logs in CW",
+                    numberOfLogLines);
             this.lastReceivedCloudWatchEvents.forEach(e -> LOGGER.info(e.message()));
 
             throw new Exception(String.format("Failed to verify that %d logs were uploaded to CloudWatch",
@@ -144,9 +146,6 @@ public class CloudWatchSteps {
                 .logStreamName(getLogStreamName())
                 .limit(numberOfLogLines) // limit of 10000 logs (this method could be optimized
                 .build();
-
-        LOGGER.info("Verifying {} logs present on group {} stream {}", numberOfLogLines, request.logGroupName(),
-                request.logStreamName());
 
         try {
             // The OTF watch steps check evey 100ms this to avoids hammering the api. Ideally OTF

@@ -83,18 +83,6 @@ public class CloudWatchSteps {
         return String.format("/aws/greengrass/%s/%s/%s", componentType, region, componentName);
     }
 
-    @Then("I delete the log group of type {word} for component {word} if it exists")
-    public void deleteLogGroup(String componentType, String componentName) {
-        String logGroupName = getLogGroupName(componentType, componentName);
-        DeleteLogGroupRequest request = DeleteLogGroupRequest.builder().logGroupName(logGroupName).build();
-
-        try {
-            this.cwClient.deleteLogGroup(request);
-        } catch (ResourceNotFoundException notFound) {
-            LOGGER.debug("ResourceNotFound: Failed to delete log group {}", logGroupName);
-        }
-    }
-
     /**
      * Verifies if a group with the name /aws/greengrass/[componentType]/[region]/[componentName] was created
      * in cloudwatch and additionally verifies if there is a stream named /[yyyy\/MM\/dd]/thing/[thingName] that

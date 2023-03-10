@@ -106,7 +106,7 @@ public class CloudWatchSteps {
      * @throws InterruptedException {@link InterruptedException}
      */
 
-    @Then("I verify that it created a log group of type type {word} for component {word}, with streams within "
+    @Then("I verify that it created a log group of type {word} for component {word}, with streams within "
             + "{int} seconds in CloudWatch")
     public void verifyCloudWatchGroupWithStreams(String componentType, String componentName, int timeout) throws
             Exception {

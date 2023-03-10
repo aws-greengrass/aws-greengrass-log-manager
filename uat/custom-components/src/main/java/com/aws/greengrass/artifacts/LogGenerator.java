@@ -56,7 +56,7 @@ public class LogGenerator implements Consumer<String[]> {
     }
 
     private void generateLogs() throws InterruptedException {
-        Logger logger = configureLogger(logDirectory, logFileName, fileSizeBytes);
+        Logger logger = configureLogger();
 
         for (int i = 1; i <= numberOfLogs; i++) {
             String logLine = String.format("(seq: %d, name: %s)", i, logFileName);
@@ -65,20 +65,20 @@ public class LogGenerator implements Consumer<String[]> {
         }
     }
 
-    private Logger configureLogger(String currentPath, String fileName, int fileSizeBytes) {
+    private Logger configureLogger() {
         LoggerContext loggerContext = new LoggerContext();
         Logger logger = loggerContext.getLogger("LogGenerator");
 
         // appender: output destination
         RollingFileAppender<ILoggingEvent> appender = new RollingFileAppender<>();
-        appender.setFile(currentPath + "/" + fileName + ".log");
+        appender.setFile(logDirectory + "/" + logFileName + ".log");
         appender.setAppend(true);
         appender.setContext(loggerContext);
 
         // rolling policy
         SizeAndTimeBasedRollingPolicy rollingPolicy = new SizeAndTimeBasedRollingPolicy<>();
         rollingPolicy.setMaxFileSize(new FileSize(fileSizeBytes));
-        rollingPolicy.setFileNamePattern(currentPath + "/" + fileName + rotationNamePattern + ".log");
+        rollingPolicy.setFileNamePattern(logDirectory + "/" + logFileName + rotationNamePattern + ".log");
         rollingPolicy.setParent(appender);
         rollingPolicy.setContext(loggerContext);
         appender.setRollingPolicy(rollingPolicy);

@@ -9,7 +9,7 @@ Feature: Greengrass V2 LogManager
 
     Scenario: LogManager-1-T1: configure the log manager component using a componentLogsConfiguration list and logs are uploaded to
     CloudWatch
-        Given A log directory for component UserComponentM
+        Given I create a log directory for component UserComponentM 
         And I create a Greengrass deployment with components
             | aws.greengrass.Cli        | LATEST                                    |
             | aws.greengrass.LogManager | classpath:/greengrass/recipes/recipe.yaml |

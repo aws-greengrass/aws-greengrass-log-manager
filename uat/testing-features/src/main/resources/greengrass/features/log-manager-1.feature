@@ -19,7 +19,7 @@ Feature: Greengrass V2 LogManager
                 "logsUploaderConfiguration": {
                      "componentLogsConfigurationMap": {
                         "UserComponentM": {
-                            "logFileRegex": "UserComponentM\\w*.log",
+                            "logFileRegex": "UserComponentM(.*).log",
                             "logFileDirectoryPath": "${UserComponentMLogDirectory}",
                             "deleteLogFileAfterCloudUpload": "false"
                         }
@@ -67,7 +67,7 @@ Feature: Greengrass V2 LogManager
                 "logsUploaderConfiguration": {
                      "componentLogsConfigurationMap": {
                         "UserComponentX": {
-                            "logFileRegex": "UserComponentX\\w*.log",
+                            "logFileRegex": "UserComponentX(.*).log",
                             "logFileDirectoryPath": "${UserComponentXLogDirectory}",
                             "deleteLogFileAfterCloudUpload": "true"
                         }
@@ -150,7 +150,7 @@ Feature: Greengrass V2 LogManager
                 "logsUploaderConfiguration": {
                      "componentLogsConfigurationMap": {
                         "UserComponentY": {
-                            "logFileRegex": "UserComponentY\\w*.log",
+                            "logFileRegex": "UserComponentY(.*).log",
                             "logFileDirectoryPath": "${UserComponentYLogDirectory}"
                         }
                     },

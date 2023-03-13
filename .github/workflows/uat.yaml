@@ -5,11 +5,13 @@
 name: OTF UATS
 
 on:
+  push:
+    branches: 'main'
   pull_request:
     branches: 'main'
 
 env:
-  AWS_REGION : "us-west-2"
+  AWS_REGION: "us-west-2"
   CODE_BUILD_PROJECT_LINUX: "LogManagerUatCodeBuildLinux"
   AWS_ROLE_TO_ASSUME: "arn:aws:iam::686385081908:role/aws-greengrass-log-manager-codebuild-uat-role-linux"
 

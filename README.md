@@ -1,4 +1,7 @@
-## Log Manager (with Map config)
+## Log Manager
+![CI](https://github.com/aws-greengrass/aws-greengrass-log-manager/actions/workflows/maven.yml/badge.svg?branch=main)
+![UAT](https://github.com/aws-greengrass/aws-greengrass-log-manager/actions/workflows/uat.yaml/badge.svg?branch=main)
+
 
 The log manager component collects and optionally uploads logs from Greengrass core devices to Amazon CloudWatch Logs. 
 You can configure system logs and logs for each component. Log Manager is an optional internal Greengrass service that runs in the same JVM as the 

@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-package com.aws.greengrass;
+package com.aws.greengrass.steps;
 
 import com.aws.greengrass.resources.CloudWatchLogStreamSpec;
 import com.aws.greengrass.resources.CloudWatchLogsLifecycle;

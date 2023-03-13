@@ -105,13 +105,13 @@ public class FileSteps {
         }
     }
 
-    @Given("I create a log directory for component {word}")
-    public void arrangeLogDirectory(String componentName) {
+    @Given("I create a log directory for component called {word}")
+    public void arrangeLogDirectory(String directoryAlias) {
         Path logsDirectory = testContext.installRoot().resolve("logs");
         File componentLogsDirectory = new File(logsDirectory.toFile().getAbsolutePath() + "/" + UUID.randomUUID());
         componentLogsDirectory.mkdirs();
-        LOGGER.info("Log directory for component {} is {}", componentName, componentLogsDirectory.getAbsolutePath());
-        scenarioContext.put(componentName + "LogDirectory", componentLogsDirectory.getAbsolutePath());
+        LOGGER.info("Log directory alias {} referencing {}", directoryAlias, componentLogsDirectory.getAbsolutePath());
+        scenarioContext.put(directoryAlias, componentLogsDirectory.getAbsolutePath());
     }
 
     private void createFileAndWriteData(Path tempDirectoryPath, String fileNamePrefix, boolean isTemp) throws
@@ -158,9 +158,9 @@ public class FileSteps {
      *
      * @param componentName name of the component.
      */
-    @And("I verify the rotated files are deleted and that the active log file is present for component {word}")
-    public void verifyActiveFile(String componentName) {
-        Path logsDirectory = Paths.get(scenarioContext.get(componentName + "LogDirectory"));
+    @And("I verify the rotated files are deleted and that the active log file is present for component {word} on directory {word}")
+    public void verifyActiveFile(String componentName, String directoryAlias) {
+        Path logsDirectory = Paths.get(scenarioContext.get(directoryAlias));
 
         if (!platform.files().exists(logsDirectory)) {
             throw new IllegalStateException("No logs directory");

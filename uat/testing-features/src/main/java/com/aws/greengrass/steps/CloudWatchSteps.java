@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-package com.aws.greengrass;
+package com.aws.greengrass.steps;
 
 import com.aws.greengrass.resources.CloudWatchLogStreamSpec;
 import com.aws.greengrass.resources.CloudWatchLogsLifecycle;
@@ -83,18 +83,6 @@ public class CloudWatchSteps {
         return String.format("/aws/greengrass/%s/%s/%s", componentType, region, componentName);
     }
 
-    @Then("I delete the log group of type {word} for component {word} if it exists")
-    public void deleteLogGroup(String componentType, String componentName) {
-        String logGroupName = getLogGroupName(componentType, componentName);
-        DeleteLogGroupRequest request = DeleteLogGroupRequest.builder().logGroupName(logGroupName).build();
-
-        try {
-            this.cwClient.deleteLogGroup(request);
-        } catch (ResourceNotFoundException notFound) {
-            LOGGER.debug("ResourceNotFound: Failed to delete log group {}", logGroupName);
-        }
-    }
-
     /**
      * Verifies if a group with the name /aws/greengrass/[componentType]/[region]/[componentName] was created
      * in cloudwatch and additionally verifies if there is a stream named /[yyyy\/MM\/dd]/thing/[thingName] that
@@ -141,6 +129,8 @@ public class CloudWatchSteps {
 
         if (!result) {
             // Print all the cloudwatch logs it fetched, so we can debug what failed to get uploaded.
+            LOGGER.error("Failed to verify {} logs were uploaded to cloudwatch. Below are the logs in CW",
+                    numberOfLogLines);
             this.lastReceivedCloudWatchEvents.forEach(e -> LOGGER.info(e.message()));
 
             throw new Exception(String.format("Failed to verify that %d logs were uploaded to CloudWatch",
@@ -156,9 +146,6 @@ public class CloudWatchSteps {
                 .logStreamName(getLogStreamName())
                 .limit(numberOfLogLines) // limit of 10000 logs (this method could be optimized
                 .build();
-
-        LOGGER.info("Verifying {} logs present on group {} stream {}", numberOfLogLines, request.logGroupName(),
-                request.logStreamName());
 
         try {
             // The OTF watch steps check evey 100ms this to avoids hammering the api. Ideally OTF

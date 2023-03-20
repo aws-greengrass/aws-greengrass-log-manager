@@ -25,10 +25,6 @@ jobs:
         env:
           AWS_REGION: us-west-2
         run: mvn -ntp -U clean verify
-      - name: Build UATs Maven
-        env:
-          AWS_REGION: us-west-2
-        run: mvn -U -ntp clean verify -f uat/pom.xml
       - name: Upload Failed Test Report
         uses: actions/upload-artifact@v1.0.0
         if: failure()
@@ -41,6 +37,18 @@ jobs:
         with:
           name: Coverage Report
           path: target/jacoco-report
+      - name: Upload unit test coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          directory: target/jacoco-report
+          files: jacoco.xml
+          flags: unit
+      - name: Upload integration test coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          directory: target/jacoco-report/jacoco-it
+          files: jacoco.xml
+          flags: integration
       - name: Convert Jacoco unit test report to Cobertura
         run: python3 .github/scripts/cover2cover.py target/jacoco-report/jacoco.xml src/main/java > target/jacoco-report/cobertura.xml
       - name: Convert Jacoco integ test report to Cobertura

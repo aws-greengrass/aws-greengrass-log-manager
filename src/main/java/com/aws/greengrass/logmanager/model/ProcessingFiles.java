@@ -53,6 +53,10 @@ public class ProcessingFiles  {
      * @param fileHash - A file hash.
      */
     public void remove(String fileHash) {
+        if (fileHash == null) {
+            return;
+        }
+
         Node node = cache.remove(fileHash);
 
         if (node != null) {

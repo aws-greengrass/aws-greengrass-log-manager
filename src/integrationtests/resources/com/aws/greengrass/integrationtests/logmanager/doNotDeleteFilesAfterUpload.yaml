@@ -1,0 +1,17 @@
+---
+services:
+  aws.greengrass.LogManager:
+    configuration:
+      periodicUploadIntervalSec: 10
+      logsUploaderConfiguration:
+        componentLogsConfiguration:
+          - componentName: 'UserComponentA'
+            logFileRegex: '^integTestRandomLogFiles.log\w*'
+            logFileDirectoryPath: '{{logFileDirectoryPath}}'
+            deleteLogFileAfterCloudUpload: 'false'
+  main:
+    lifecycle:
+      install:
+        all: echo All installed
+    dependencies:
+      - aws.greengrass.LogManager

@@ -1,5 +1,7 @@
 package com.aws.greengrass.logmanager.model;
 
+import com.aws.greengrass.logging.api.Logger;
+import com.aws.greengrass.logging.impl.LogManager;
 import com.aws.greengrass.logmanager.LogManagerService;
 import lombok.Builder;
 import lombok.Getter;
@@ -9,6 +11,7 @@ import java.time.Instant;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -21,7 +24,7 @@ public class ProcessingFiles  {
     private final Map<String, Node> cache;
     private final int maxInactiveTimeSeconds;
     private Node mostRecentlyUsed;
-
+    private static final Logger logger = LogManager.getLogger(ProcessingFiles.class);
 
 
     /**
@@ -43,6 +46,28 @@ public class ProcessingFiles  {
         mostRecentlyUsed =  Node.builder().lastAccessed(Instant.now().toEpochMilli()).info(value).build();
         cache.put(value.getFileHash(), mostRecentlyUsed);
         evictStaleEntries();
+    }
+
+    /**
+     * Removes an entry from the cache for a provided file hash.
+     * @param fileHash - A file hash.
+     */
+    public void remove(String fileHash) {
+        Node node = cache.remove(fileHash);
+
+        if (node != null) {
+            logger.atDebug().kv("hash", fileHash).log("Evicted file from cache");
+        }
+    }
+
+    /**
+     * Removes a list of entries from the cache.
+     * @param deletedHashes - A list of file hashes to remove
+     */
+    public void remove(List<String> deletedHashes) {
+        if (deletedHashes != null) {
+            deletedHashes.forEach(this::remove);
+        }
     }
 
     /**

@@ -352,9 +352,9 @@ public class LogManagerService extends PluginService {
     private void setDiskSpaceLimit(String diskSpaceLimit, String diskSpaceLimitUnit,
                                    ComponentLogConfiguration componentLogConfiguration) {
         if (!StringUtils.isEmpty(diskSpaceLimit)) {
-             if (StringUtils.isEmpty(diskSpaceLimitUnit)) {
-                 diskSpaceLimitUnit = "KB";
-             }
+            if (StringUtils.isEmpty(diskSpaceLimitUnit)) {
+                diskSpaceLimitUnit = "KB";
+            }
             long coefficient;
             switch (diskSpaceLimitUnit) {
                 case "MB":
@@ -489,8 +489,13 @@ public class LogManagerService extends PluginService {
                 return;
             }
 
+            ProcessingFiles processingFiles = processingFilesInformation.get(componentName);
+
             // Delete files based on diskspace
-            this.diskSpaceManagementService.freeDiskSpace(attemptLogInformation.getLogFileGroup());
+            List<String> deletedHashes =
+                    this.diskSpaceManagementService.freeDiskSpace(attemptLogInformation.getLogFileGroup());
+
+            processingFiles.remove(deletedHashes); // Stop tracking files already uploaded
 
             // Delete after upload
             ComponentLogConfiguration componentLogConfiguration = componentLogConfigurations.get(componentName);
@@ -543,6 +548,13 @@ public class LogManagerService extends PluginService {
         } else {
             logger.atWarn().log("Unable to delete file with name {}", file.getName());
         }
+
+        // Stop tracking file currently processing information once deleted
+        ProcessingFiles processingFiles = processingFilesInformation.get(config.getName());
+
+        if (processingFiles != null) {
+            processingFiles.remove(file.hashString());
+        }
     }
 
     private void processCloudWatchAttemptLogInformation(Map<String, Set<LogFile>> completedLogFilePerComponent,
@@ -587,7 +599,7 @@ public class LogManagerService extends PluginService {
         processingFilesInformation
                 .putIfAbsent(componentName, new ProcessingFiles(MAX_CACHE_INACTIVE_TIME_SECONDS));
 
-        ProcessingFiles processingFiles  = processingFilesInformation.get(componentName);
+        ProcessingFiles processingFiles = processingFilesInformation.get(componentName);
         processingFiles.put(processingFileInformation);
     }
 
@@ -804,7 +816,7 @@ public class LogManagerService extends PluginService {
          * Builds a CurrentProcessingFileInformation from a map.
          *
          * @param currentProcessingFileInformationMap A map containing attributes to build an instance of
-         *                                           CurrentProcessingFileInformation
+         *                                            CurrentProcessingFileInformation
          */
         public static CurrentProcessingFileInformation convertFromMapOfObjects(
                 Map<String, Object> currentProcessingFileInformationMap) {

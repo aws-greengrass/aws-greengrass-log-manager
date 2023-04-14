@@ -5,6 +5,7 @@
 
 package com.aws.greengrass.integrationtests.logmanager;
 
+import com.aws.greengrass.config.Topics;
 import com.aws.greengrass.dependency.State;
 import com.aws.greengrass.deployment.DeviceConfiguration;
 import com.aws.greengrass.deployment.exceptions.DeviceConfigurationException;
@@ -19,6 +20,7 @@ import com.aws.greengrass.logmanager.LogManagerService;
 import com.aws.greengrass.logmanager.model.ComponentLogConfiguration;
 import com.aws.greengrass.logmanager.model.EventType;
 import com.aws.greengrass.logmanager.model.LogFileGroup;
+import com.aws.greengrass.logmanager.model.ProcessingFiles;
 import com.aws.greengrass.testcommons.testutilities.GGExtension;
 import com.aws.greengrass.util.exceptions.TLSAuthException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -67,6 +69,7 @@ import static com.aws.greengrass.integrationtests.logmanager.util.LogFileHelper.
 import static com.aws.greengrass.logging.impl.config.LogConfig.newLogConfigFromRootConfig;
 import static com.aws.greengrass.logmanager.CloudWatchAttemptLogsProcessor.DEFAULT_LOG_STREAM_NAME;
 import static com.aws.greengrass.logmanager.LogManagerService.DEFAULT_FILE_REGEX;
+import static com.aws.greengrass.logmanager.LogManagerService.PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION_V2;
 import static com.aws.greengrass.testcommons.testutilities.ExceptionLogProtector.ignoreExceptionOfType;
 import static com.aws.greengrass.testcommons.testutilities.ExceptionLogProtector.ignoreExceptionWithMessage;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -335,6 +338,82 @@ class LogManagerTest extends BaseITCase {
         LogFileGroup logFileGroup =
                 LogFileGroup.create(compLogInfo, mockInstant, workDir);
         assertEquals(1, logFileGroup.getLogFiles().size());
+    }
+
+    @Test
+    void GIVEN_filesDeletedAfterUpload_THEN_deletedFilesStopBeingTracked() throws Exception {
+        // Given
+
+        when(cloudWatchLogsClient.putLogEvents(any(PutLogEventsRequest.class)))
+                .thenReturn(PutLogEventsResponse.builder().nextSequenceToken("nextToken").build());
+
+        // Create log files for the tes
+        int numberOfFiles = 100;
+        tempDirectoryPath = Files.createTempDirectory(tempRootDir, "IntegrationTestsTemporaryLogFiles");
+        for (int i = 0; i < numberOfFiles; i++) {
+            createTempFileAndWriteData(tempDirectoryPath, "integTestRandomLogFiles.log_", "");
+        }
+
+        // When
+
+        String componentName = "UserComponentA";
+        // This configuration deletes files after upload
+        setupKernel(tempDirectoryPath, "smallPeriodicIntervalUserComponentConfig.yaml");
+
+        Runnable waitForActiveFileToBeProcessed = subscribeToActiveFileProcessed(logManagerService, 30);
+        waitForActiveFileToBeProcessed.run();
+        verify(cloudWatchLogsClient, atLeastOnce()).putLogEvents(captor.capture());
+
+        // Then
+
+        ProcessingFiles processingFiles = logManagerService.processingFilesInformation.get(componentName);
+        assertNotNull(processingFiles);
+        assertEquals(1, processingFiles.size()); // Active file not deleted
+
+        // Check runtime config gets cleared once the files have deleted
+        Topics componentTopics =
+                logManagerService.getRuntimeConfig()
+                        .lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION_V2,
+                        componentName);
+        assertEquals(1, componentTopics.size());
+    }
+
+    @Test
+    void GIVEN_filesNOTDeletedAfterUpload_THEN_filesTracked() throws Exception {
+        // Given
+
+        when(cloudWatchLogsClient.putLogEvents(any(PutLogEventsRequest.class)))
+                .thenReturn(PutLogEventsResponse.builder().nextSequenceToken("nextToken").build());
+
+        // Create log files for the tes
+        int numberOfFiles = 100;
+        tempDirectoryPath = Files.createTempDirectory(tempRootDir, "IntegrationTestsTemporaryLogFiles");
+        for (int i = 0; i < numberOfFiles; i++) {
+            createTempFileAndWriteData(tempDirectoryPath, "integTestRandomLogFiles.log_", "");
+        }
+
+        // When
+        String componentName = "UserComponentA";
+        // This configuration does NOT delete files after upload
+        setupKernel(tempDirectoryPath, "doNotDeleteFilesAfterUpload.yaml");
+
+        Runnable waitForActiveFileToBeProcessed = subscribeToActiveFileProcessed(logManagerService, 30);
+        waitForActiveFileToBeProcessed.run();
+        verify(cloudWatchLogsClient, atLeastOnce()).putLogEvents(captor.capture());
+
+        // Then
+
+        // Note we shouldn't be accessing methods like this. Refactor this tests later
+        ProcessingFiles processingFiles = logManagerService.processingFilesInformation.get(componentName);
+        assertNotNull(processingFiles);
+        assertEquals(numberOfFiles, processingFiles.size());
+
+        // Check runtime config gets cleared once the files have deleted
+        Topics componentTopics =
+                logManagerService.getRuntimeConfig()
+                        .lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION_V2,
+                                componentName);
+        assertEquals(numberOfFiles, componentTopics.size());
     }
 
     private Runnable subscribeToActiveFileProcessed(LogManagerService service, int waitTime) throws InterruptedException {

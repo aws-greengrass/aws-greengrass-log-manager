@@ -89,7 +89,7 @@ public class LogManagerService extends PluginService {
     public static final String PERSISTED_CURRENT_PROCESSING_FILE_LAST_MODIFIED_TIME =
             "currentProcessingFileLastModified";
     public static final String PERSISTED_CURRENT_PROCESSING_FILE_LAST_ACCESSED_TIME =
-            "currentProcessingFileLastAccessed";
+            "lastAccessed";
     public static final String DEFAULT_FILE_REGEX = "^%s\\w*.log";
     public static final String COMPONENT_LOGS_CONFIG_TOPIC_NAME = "componentLogsConfiguration";
     public static final String COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME = "componentLogsConfigurationMap";

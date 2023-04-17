@@ -31,7 +31,6 @@ import com.aws.greengrass.logmanager.services.DiskSpaceManagementService;
 import com.aws.greengrass.util.Coerce;
 import com.aws.greengrass.util.NucleusPaths;
 import com.aws.greengrass.util.Utils;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Builder;
 import lombok.Data;
 import lombok.Getter;
@@ -794,15 +793,11 @@ public class LogManagerService extends PluginService {
     public static class CurrentProcessingFileInformation {
         //This is deprecated value in versions greater than 2.2, but keep it here to avoid
         // upgrade-downgrade issues.
-        @JsonProperty(PERSISTED_CURRENT_PROCESSING_FILE_NAME)
         private String fileName;
-        @JsonProperty(PERSISTED_CURRENT_PROCESSING_FILE_START_POSITION)
         private long startPosition;
-        @JsonProperty(PERSISTED_CURRENT_PROCESSING_FILE_LAST_MODIFIED_TIME)
         private long lastModifiedTime;
-        @JsonProperty(PERSISTED_CURRENT_PROCESSING_FILE_LAST_ACCESSED_TIME)
-        private long lastAccessedTime = Instant.EPOCH.toEpochMilli();
-        @JsonProperty(PERSISTED_CURRENT_PROCESSING_FILE_HASH)
+        @Builder.Default
+        private long lastAccessedTime = Instant.now().toEpochMilli();
         private String fileHash;
         private static final Logger logger = LogManager.getLogger(CurrentProcessingFileInformation.class);
 

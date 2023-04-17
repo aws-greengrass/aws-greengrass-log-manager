@@ -56,15 +56,8 @@ public class ProcessingFiles {
      * @param value - currently processing file information
      */
     public void put(LogManagerService.CurrentProcessingFileInformation value) {
-        long lastAccessed = value.getLastAccessedTime();
-
-        if (lastAccessed == Instant.EPOCH.toEpochMilli()) {
-            lastAccessed = Instant.now().toEpochMilli();
-            value.setLastAccessedTime(lastAccessed);
-        }
-
-        mostRecentlyUsed = Node.builder().lastAccessed(lastAccessed).info(value).build();
-        cache.put(value.getFileHash(), mostRecentlyUsed);
+        this.mostRecentlyUsed = Node.builder().lastAccessed(value.getLastAccessedTime()).info(value).build();
+        cache.put(value.getFileHash(), this.mostRecentlyUsed);
         evictStaleEntries();
     }
 

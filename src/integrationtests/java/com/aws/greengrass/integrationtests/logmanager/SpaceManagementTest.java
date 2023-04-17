@@ -180,6 +180,9 @@ class SpaceManagementTest extends BaseITCase {
             throws Exception {
         // Given
 
+        lenient().when(cloudWatchLogsClient.putLogEvents(any(PutLogEventsRequest.class)))
+                .thenReturn(PutLogEventsResponse.builder().nextSequenceToken("nextToken").build());
+
         tempDirectoryPath = Files.createDirectory(tempRootDir.resolve("IntegrationTestsTemporaryLogFiles"));
         // This method configures the LogManager to get logs with the pattern ^integTestRandomLogFiles.log\w* inside
         // then tempDirectoryPath with a diskSpaceLimit of 105kb

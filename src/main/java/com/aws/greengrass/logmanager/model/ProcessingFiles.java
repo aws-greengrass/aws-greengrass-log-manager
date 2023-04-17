@@ -1,5 +1,7 @@
 package com.aws.greengrass.logmanager.model;
 
+import com.aws.greengrass.logging.api.Logger;
+import com.aws.greengrass.logging.impl.LogManager;
 import com.aws.greengrass.logmanager.LogManagerService;
 import lombok.Builder;
 import lombok.Getter;
@@ -9,6 +11,7 @@ import java.time.Instant;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -17,10 +20,11 @@ import java.util.Set;
  * Cache that holds information about files being processed. It will remove entries that have not been accessed in the
  * last maxInactiveTimeSeconds
  */
-public class ProcessingFiles  {
+public class ProcessingFiles {
     private final Map<String, Node> cache;
     private final int maxInactiveTimeSeconds;
     private Node mostRecentlyUsed;
+    private static final Logger logger = LogManager.getLogger(ProcessingFiles.class);
 
 
 
@@ -36,17 +40,56 @@ public class ProcessingFiles  {
     }
 
     /**
+     * Stores the currently processing file information only if the entry does not exist.
+     *
+     * @param value - currently processing file information
+     */
+    public void putIfAbsent(LogManagerService.CurrentProcessingFileInformation value) {
+        if (cache.get(value.getFileHash()) == null) {
+            put(value);
+        }
+    }
+
+    /**
      * Stored the currently processing file information.
+     *
      * @param value - currently processing file information
      */
     public void put(LogManagerService.CurrentProcessingFileInformation value) {
-        mostRecentlyUsed =  Node.builder().lastAccessed(Instant.now().toEpochMilli()).info(value).build();
-        cache.put(value.getFileHash(), mostRecentlyUsed);
+        this.mostRecentlyUsed = Node.builder().lastAccessed(value.getLastAccessedTime()).info(value).build();
+        cache.put(value.getFileHash(), this.mostRecentlyUsed);
         evictStaleEntries();
     }
 
     /**
+     * Removes an entry from the cache for a provided file hash.
+     *
+     * @param fileHash - A file hash.
+     */
+    public void remove(String fileHash) {
+        if (fileHash == null) {
+            return;
+        }
+
+        if (cache.remove(fileHash) != null) {
+            logger.atDebug().kv("hash", fileHash).log("Evicted file from cache");
+        }
+    }
+
+    /**
+     * Removes a list of entries from the cache.
+     *
+     * @param deletedHashes - A list of file hashes to remove
+     */
+    public void remove(List<String> deletedHashes) {
+        if (deletedHashes != null) {
+            deletedHashes.forEach(this::remove);
+        }
+    }
+
+    /**
      * Returns a currently processing file information for a file hash.
+     *
      * @param fileHash - A file hash
      */
     public LogManagerService.CurrentProcessingFileInformation get(String fileHash) {
@@ -54,6 +97,7 @@ public class ProcessingFiles  {
 
         if (node != null) {
             node.setLastAccessed(Instant.now().toEpochMilli());
+            node.getInfo().setLastAccessedTime(node.getLastAccessed());
             mostRecentlyUsed = node;
             return node.getInfo();
         }

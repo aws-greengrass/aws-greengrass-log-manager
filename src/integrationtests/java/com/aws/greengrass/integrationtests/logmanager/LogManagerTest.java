@@ -27,6 +27,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.extension.ExtensionContext;
@@ -49,6 +50,7 @@ import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.text.SimpleDateFormat;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.util.Date;
@@ -61,6 +63,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
+import static com.aws.greengrass.componentmanager.KernelConfigResolver.CONFIGURATION_CONFIG_KEY;
 import static com.aws.greengrass.deployment.converter.DeploymentDocumentConverter.LOCAL_DEPLOYMENT_GROUP_NAME;
 import static com.aws.greengrass.integrationtests.logmanager.util.LogFileHelper.DEFAULT_FILE_SIZE;
 import static com.aws.greengrass.integrationtests.logmanager.util.LogFileHelper.DEFAULT_LOG_LINE_IN_FILE;
@@ -68,12 +71,20 @@ import static com.aws.greengrass.integrationtests.logmanager.util.LogFileHelper.
 import static com.aws.greengrass.integrationtests.logmanager.util.LogFileHelper.createTempFileAndWriteData;
 import static com.aws.greengrass.logging.impl.config.LogConfig.newLogConfigFromRootConfig;
 import static com.aws.greengrass.logmanager.CloudWatchAttemptLogsProcessor.DEFAULT_LOG_STREAM_NAME;
+import static com.aws.greengrass.logmanager.LogManagerService.COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME;
 import static com.aws.greengrass.logmanager.LogManagerService.DEFAULT_FILE_REGEX;
+import static com.aws.greengrass.logmanager.LogManagerService.LOGS_UPLOADER_CONFIGURATION_TOPIC;
+import static com.aws.greengrass.logmanager.LogManagerService.MIN_LOG_LEVEL_CONFIG_TOPIC_NAME;
 import static com.aws.greengrass.logmanager.LogManagerService.PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION_V2;
 import static com.aws.greengrass.testcommons.testutilities.ExceptionLogProtector.ignoreExceptionOfType;
 import static com.aws.greengrass.testcommons.testutilities.ExceptionLogProtector.ignoreExceptionWithMessage;
+import static com.github.grantwest.eventually.EventuallyLambdaMatcher.eventuallyEval;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.is;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.atLeastOnce;
@@ -141,7 +152,8 @@ class LogManagerTest extends BaseITCase {
                 logManagerService = (LogManagerService) service;
             }
         });
-        deviceConfiguration = new DeviceConfiguration(kernel, "ThingName", "xxxxxx-ats.iot.us-east-1.amazonaws.com", "xxxxxx.credentials.iot.us-east-1.amazonaws.com", "privKeyFilePath",
+        deviceConfiguration = new DeviceConfiguration(kernel, "ThingName", "xxxxxx-ats.iot.us-east-1.amazonaws.com",
+                "xxxxxx.credentials.iot.us-east-1.amazonaws.com", "privKeyFilePath",
                 "certFilePath", "caFilePath", "us-east-1", "roleAliasName");
 
         kernel.getContext().put(DeviceConfiguration.class, deviceConfiguration);
@@ -341,13 +353,13 @@ class LogManagerTest extends BaseITCase {
     }
 
     @Test
-    void GIVEN_filesDeletedAfterUpload_THEN_deletedFilesStopBeingTracked() throws Exception {
+    @Tag("processingFilesInformation")
+    void GIVEN_filesDeletedAfterUpload_THEN_deletedFilesRemovedFromCache() throws Exception {
         // Given
 
         when(cloudWatchLogsClient.putLogEvents(any(PutLogEventsRequest.class)))
                 .thenReturn(PutLogEventsResponse.builder().nextSequenceToken("nextToken").build());
 
-        // Create log files for the tes
         int numberOfFiles = 100;
         tempDirectoryPath = Files.createTempDirectory(tempRootDir, "IntegrationTestsTemporaryLogFiles");
         for (int i = 0; i < numberOfFiles; i++) {
@@ -374,18 +386,18 @@ class LogManagerTest extends BaseITCase {
         Topics componentTopics =
                 logManagerService.getRuntimeConfig()
                         .lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION_V2,
-                        componentName);
+                                componentName);
         assertEquals(1, componentTopics.size());
     }
 
     @Test
-    void GIVEN_filesNOTDeletedAfterUpload_THEN_filesTracked() throws Exception {
+    @Tag("processingFilesInformation")
+    void GIVEN_filesNOTDeletedAfterUpload_THEN_filesGetCached() throws Exception {
         // Given
 
         when(cloudWatchLogsClient.putLogEvents(any(PutLogEventsRequest.class)))
                 .thenReturn(PutLogEventsResponse.builder().nextSequenceToken("nextToken").build());
 
-        // Create log files for the tes
         int numberOfFiles = 100;
         tempDirectoryPath = Files.createTempDirectory(tempRootDir, "IntegrationTestsTemporaryLogFiles");
         for (int i = 0; i < numberOfFiles; i++) {
@@ -394,7 +406,6 @@ class LogManagerTest extends BaseITCase {
 
         // When
         String componentName = "UserComponentA";
-        // This configuration does NOT delete files after upload
         setupKernel(tempDirectoryPath, "doNotDeleteFilesAfterUpload.yaml");
 
         Runnable waitForActiveFileToBeProcessed = subscribeToActiveFileProcessed(logManagerService, 30);
@@ -416,7 +427,92 @@ class LogManagerTest extends BaseITCase {
         assertEquals(numberOfFiles, componentTopics.size());
     }
 
-    private Runnable subscribeToActiveFileProcessed(LogManagerService service, int waitTime) throws InterruptedException {
+    @Test
+    @Tag("processingFilesInformation")
+    void GIVEN_filesNOTDeletedAfterUpload_WHEN_removingComponentConfigurationNob_THEN_filesRemovedFromCache() throws
+            Exception {
+        // Given
+        when(cloudWatchLogsClient.putLogEvents(any(PutLogEventsRequest.class)))
+                .thenReturn(PutLogEventsResponse.builder().nextSequenceToken("nextToken").build());
+
+        int numberOfFiles = 100;
+        tempDirectoryPath = Files.createTempDirectory(tempRootDir, "IntegrationTestsTemporaryLogFiles");
+        for (int i = 0; i < numberOfFiles; i++) {
+            createTempFileAndWriteData(tempDirectoryPath, "integTestRandomLogFiles.log_", "");
+        }
+
+        // When
+
+        String componentName = "UserComponentA";
+        setupKernel(tempDirectoryPath, "doNotDeleteFilesAfterUpload.yaml");
+
+        Runnable waitForActiveFileToBeProcessed = subscribeToActiveFileProcessed(logManagerService, 30);
+        waitForActiveFileToBeProcessed.run();
+        verify(cloudWatchLogsClient, atLeastOnce()).putLogEvents(captor.capture());
+
+        // Component configuration is removed
+
+        logManagerService.getConfig().lookupTopics(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC,
+                COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME, componentName).remove();
+
+        assertThat(() -> logManagerService.getComponentLogConfigurations().get(componentName) == null,
+                eventuallyEval(equalTo(true), Duration.ofSeconds(30)));
+
+        // Then
+
+        ProcessingFiles processingFiles = logManagerService.processingFilesInformation.get(componentName);
+        assertNull(processingFiles);
+
+        // Check runtime config gets cleared once the files have deleted
+        Topics componentTopics =
+                logManagerService.getRuntimeConfig()
+                        .lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION_V2,
+                                componentName);
+        assertEquals(0, componentTopics.size());
+    }
+
+    @Test
+    @Tag("processingFilesInformation")
+    void GIVEN_processingFileCached_WHEN_ConfigurationChanges_THEN_existingCachedFileInformationLastAccessedIsNotChanged() throws
+            Exception {
+        // Given
+        when(cloudWatchLogsClient.putLogEvents(any(PutLogEventsRequest.class)))
+                .thenReturn(PutLogEventsResponse.builder().nextSequenceToken("nextToken").build());
+
+        int numberOfFiles = 10;
+        tempDirectoryPath = Files.createTempDirectory(tempRootDir, "IntegrationTestsTemporaryLogFiles");
+        for (int i = 0; i < numberOfFiles; i++) {
+            createTempFileAndWriteData(tempDirectoryPath, "integTestRandomLogFiles.log_", "");
+        }
+
+        // When
+
+        String componentName = "UserComponentA";
+        setupKernel(tempDirectoryPath, "doNotDeleteFilesAfterUpload.yaml");
+
+        Runnable waitForActiveFileToBeProcessed = subscribeToActiveFileProcessed(logManagerService, 30);
+        waitForActiveFileToBeProcessed.run();
+        verify(cloudWatchLogsClient, atLeastOnce()).putLogEvents(captor.capture());
+
+        ProcessingFiles processingFilesBefore = logManagerService.processingFilesInformation.get(componentName);
+        Map<String, Object> beforeConfigurationUpdate = processingFilesBefore.toMap();
+
+        logManagerService.getConfig().lookup(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC,
+                COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME, componentName,  MIN_LOG_LEVEL_CONFIG_TOPIC_NAME)
+                .withValue("WARN");
+
+        assertThat(()-> logManagerService.getComponentLogConfigurations().get(componentName).getMinimumLogLevel(),
+                eventuallyEval(is(Level.WARN), Duration.ofSeconds(30)));
+
+        // Then
+
+        ProcessingFiles processingFilesAfter = logManagerService.processingFilesInformation.get(componentName);
+        Map<String, Object> afterConfigurationUpdate = processingFilesAfter.toMap();
+        assertEquals(beforeConfigurationUpdate, afterConfigurationUpdate);
+    }
+
+    private Runnable subscribeToActiveFileProcessed(LogManagerService service, int waitTime) throws
+            InterruptedException {
         CountDownLatch latch = new CountDownLatch(1);
         service.registerEventStatusListener((EventType event) -> {
             if (event == EventType.ALL_COMPONENTS_PROCESSED) {

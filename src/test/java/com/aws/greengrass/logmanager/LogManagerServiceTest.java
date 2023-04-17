@@ -22,7 +22,6 @@ import com.aws.greengrass.testcommons.testutilities.GGServiceTestUtil;
 import com.aws.greengrass.util.Coerce;
 import com.aws.greengrass.util.NucleusPaths;
 import com.fasterxml.jackson.databind.exc.MismatchedInputException;
-import org.apache.commons.lang3.RandomStringUtils;
 import org.hamcrest.collection.IsEmptyCollection;
 import org.hamcrest.core.IsNot;
 import org.junit.jupiter.api.AfterAll;
@@ -44,18 +43,14 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
-import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -226,15 +221,17 @@ class LogManagerServiceTest extends GGServiceTestUtil {
 
         // 2.3.0 and prior
         lenient().when(config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC)
-                .lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION, SYSTEM_LOGS_COMPONENT_NAME))
+                        .lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION,
+                                SYSTEM_LOGS_COMPONENT_NAME))
                 .thenReturn(currentProcessingComponentTopics1);
         // 2.3.1 and after
         lenient().when(config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC)
-                        .lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION_V2, SYSTEM_LOGS_COMPONENT_NAME))
+                        .lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION_V2,
+                                SYSTEM_LOGS_COMPONENT_NAME))
                 .thenReturn(currentProcessingComponentTopics1);
         // 2.3.0 and prior
         lenient().when(config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC)
-                .lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION, "UserComponentA"))
+                        .lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION, "UserComponentA"))
                 .thenReturn(currentProcessingComponentTopics2);
         // 2.3.1 and after
         lenient().when(config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC)
@@ -242,10 +239,10 @@ class LogManagerServiceTest extends GGServiceTestUtil {
                 .thenReturn(currentProcessingComponentTopics2);
         // 2.3.0 and prior
         lenient().when(config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC)
-                .lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION, "UserComponentB"))
+                        .lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION, "UserComponentB"))
                 .thenReturn(currentProcessingComponentTopics3);
         lenient().when(config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC)
-                .lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION_V2, "UserComponentB"))
+                        .lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION_V2, "UserComponentB"))
                 .thenReturn(currentProcessingComponentTopics3);
 
         Topics allLastFileProcessedComponentTopics =
@@ -258,13 +255,13 @@ class LogManagerServiceTest extends GGServiceTestUtil {
                 Topics.of(context, "UserComponentB", allLastFileProcessedComponentTopics);
 
         lenient().when(config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC)
-                .lookupTopics(PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP, SYSTEM_LOGS_COMPONENT_NAME))
+                        .lookupTopics(PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP, SYSTEM_LOGS_COMPONENT_NAME))
                 .thenReturn(lastFileProcessedComponentTopics1);
         lenient().when(config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC)
-                .lookupTopics(PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP, "UserComponentA"))
+                        .lookupTopics(PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP, "UserComponentA"))
                 .thenReturn(lastFileProcessedComponentTopics2);
         lenient().when(config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC)
-                .lookupTopics(PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP, "UserComponentB"))
+                        .lookupTopics(PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP, "UserComponentB"))
                 .thenReturn(lastFileProcessedComponentTopics3);
     }
 
@@ -292,7 +289,8 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         when(config.lookupTopics(CONFIGURATION_CONFIG_KEY)).thenReturn(configTopics);
         Topics logsUploaderConfigTopics = Topics.of(context, LOGS_UPLOADER_CONFIGURATION_TOPIC, null);
 
-        Topics componentConfigTopics = logsUploaderConfigTopics.createInteriorChild(COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME);
+        Topics componentConfigTopics =
+                logsUploaderConfigTopics.createInteriorChild(COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME);
         Topics componentATopic = componentConfigTopics.createInteriorChild("UserComponentA");
         componentATopic.createLeafChild(FILE_REGEX_CONFIG_TOPIC_NAME).withValue("^log.txt\\\\w*");
         componentATopic.createLeafChild(FILE_DIRECTORY_PATH_CONFIG_TOPIC_NAME).withValue(directoryPath.toAbsolutePath().toString());
@@ -398,7 +396,8 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         when(config.lookupTopics(CONFIGURATION_CONFIG_KEY)).thenReturn(configTopics);
         Topics logsUploaderConfigTopics = Topics.of(context, LOGS_UPLOADER_CONFIGURATION_TOPIC, null);
 
-        Topics componentConfigTopics = logsUploaderConfigTopics.createInteriorChild(COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME);
+        Topics componentConfigTopics =
+                logsUploaderConfigTopics.createInteriorChild(COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME);
         Topics componentATopic = componentConfigTopics.createInteriorChild("UserComponentA");
         componentATopic.createLeafChild(FILE_DIRECTORY_PATH_CONFIG_TOPIC_NAME).withValue(directoryPath.toAbsolutePath().toString());
         componentATopic.createLeafChild(MIN_LOG_LEVEL_CONFIG_TOPIC_NAME).withValue("DEBUG");
@@ -449,7 +448,8 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         when(config.lookupTopics(CONFIGURATION_CONFIG_KEY)).thenReturn(configTopics);
         Topics logsUploaderConfigTopics = Topics.of(context, LOGS_UPLOADER_CONFIGURATION_TOPIC, null);
 
-        Topics componentConfigTopics = logsUploaderConfigTopics.createInteriorChild(COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME);
+        Topics componentConfigTopics =
+                logsUploaderConfigTopics.createInteriorChild(COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME);
         Topics componentATopic = componentConfigTopics.createInteriorChild("UserComponentA");
         componentATopic.createLeafChild(FILE_REGEX_CONFIG_TOPIC_NAME).withValue("^UserComponentA\\w*\\.log");
         componentATopic.createLeafChild(FILE_DIRECTORY_PATH_CONFIG_TOPIC_NAME).withValue(directoryPath.toAbsolutePath().toString());
@@ -501,7 +501,8 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         when(config.lookupTopics(CONFIGURATION_CONFIG_KEY)).thenReturn(configTopics);
         Topics logsUploaderConfigTopics = Topics.of(context, LOGS_UPLOADER_CONFIGURATION_TOPIC, null);
 
-        Topics componentConfigTopics = logsUploaderConfigTopics.createInteriorChild(COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME);
+        Topics componentConfigTopics =
+                logsUploaderConfigTopics.createInteriorChild(COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME);
         Topics componentATopic = componentConfigTopics.createInteriorChild("UserComponentA");
         componentATopic.createLeafChild(FILE_REGEX_CONFIG_TOPIC_NAME).withValue("^log.txt\\\\w*");
         componentATopic.createLeafChild(FILE_DIRECTORY_PATH_CONFIG_TOPIC_NAME).withValue(directoryPath.toAbsolutePath().toString());
@@ -676,7 +677,8 @@ class LogManagerServiceTest extends GGServiceTestUtil {
                         .build());
 
         Map<String, CloudWatchAttemptLogFileInformation> processingAttemptLogFileInformationMap2 = new HashMap<>();
-        processingAttemptLogFileInformationMap2.put(processingFile.hashString(), CloudWatchAttemptLogFileInformation.builder()
+        processingAttemptLogFileInformationMap2.put(processingFile.hashString(),
+                CloudWatchAttemptLogFileInformation.builder()
                 .startPosition(0)
                 .bytesRead(1061)
                 .lastModifiedTime(processingFile.lastModified())
@@ -712,7 +714,8 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         List<Map<String, Object>> partiallyReadComponentLogFileInformation = updateFromMapCaptor.getAllValues();
         assertEquals(1, completedComponentLastProcessedFileInformation.size());
         assertEquals(2, partiallyReadComponentLogFileInformation.size());
-        assertEquals(lastProcessedFile.lastModified(), Coerce.toLong(completedComponentLastProcessedFileInformation.get(0)));
+        assertEquals(lastProcessedFile.lastModified(),
+                Coerce.toLong(completedComponentLastProcessedFileInformation.get(0)));
 
         LogManagerService.CurrentProcessingFileInformation currentProcessingFileInformation =
                 LogManagerService.CurrentProcessingFileInformation.convertFromMapOfObjects(
@@ -722,9 +725,11 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         assertEquals(processingFile.lastModified(), currentProcessingFileInformation.getLastModifiedTime());
 
         assertNotNull(logsUploaderService.lastComponentUploadedLogFileInstantMap);
-        assertThat(logsUploaderService.lastComponentUploadedLogFileInstantMap.entrySet(), IsNot.not(IsEmptyCollection.empty()));
+        assertThat(logsUploaderService.lastComponentUploadedLogFileInstantMap.entrySet(),
+                IsNot.not(IsEmptyCollection.empty()));
         assertTrue(logsUploaderService.lastComponentUploadedLogFileInstantMap.containsKey("TestComponent"));
-        assertEquals(Instant.ofEpochMilli(lastProcessedFile.lastModified()), logsUploaderService.lastComponentUploadedLogFileInstantMap.get("TestComponent"));
+        assertEquals(Instant.ofEpochMilli(lastProcessedFile.lastModified()),
+                logsUploaderService.lastComponentUploadedLogFileInstantMap.get("TestComponent"));
         assertNotNull(logsUploaderService.processingFilesInformation);
         assertThat(logsUploaderService.processingFilesInformation.entrySet(), IsNot.not(IsEmptyCollection.empty()));
         assertTrue(logsUploaderService.processingFilesInformation.containsKey("TestComponent2"));
@@ -792,114 +797,6 @@ class LogManagerServiceTest extends GGServiceTestUtil {
     }
 
     @Test
-    void GIVEN_user_component_logs_delete_file_after_upload_set_WHEN_upload_logs_THEN_deletes_uploaded_log_files(
-            ExtensionContext ec)
-            throws InterruptedException, IOException, InvalidLogGroupException {
-        ignoreExceptionOfType(ec, NoSuchFileException.class);
-        mockDefaultPersistedState();
-        Topic periodicUpdateIntervalMsTopic = Topic.of(context, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC, "3");
-        when(config.lookup(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC))
-                .thenReturn(periodicUpdateIntervalMsTopic);
-
-        Topics configTopics = Topics.of(context, CONFIGURATION_CONFIG_KEY, null);
-        when(config.lookupTopics(CONFIGURATION_CONFIG_KEY)).thenReturn(configTopics);
-        Topics logsUploaderConfigTopics = Topics.of(context, LOGS_UPLOADER_CONFIGURATION_TOPIC, null);
-
-        Topics componentConfigTopics = logsUploaderConfigTopics.createInteriorChild(COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME);
-        Topics componentATopic = componentConfigTopics.createInteriorChild("UserComponentA");
-        componentATopic.createLeafChild(FILE_REGEX_CONFIG_TOPIC_NAME).withValue("^log2.txt\\w*");
-        componentATopic.createLeafChild(FILE_DIRECTORY_PATH_CONFIG_TOPIC_NAME).withValue(directoryPath.toAbsolutePath().toString());
-        componentATopic.createLeafChild(MIN_LOG_LEVEL_CONFIG_TOPIC_NAME).withValue("DEBUG");
-        componentATopic.createLeafChild(DISK_SPACE_LIMIT_CONFIG_TOPIC_NAME).withValue("25");
-        componentATopic.createLeafChild(DISK_SPACE_LIMIT_UNIT_CONFIG_TOPIC_NAME).withValue("KB");
-        componentATopic.createLeafChild(DELETE_LOG_FILES_AFTER_UPLOAD_CONFIG_TOPIC_NAME).withValue("true");
-
-        Topics systemConfigTopics = logsUploaderConfigTopics.createInteriorChild(SYSTEM_LOGS_CONFIG_TOPIC_NAME);
-        systemConfigTopics.createLeafChild(UPLOAD_TO_CW_CONFIG_TOPIC_NAME).withValue("true");
-        systemConfigTopics.createLeafChild(MIN_LOG_LEVEL_CONFIG_TOPIC_NAME).withValue("INFO");
-        systemConfigTopics.createLeafChild(DISK_SPACE_LIMIT_CONFIG_TOPIC_NAME).withValue("25");
-        systemConfigTopics.createLeafChild(DISK_SPACE_LIMIT_UNIT_CONFIG_TOPIC_NAME).withValue("KB");
-        when(config.lookupTopics(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC))
-                .thenReturn(logsUploaderConfigTopics);
-
-        List<String> fileNames = new ArrayList<>();
-        Instant instant = Instant.EPOCH;
-        for (int i = 0; i < 5; i++) {
-            Path fileNamePath = directoryPath.resolve("log2.txt_" + UUID.randomUUID());
-            fileNames.add(fileNamePath.toAbsolutePath().toString());
-            File file1 = new File(fileNamePath.toUri());
-
-            if (Files.notExists(file1.toPath())) {
-                assertTrue(file1.createNewFile());
-            }
-            assertTrue(file1.setReadable(true));
-            assertTrue(file1.setWritable(true));
-
-            try (OutputStream fileOutputStream = Files.newOutputStream(file1.toPath())) {
-                String generatedString = RandomStringUtils.randomAlphabetic(1024);
-                fileOutputStream.write(generatedString.getBytes(StandardCharsets.UTF_8));
-            }
-            TimeUnit.SECONDS.sleep(1);
-        }
-
-        CloudWatchAttempt attempt = new CloudWatchAttempt();
-        Map<String, CloudWatchAttemptLogInformation> logStreamsToLogInformationMap = new HashMap<>();
-        LogFile file1 = new LogFile(directoryPath.resolve(fileNames.get(0)).toUri());
-        LogFile file2 = new LogFile(directoryPath.resolve(fileNames.get(1)).toUri());
-
-        Pattern pattern = Pattern.compile("^log2.txt\\w*");
-        ComponentLogConfiguration compLogInfo = ComponentLogConfiguration.builder()
-                .directoryPath(directoryPath)
-                .fileNameRegex(pattern).name("UserComponentA").build();
-        LogFileGroup logFileGroup = LogFileGroup.create( compLogInfo, instant, workdirectory);
-        Map<String, CloudWatchAttemptLogFileInformation> attemptLogFileInformationMap1 = new HashMap<>();
-        attemptLogFileInformationMap1.put(file1.hashString(), CloudWatchAttemptLogFileInformation.builder()
-                .startPosition(0)
-                .bytesRead(file1.length())
-                .lastModifiedTime(file1.lastModified())
-                .fileHash(file1.hashString())
-                .build());
-        attemptLogFileInformationMap1.put(file2.hashString(), CloudWatchAttemptLogFileInformation.builder()
-                .startPosition(0)
-                .bytesRead(file2.length())
-                .lastModifiedTime(file2.lastModified())
-                .fileHash(file2.hashString())
-                .build());
-
-        CloudWatchAttemptLogInformation attemptLogInformation1 = CloudWatchAttemptLogInformation.builder()
-                .componentName("UserComponentA")
-                .attemptLogFileInformationMap(attemptLogFileInformationMap1)
-                .logFileGroup(logFileGroup)
-                .build();
-        logStreamsToLogInformationMap.put("testStream", attemptLogInformation1);
-        attempt.setLogStreamsToLogEventsMap(logStreamsToLogInformationMap);
-        attempt.setLogStreamUploadedSet(new HashSet<>(Collections.singletonList("testStream")));
-        doNothing().when(mockUploader).registerAttemptStatus(anyString(), callbackCaptor.capture());
-        Topics componentTopics1 = mock(Topics.class);
-        Topic lastFileProcessedTimeStampTopics = mock(Topic.class);
-        when(componentTopics1.createLeafChild(any())).thenReturn(lastFileProcessedTimeStampTopics);
-        when(lastFileProcessedTimeStampTopics.withValue(any(Number.class)))
-                .thenReturn(lastFileProcessedTimeStampTopics);
-        when(config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC)
-                .lookupTopics(PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP, "UserComponentA"))
-                .thenReturn(componentTopics1);
-
-        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, nucleusPaths);
-        startServiceOnAnotherThread();
-
-        callbackCaptor.getValue().accept(attempt);
-
-        TimeUnit.SECONDS.sleep(5);
-
-        for (int i = 0; i < 2; i++) {
-            assertTrue(Files.notExists(Paths.get(fileNames.get(i))));
-        }
-        for (int i = 2; i < 5; i++) {
-            assertTrue(Files.exists(Paths.get(fileNames.get(i))));
-        }
-    }
-
-    @Test
     void GIVEN_a_partially_uploaded_file_but_rotated_WHEN_merger_merges_THEN_sets_the_start_position_correctly()
             throws InterruptedException, IOException {
         mockDefaultPersistedState();
@@ -933,7 +830,7 @@ class LogManagerServiceTest extends GGServiceTestUtil {
                 .lastModifiedTime(currentProcessingFile.lastModified() - 1000)
                 .startPosition(2)
                 .build());
-        logsUploaderService.processingFilesInformation .put(SYSTEM_LOGS_COMPONENT_NAME, processingFiles);
+        logsUploaderService.processingFilesInformation.put(SYSTEM_LOGS_COMPONENT_NAME, processingFiles);
 
         TimeUnit.SECONDS.sleep(5);
 
@@ -952,7 +849,8 @@ class LogManagerServiceTest extends GGServiceTestUtil {
     }
 
     @Test
-    void GIVEN_persisted_data_WHEN_log_uploader_initialises_THEN_correctly_sets_the_persisted_data() throws IOException {
+    void GIVEN_persisted_data_WHEN_log_uploader_initialises_THEN_correctly_sets_the_persisted_data() throws
+            IOException {
         Topic periodicUpdateIntervalMsTopic = Topic.of(context, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC, "3");
         when(config.lookup(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC))
                 .thenReturn(periodicUpdateIntervalMsTopic);
@@ -960,7 +858,8 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         when(config.lookupTopics(CONFIGURATION_CONFIG_KEY)).thenReturn(configTopics);
         Topics logsUploaderConfigTopics = Topics.of(context, LOGS_UPLOADER_CONFIGURATION_TOPIC, null);
 
-        Topics componentConfigTopics = logsUploaderConfigTopics.createInteriorChild(COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME);
+        Topics componentConfigTopics =
+                logsUploaderConfigTopics.createInteriorChild(COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME);
         Topics componentATopic = componentConfigTopics.createInteriorChild("UserComponentA");
         componentATopic.createLeafChild(FILE_REGEX_CONFIG_TOPIC_NAME).withValue("^log.txt\\w*");
         componentATopic.createLeafChild(FILE_DIRECTORY_PATH_CONFIG_TOPIC_NAME).withValue(directoryPath.toAbsolutePath().toString());

@@ -3,6 +3,9 @@ package com.aws.greengrass.logmanager.model;
 import com.aws.greengrass.logging.api.Logger;
 import com.aws.greengrass.logging.impl.LogManager;
 import com.aws.greengrass.logmanager.LogManagerService;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.Setter;
 
 import java.time.Instant;
 import java.util.HashMap;
@@ -18,10 +21,11 @@ import java.util.Set;
  * last maxInactiveTimeSeconds
  */
 public class ProcessingFiles {
-    private final Map<String, LogManagerService.CurrentProcessingFileInformation> cache;
+    private final Map<String, Node> cache;
     private final int maxInactiveTimeSeconds;
-    private LogManagerService.CurrentProcessingFileInformation mostRecentlyUsed;
+    private Node mostRecentlyUsed;
     private static final Logger logger = LogManager.getLogger(ProcessingFiles.class);
+
 
 
     /**
@@ -47,15 +51,20 @@ public class ProcessingFiles {
     }
 
     /**
-     * Stores the currently processing file information, replacing and existing entry if it
-     * is already present.
+     * Stored the currently processing file information.
      *
      * @param value - currently processing file information
      */
     public void put(LogManagerService.CurrentProcessingFileInformation value) {
-        value.setLastAccessedTime(Instant.now().toEpochMilli());
-        this.mostRecentlyUsed = value;
-        cache.put(value.getFileHash(), value);
+        long lastAccessed = value.getLastAccessedTime();
+
+        if (lastAccessed == Instant.EPOCH.toEpochMilli()) {
+            lastAccessed = Instant.now().toEpochMilli();
+            value.setLastAccessedTime(lastAccessed);
+        }
+
+        mostRecentlyUsed = Node.builder().lastAccessed(lastAccessed).info(value).build();
+        cache.put(value.getFileHash(), mostRecentlyUsed);
         evictStaleEntries();
     }
 
@@ -91,12 +100,13 @@ public class ProcessingFiles {
      * @param fileHash - A file hash
      */
     public LogManagerService.CurrentProcessingFileInformation get(String fileHash) {
-        LogManagerService.CurrentProcessingFileInformation info = this.cache.get(fileHash);
+        Node node = this.cache.get(fileHash);
 
-        if (info != null) {
-            info.setLastAccessedTime(Instant.now().toEpochMilli());
-            mostRecentlyUsed = info;
-            return info;
+        if (node != null) {
+            node.setLastAccessed(Instant.now().toEpochMilli());
+            node.getInfo().setLastAccessedTime(node.getLastAccessed());
+            mostRecentlyUsed = node;
+            return node.getInfo();
         }
 
         return null;
@@ -108,17 +118,16 @@ public class ProcessingFiles {
 
     private void evictStaleEntries() {
         // TODO: This could be improved by additionally storing the nodes on a Heap
-        Iterator<Map.Entry<String, LogManagerService.CurrentProcessingFileInformation>> it =
-                cache.entrySet().iterator();
+        Iterator<Map.Entry<String, Node>> it = cache.entrySet().iterator();
         Set<String> toRemove = new HashSet<>();
         Instant deadline = Instant.now().minusSeconds(maxInactiveTimeSeconds);
 
         while (it.hasNext()) {
-            LogManagerService.CurrentProcessingFileInformation info = it.next().getValue();
-            Instant lastAccessed = Instant.ofEpochMilli(info.getLastAccessedTime());
+            Node node = it.next().getValue();
+            Instant lastAccessed = Instant.ofEpochMilli(node.getLastAccessed());
 
             if (lastAccessed.isBefore(deadline)) {
-                toRemove.add(info.getFileHash());
+                toRemove.add(node.info.getFileHash());
             }
         }
 
@@ -134,7 +143,7 @@ public class ProcessingFiles {
         HashMap<String, Object> map = new HashMap<>();
 
         cache.forEach((key, value) -> {
-            map.put(key, value.convertToMapOfObjects());
+            map.put(key, value.getInfo().convertToMapOfObjects());
         });
 
         return map;
@@ -145,9 +154,17 @@ public class ProcessingFiles {
      */
     public LogManagerService.CurrentProcessingFileInformation getMostRecentlyUsed() {
         if (mostRecentlyUsed != null) {
-            return mostRecentlyUsed;
+            return mostRecentlyUsed.getInfo();
         }
 
         return null;
+    }
+
+    @Builder
+    @Getter
+    @Setter
+    private static class Node {
+        private long lastAccessed;
+        private LogManagerService.CurrentProcessingFileInformation info;
     }
 }

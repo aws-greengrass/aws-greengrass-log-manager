@@ -75,6 +75,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
     private static final int EVENT_STORAGE_OVERHEAD = 26;
     private static final int TIMESTAMP_BYTES = 8;
     private static final int MAX_EVENT_LENGTH = 1024 * 256 - TIMESTAMP_BYTES - EVENT_STORAGE_OVERHEAD;
+    private static final int MAX_NUM_OF_LOG_EVENTS = 10000;
     static {
         DATE_FORMATTER.setTimeZone(TimeZone.getTimeZone("UTC"));
     }
@@ -222,6 +223,75 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
             assertEquals(17, localDate.getDayOfMonth());
         }
     }
+
+
+    @Test
+    void GIVEN_one_component_WHEN_log_events_more_than_max_THEN_read_only_max_num_of_log_events(ExtensionContext context1)
+            throws IOException {
+        ignoreExceptionOfType(context1, DateTimeParseException.class);
+        File file = new File(directoryPath.resolve("greengrass_test.log").toUri());
+        assertTrue(file.createNewFile());
+        assertTrue(file.setReadable(true));
+        assertTrue(file.setWritable(true));
+        /* LOG_EVENT_LENGTH = MESSAGE_LENGTH + TIMESTAMP_BYTES + EVENT_STORAGE_OVERHEAD => MESSAGE_LENGTH + 34
+        * LOG_EVENT_LENGTH * (MAX_NUM_OF_LOG_EVENTS) <= MAX_BATCH_SIZE => ((MESSAGE_LENGTH +34)*10000)<=1024*1024
+        * MESSAGE_LENGTH <= ~72
+         */
+        int logEventMessageLength = 70; // "\r\n" takes 2 bytes
+        try (OutputStream fileOutputStream = Files.newOutputStream(file.toPath())) {
+            for (int i = 0; i <= 10000; i++) { // 10001 log events
+                boolean useLetters = true;
+                boolean useNumbers = false;
+                StringBuilder generatedString = new StringBuilder(RandomStringUtils.random(logEventMessageLength, useLetters, useNumbers));
+                generatedString.append("\r\n");
+                fileOutputStream.write(generatedString.toString().getBytes(StandardCharsets.UTF_8));
+            }
+        }
+        LogFile logFile = LogFile.of(file);
+        String fileHash = logFile.hashString();
+        try {
+            List<LogFileInformation> logFileInformationSet = new ArrayList<>();
+            logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile).fileHash(fileHash).build());
+            ComponentLogFileInformation componentLogFileInformation = ComponentLogFileInformation.builder()
+                    .name("TestComponent")
+                    .desiredLogLevel(Level.INFO)
+                    .componentType(ComponentType.GreengrassSystemComponent)
+                    .logFileInformationList(logFileInformationSet)
+                    .build();
+
+            logsProcessor = new CloudWatchAttemptLogsProcessor(mockDeviceConfiguration, defaultClock);
+            CloudWatchAttempt attempt = logsProcessor.processLogFiles(componentLogFileInformation);
+            assertNotNull(attempt);
+
+            assertNotNull(attempt.getLogStreamsToLogEventsMap());
+            assertThat(attempt.getLogStreamsToLogEventsMap().entrySet(), IsNot.not(IsEmptyCollection.empty()));
+            String logGroup = calculateLogGroupName(ComponentType.GreengrassSystemComponent, "testRegion", "TestComponent");
+            assertEquals(attempt.getLogGroupName(), logGroup);
+            String logStream = calculateLogStreamName("testThing");
+            assertTrue(attempt.getLogStreamsToLogEventsMap().containsKey(logStream));
+            CloudWatchAttemptLogInformation logEventsForStream1 = attempt.getLogStreamsToLogEventsMap().get(logStream);
+            assertNotNull(logEventsForStream1.getLogEvents());
+            assertEquals(MAX_NUM_OF_LOG_EVENTS, logEventsForStream1.getLogEvents().size());
+            assertTrue(logEventsForStream1.getAttemptLogFileInformationMap().containsKey(fileHash));
+            assertEquals(0, logEventsForStream1.getAttemptLogFileInformationMap().get(fileHash).getStartPosition());
+            assertEquals((logEventMessageLength+2)*10000, logEventsForStream1.getAttemptLogFileInformationMap().get(fileHash).getBytesRead());
+            assertEquals("TestComponent", logEventsForStream1.getComponentName());
+            LocalDateTime localDateTimeNow = LocalDateTime.now(ZoneOffset.UTC);
+            for (InputLogEvent logEvent: logEventsForStream1.getLogEvents()) {
+                Instant logTimestamp = Instant.ofEpochMilli(logEvent.timestamp());
+                assertTrue(logTimestamp.isBefore(Instant.now()));
+                LocalDateTime localDate = LocalDateTime.ofInstant(logTimestamp, ZoneOffset.UTC);
+                assertEquals(localDateTimeNow.getYear(), localDate.getYear());
+                assertEquals(localDateTimeNow.getMonth().getValue(), localDate.getMonth().getValue());
+                assertEquals(localDateTimeNow.getDayOfMonth(), localDate.getDayOfMonth());
+            }
+        } finally {
+            assertTrue(file.delete());
+        }
+
+
+    }
+
 
     @Test
     void GIVEN_one_component_one_file_more_than_max_WHEN_merge_THEN_reads_partial_file(ExtensionContext context1)

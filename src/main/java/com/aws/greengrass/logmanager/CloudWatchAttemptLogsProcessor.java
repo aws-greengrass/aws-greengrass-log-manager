@@ -67,6 +67,7 @@ public class CloudWatchAttemptLogsProcessor {
     private static final int TIMESTAMP_BYTES = 8;
     private static final int MAX_BATCH_SIZE = 1024 * 1024;
     private static final int MAX_EVENT_LENGTH = 1024 * 256 - TIMESTAMP_BYTES - EVENT_STORAGE_OVERHEAD;
+    private static final int MAX_NUM_OF_LOG_EVENTS = 10_000;
     private static final ObjectMapper DESERIALIZER = new ObjectMapper()
             .configure(MapperFeature.ACCEPT_CASE_INSENSITIVE_PROPERTIES, true);
     private static final ThreadLocal<SimpleDateFormat> DATE_FORMATTER =
@@ -376,6 +377,10 @@ public class CloudWatchAttemptLogsProcessor {
                 attemptLogInformation.getLogEvents().stream().min(Comparator.comparingLong(InputLogEvent::timestamp));
         if (earliestTime.isPresent() && Instant.ofEpochMilli(earliestTime.get().timestamp()).plus(23, ChronoUnit.HOURS)
                 .isBefore(timestamp)) {
+            return new Pair<>(true, new AtomicInteger());
+        }
+
+        if (attemptLogInformation.getLogEvents().size() >= MAX_NUM_OF_LOG_EVENTS) {
             return new Pair<>(true, new AtomicInteger());
         }
 

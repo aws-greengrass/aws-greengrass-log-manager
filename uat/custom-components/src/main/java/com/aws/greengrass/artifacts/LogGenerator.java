@@ -59,8 +59,8 @@ public class LogGenerator implements Consumer<String[]> {
         Logger logger = configureLogger();
 
         for (int i = 1; i <= numberOfLogs; i++) {
-            String logLine = String.format("(seq: %d, name: %s)", i, logFileName);
-            logger.info(logLine);
+            String logLine = String.format("(seq: %d)", i);
+            logger.info(logLine); // INFO LogGenerator (seq: 1)
             TimeUnit.MILLISECONDS.sleep(writeFreqMs);
         }
     }

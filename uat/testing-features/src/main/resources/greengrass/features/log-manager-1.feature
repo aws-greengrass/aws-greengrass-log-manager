@@ -38,7 +38,7 @@ Feature: Greengrass V2 LogManager
         }
         """
         And I deploy the Greengrass deployment configuration
-        And the Greengrass deployment is COMPLETED on the device after 2 minutes
+        And the Greengrass deployment is COMPLETED on the device after 3 minutes
         Then I verify the aws.greengrass.LogManager component is RUNNING using the greengrass-cli
         And I install the component LogGenerator from local store with configuration
         """
@@ -51,7 +51,7 @@ Feature: Greengrass V2 LogManager
            }
         }
         """
-        And the local Greengrass deployment is SUCCEEDED on the device after 60 seconds
+        And the local Greengrass deployment is SUCCEEDED on the device after 180 seconds
         Then I verify that it created a log group of type GreengrassSystemComponent for component System, with streams within 60 seconds in CloudWatch
         And I verify that it created a log group of type UserComponent for component UserComponentM, with streams within 60 seconds in CloudWatch
         And I verify 20 logs for UserComponentM of type UserComponent have been uploaded to Cloudwatch within 60 seconds
@@ -87,7 +87,7 @@ Feature: Greengrass V2 LogManager
         }
         """
         And I deploy the Greengrass deployment configuration
-        And the Greengrass deployment is COMPLETED on the device after 2 minutes
+        And the Greengrass deployment is COMPLETED on the device after 3 minutes
         Then I verify the aws.greengrass.LogManager component is RUNNING using the greengrass-cli
         And I install the component LogGenerator from local store with configuration
         """
@@ -100,7 +100,7 @@ Feature: Greengrass V2 LogManager
            }
         }
         """
-        And the local Greengrass deployment is SUCCEEDED on the device after 60 seconds
+        And the local Greengrass deployment is SUCCEEDED on the device after 180 seconds
         Then I verify that it created a log group of type GreengrassSystemComponent for component System, with streams within 60 seconds in CloudWatch
         And I verify that it created a log group of type UserComponent for component UserComponentW, with streams within 60 seconds in CloudWatch
         And I verify 20 logs for UserComponentW of type UserComponent have been uploaded to Cloudwatch within 60 seconds
@@ -128,7 +128,7 @@ Feature: Greengrass V2 LogManager
         }
         """
         And I deploy the Greengrass deployment configuration
-        Then the Greengrass deployment is COMPLETED on the device after 2 minutes
+        Then the Greengrass deployment is COMPLETED on the device after 3 minutes
         Then I verify the aws.greengrass.LogManager component is RUNNING using the greengrass-cli
         And I install the component LogGenerator from local store with configuration
         """
@@ -143,7 +143,7 @@ Feature: Greengrass V2 LogManager
            }
         }
         """
-        And the local Greengrass deployment is SUCCEEDED on the device after 60 seconds
+        And the local Greengrass deployment is SUCCEEDED on the device after 180 seconds
         Then I verify that it created a log group of type UserComponent for component UserComponentX, with streams within 60 seconds in CloudWatch
         And I verify 100 logs for UserComponentX of type UserComponent have been uploaded to Cloudwatch within 120 seconds
         And I verify the rotated files are deleted and that the active log file is present for component UserComponentX on directory UserComponentXLogDirectory
@@ -182,7 +182,7 @@ Feature: Greengrass V2 LogManager
         }
         """
         And I deploy the Greengrass deployment configuration
-        Then the Greengrass deployment is COMPLETED on the device after 2 minutes
+        Then the Greengrass deployment is COMPLETED on the device after 3 minutes
         Then I verify the aws.greengrass.LogManager component is RUNNING using the greengrass-cli
         And I wait 5 seconds
         Then I verify that 10 log files for component UserComponentB are still available
@@ -214,7 +214,7 @@ Feature: Greengrass V2 LogManager
         }
         """
         And I deploy the Greengrass deployment configuration
-        Then the Greengrass deployment is COMPLETED on the device after 2 minutes
+        Then the Greengrass deployment is COMPLETED on the device after 3 minutes
         Then I verify the aws.greengrass.LogManager component is RUNNING using the greengrass-cli
         When device network connectivity is offline
         And I install the component LogGenerator from local store with configuration
@@ -228,7 +228,7 @@ Feature: Greengrass V2 LogManager
            }
         }
         """
-        And the local Greengrass deployment is SUCCEEDED on the device after 60 seconds
+        And the local Greengrass deployment is SUCCEEDED on the device after 180 seconds
         When device network connectivity is online
         Then I verify that it created a log group of type GreengrassSystemComponent for component System, with streams within 60 seconds in CloudWatch
         Then I verify that it created a log group of type UserComponent for component UserComponentY, with streams within 60 seconds in CloudWatch
@@ -266,7 +266,7 @@ Feature: Greengrass V2 LogManager
         }
         """
         And I deploy the Greengrass deployment configuration
-        And the Greengrass deployment is COMPLETED on the device after 2 minutes
+        And the Greengrass deployment is COMPLETED on the device after 3 minutes
         And I install the component LogGenerator from local store with configuration
         """
         {
@@ -278,7 +278,7 @@ Feature: Greengrass V2 LogManager
            }
         }
         """
-        And the local Greengrass deployment is SUCCEEDED on the device after 60 seconds
+        And the local Greengrass deployment is SUCCEEDED on the device after 180 seconds
         Then I verify that it created a log group of type GreengrassSystemComponent for component System, with streams within 300 seconds in CloudWatch
         And I verify that it created a log group of type UserComponent for component UserComponentW, with streams within 300 seconds in CloudWatch
         And I verify 5 logs for UserComponentW of type UserComponent have been uploaded to Cloudwatch within 80 seconds

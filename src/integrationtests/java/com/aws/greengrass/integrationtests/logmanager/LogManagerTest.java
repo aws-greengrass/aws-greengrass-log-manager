@@ -148,9 +148,9 @@ class LogManagerTest extends BaseITCase {
         kernel.getContext().addGlobalStateChangeListener((service, oldState, newState) -> {
             if (service.getName().equals(LogManagerService.LOGS_UPLOADER_SERVICE_TOPICS)
                     && newState.equals(State.RUNNING)) {
-                logManagerRunning.countDown();
                 logManagerService = (LogManagerService) service;
                 logManagerService.getUploader().setCloudWatchLogsClient(cloudWatchLogsClient);
+                logManagerRunning.countDown();
             }
         });
         deviceConfiguration = new DeviceConfiguration(kernel, "ThingName", "xxxxxx-ats.iot.us-east-1.amazonaws.com",
@@ -160,7 +160,7 @@ class LogManagerTest extends BaseITCase {
         kernel.getContext().put(DeviceConfiguration.class, deviceConfiguration);
         // set required instances from context
         kernel.launch();
-        assertTrue(logManagerRunning.await(30, TimeUnit.SECONDS));
+        assertThat("log manager is running", logManagerRunning.await(30, TimeUnit.SECONDS));
 
     }
 
@@ -424,7 +424,7 @@ class LogManagerTest extends BaseITCase {
 
     @Test
     @Tag("processingFilesInformation")
-    void GIVEN_filesNOTDeletedAfterUpload_WHEN_removingComponentConfigurationNob_THEN_filesRemovedFromCache() throws
+    void GIVEN_filesNOTDeletedAfterUpload_WHEN_removingComponentConfiguration_THEN_filesRemovedFromCache() throws
             Exception {
         // Given
         when(cloudWatchLogsClient.putLogEvents(any(PutLogEventsRequest.class)))
@@ -449,7 +449,7 @@ class LogManagerTest extends BaseITCase {
 
         logManagerService.getConfig().lookupTopics(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC,
                 COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME, componentName).remove();
-
+        kernel.getContext().waitForPublishQueueToClear();
         assertThat(() -> logManagerService.getComponentLogConfigurations().get(componentName) == null,
                 eventuallyEval(equalTo(true), Duration.ofSeconds(30)));
 

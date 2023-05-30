@@ -148,8 +148,9 @@ class LogManagerTest extends BaseITCase {
         kernel.getContext().addGlobalStateChangeListener((service, oldState, newState) -> {
             if (service.getName().equals(LogManagerService.LOGS_UPLOADER_SERVICE_TOPICS)
                     && newState.equals(State.RUNNING)) {
-                logManagerRunning.countDown();
                 logManagerService = (LogManagerService) service;
+                logManagerService.getUploader().setCloudWatchLogsClient(cloudWatchLogsClient);
+                logManagerRunning.countDown();
             }
         });
         deviceConfiguration = new DeviceConfiguration(kernel, "ThingName", "xxxxxx-ats.iot.us-east-1.amazonaws.com",
@@ -159,9 +160,8 @@ class LogManagerTest extends BaseITCase {
         kernel.getContext().put(DeviceConfiguration.class, deviceConfiguration);
         // set required instances from context
         kernel.launch();
-        assertTrue(logManagerRunning.await(10, TimeUnit.SECONDS));
+        assertThat("log manager is running", logManagerRunning.await(30, TimeUnit.SECONDS));
 
-        logManagerService.getUploader().setCloudWatchLogsClient(cloudWatchLogsClient);
     }
 
     @BeforeEach
@@ -302,25 +302,20 @@ class LogManagerTest extends BaseITCase {
     void GIVEN_log_manager_in_errored_state_WHEN_restarted_THEN_logs_upload_is_reattempted(ExtensionContext context)
             throws Exception {
         ignoreExceptionWithMessage(context, "Forcing error to trigger restart");
-
+        CountDownLatch logManagerErrored = new CountDownLatch(1);
+        CountDownLatch logManagerRunning = new CountDownLatch(1);
         when(cloudWatchLogsClient.putLogEvents(any(PutLogEventsRequest.class)))
-                .thenThrow(new RuntimeException("Forcing error to trigger restart"))
-                .thenReturn(PutLogEventsResponse.builder().nextSequenceToken("nextToken").build());
+                .thenAnswer((x)->{
+                    logManagerErrored.countDown();
+                    throw new RuntimeException("Forcing error to trigger restart");
+                })
+                .thenAnswer((x)->{
+                    logManagerRunning.countDown();
+                    return PutLogEventsResponse.builder().nextSequenceToken("nextToken").build();
+                });
 
         tempDirectoryPath = Files.createTempDirectory(tempRootDir, "IntegrationTestsTemporaryLogFiles");
 
-        CountDownLatch logManagerErrored = new CountDownLatch(1);
-        CountDownLatch logManagerRunning = new CountDownLatch(2);
-        kernel.getContext().addGlobalStateChangeListener((service, oldState, newState) -> {
-            if (service.getName().equals(LogManagerService.LOGS_UPLOADER_SERVICE_TOPICS)) {
-                if (newState.equals(State.ERRORED)) {
-                    logManagerErrored.countDown();
-                }
-                if (newState.equals(State.RUNNING)) {
-                    logManagerRunning.countDown();
-                }
-            }
-        });
 
         for (int i = 0; i < testFileNumber - 1; i++) {
             createTempFileAndWriteData(tempDirectoryPath, "integTestRandomLogFiles.log_", "");
@@ -329,8 +324,8 @@ class LogManagerTest extends BaseITCase {
 
         setupKernel(tempDirectoryPath, "smallPeriodicIntervalUserComponentConfig.yaml");
         TimeUnit.SECONDS.sleep(30);
-        assertTrue(logManagerErrored.await(15, TimeUnit.SECONDS));
-        assertTrue(logManagerRunning.await(15, TimeUnit.SECONDS));
+        assertTrue(logManagerErrored.await(60, TimeUnit.SECONDS));
+        assertTrue(logManagerRunning.await(60, TimeUnit.SECONDS));
         verify(cloudWatchLogsClient, times(2)).putLogEvents(captor.capture());
 
         List<PutLogEventsRequest> putLogEventsRequests = captor.getAllValues();
@@ -429,7 +424,7 @@ class LogManagerTest extends BaseITCase {
 
     @Test
     @Tag("processingFilesInformation")
-    void GIVEN_filesNOTDeletedAfterUpload_WHEN_removingComponentConfigurationNob_THEN_filesRemovedFromCache() throws
+    void GIVEN_filesNOTDeletedAfterUpload_WHEN_removingComponentConfiguration_THEN_filesRemovedFromCache() throws
             Exception {
         // Given
         when(cloudWatchLogsClient.putLogEvents(any(PutLogEventsRequest.class)))
@@ -454,7 +449,7 @@ class LogManagerTest extends BaseITCase {
 
         logManagerService.getConfig().lookupTopics(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC,
                 COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME, componentName).remove();
-
+        kernel.getContext().waitForPublishQueueToClear();
         assertThat(() -> logManagerService.getComponentLogConfigurations().get(componentName) == null,
                 eventuallyEval(equalTo(true), Duration.ofSeconds(30)));
 

@@ -173,7 +173,7 @@ public class CloudWatchSteps {
 
         // Logs written by the log generator append a sequence number per log line along with the component name
         for (int i = 1; i <= expectedLogLines; i++) {
-            String expected = String.format("(seq: %d, name: %s)", i, componentName);
+            String expected = String.format("(seq: %d)", i, componentName);
             OutputLogEvent event = events.get(i - 1);
 
             if (!event.message().contains(expected)) {

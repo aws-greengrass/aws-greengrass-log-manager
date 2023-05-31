@@ -233,7 +233,7 @@ Feature: Greengrass V2 LogManager
         Then I verify that it created a log group of type GreengrassSystemComponent for component System, with streams within 60 seconds in CloudWatch
         Then I verify that it created a log group of type UserComponent for component UserComponentY, with streams within 60 seconds in CloudWatch
         And I verify 20 logs for UserComponentY of type UserComponent have been uploaded to Cloudwatch within 80 seconds
-
+    @saranya
     Scenario: LogManager-1-T5: When more than 10_000 component logs are to be uploaded, then log manager uploads all
     the logs in multiple attempts where each attempt has a maximum of 10_000 log events.
 
@@ -281,4 +281,4 @@ Feature: Greengrass V2 LogManager
         And the local Greengrass deployment is SUCCEEDED on the device after 180 seconds
         Then I verify that it created a log group of type GreengrassSystemComponent for component System, with streams within 300 seconds in CloudWatch
         And I verify that it created a log group of type UserComponent for component UserComponentW, with streams within 300 seconds in CloudWatch
-        And I verify 5 logs for UserComponentW of type UserComponent have been uploaded to Cloudwatch within 80 seconds
+        And I verify 10000 logs for UserComponentW of type UserComponent have been uploaded to Cloudwatch within 120 seconds

@@ -19,7 +19,8 @@ phases:
 
 artifacts:
   files:
-    - 'testResults/**/*'
+    - '**/*'
+  base-directory: 'testResults'
   name: 'LogManagerUatLinuxLogs.zip'
 
 reports:

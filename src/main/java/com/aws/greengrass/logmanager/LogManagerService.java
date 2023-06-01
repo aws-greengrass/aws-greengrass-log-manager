@@ -103,7 +103,7 @@ public class LogManagerService extends PluginService {
     public static final String DELETE_LOG_FILES_AFTER_UPLOAD_CONFIG_TOPIC_NAME = "deleteLogFileAfterCloudUpload";
     public static final String UPLOAD_TO_CW_CONFIG_TOPIC_NAME = "uploadToCloudWatch";
     public static final String MULTILINE_PATTERN_CONFIG_TOPIC_NAME = "multiLineStartPattern";
-    public static final int DEFAULT_PERIODIC_UPDATE_INTERVAL_SEC = 300;
+    public static final double DEFAULT_PERIODIC_UPDATE_INTERVAL_SEC = 300;
     public static final int MAX_CACHE_INACTIVE_TIME_SECONDS = 60 * 60 * 24; // 1 day
 
     private final List<Consumer<EventType>> serviceStatusListeners = new ArrayList<>();
@@ -124,7 +124,7 @@ public class LogManagerService extends PluginService {
     private final CloudWatchAttemptLogsProcessor logsProcessor;
     private final AtomicBoolean isCurrentlyUploading = new AtomicBoolean(false);
     @Getter
-    private int periodicUpdateIntervalSec;
+    private double periodicUpdateIntervalSec;
     private final Path workDir;
 
     /**
@@ -156,16 +156,15 @@ public class LogManagerService extends PluginService {
     }
 
     private void handlePeriodicUploadIntervalSecConfig(Topics topics) {
-        int periodicUploadIntervalSecInput = Coerce.toInt(topics.lookup(CONFIGURATION_CONFIG_KEY,
-                        LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC)
-                .dflt(DEFAULT_PERIODIC_UPDATE_INTERVAL_SEC)
-                .toPOJO());
+        double periodicUploadIntervalSecInput =
+                Coerce.toDouble(topics.findOrDefault(Double.toString(DEFAULT_PERIODIC_UPDATE_INTERVAL_SEC),
+                        CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC));
 
         if (periodicUploadIntervalSecInput > 0) {
             periodicUpdateIntervalSec = periodicUploadIntervalSecInput;
         } else {
-            logger.atWarn().log("Invalid config value, {}, for periodicUploadIntervalSec. Must be an "
-                            + "integer greater than 0. Using default value of 300 (5 minutes)",
+            logger.atWarn().log("Invalid config value, {}, for periodicUploadIntervalSec. Must be a "
+                            + "number greater than 0. Using default value of 300 (5 minutes)",
                     periodicUploadIntervalSecInput);
             periodicUpdateIntervalSec = DEFAULT_PERIODIC_UPDATE_INTERVAL_SEC;
         }
@@ -674,7 +673,7 @@ public class LogManagerService extends PluginService {
             //TODO: this is only done for passing the current text. But in practise, we don`t need to intentionally
             // sleep here.
             if (!isCurrentlyUploading.compareAndSet(false, true)) {
-                TimeUnit.SECONDS.sleep(periodicUpdateIntervalSec);
+                sleepFractionalSeconds(periodicUpdateIntervalSec);
                 continue;
             }
             List<ComponentLogFileInformation> componentMetadata = new ArrayList<>();
@@ -762,8 +761,12 @@ public class LogManagerService extends PluginService {
             emitEventStatus(EventType.ALL_COMPONENTS_PROCESSED);
             // after handle one cycle, we sleep for interval to avoid seamless scanning and processing next cycle.
             // TODO, do not use lazy sleep. Use scheduler to unblock the thread.
-            TimeUnit.SECONDS.sleep(periodicUpdateIntervalSec);
+            sleepFractionalSeconds(periodicUpdateIntervalSec);
         }
+    }
+
+    private void sleepFractionalSeconds(double timeToSleep) throws InterruptedException {
+        TimeUnit.MICROSECONDS.sleep(Math.round(timeToSleep * TimeUnit.SECONDS.toMicros(1)));
     }
 
     public void registerEventStatusListener(Consumer<EventType> callback) {

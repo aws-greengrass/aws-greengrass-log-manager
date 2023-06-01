@@ -135,7 +135,7 @@ class LogManagerConfigTest extends BaseITCase {
             Exception {
         setupKernel();
 
-        assertThat(() -> logManagerService.getPeriodicUpdateIntervalSec(), eventuallyEval(is(60),
+        assertThat(() -> logManagerService.getPeriodicUpdateIntervalSec(), eventuallyEval(is(60d),
                 Duration.ofSeconds(30)));
 
         logManagerService.getConfig().find(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC).remove();
@@ -143,7 +143,11 @@ class LogManagerConfigTest extends BaseITCase {
                 eventuallyEval(is(LogManagerService.DEFAULT_PERIODIC_UPDATE_INTERVAL_SEC), Duration.ofSeconds(30)));
 
         logManagerService.getConfig().lookup(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC).withValue(600);
-        assertThat(() -> logManagerService.getPeriodicUpdateIntervalSec(), eventuallyEval(is(600),
+        assertThat(() -> logManagerService.getPeriodicUpdateIntervalSec(), eventuallyEval(is(600d),
+                Duration.ofSeconds(30)));
+
+        logManagerService.getConfig().lookup(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC).withValue(0.0001d);
+        assertThat(() -> logManagerService.getPeriodicUpdateIntervalSec(), eventuallyEval(is(0.0001d),
                 Duration.ofSeconds(30)));
     }
 

@@ -10,6 +10,7 @@ services:
             diskSpaceLimit: '25'
             diskSpaceLimitUnit: 'MB'
             deleteLogFileAfterCloudUpload: 'true'
+            multiLineStartPattern: "[^\\s]"
   main:
     lifecycle:
       install:

@@ -78,6 +78,11 @@ public class CloudWatchAttemptLogsProcessor {
                 sdf.setTimeZone(TimeZone.getTimeZone("UTC"));
                 return sdf;
             });
+    // Look for log line starting with a date or JSON token ({) optionally in brackets or parenthesis
+    // ex: 2022-01-01, [2022-01-01, (2022-01-01, {
+    // This signifies that we should be starting a new log entry instead of appending
+    // to the previous log entry such as with stacktraces.
+    private static final Pattern DEFAULT_MULTILINE_PATTERN = Pattern.compile("^[\\[(]?\\d{4}-\\d\\d-\\d\\d|^\\{");
     private final DeviceConfiguration deviceConfiguration;
     private static final Logger logger = LogManager.getLogger(CloudWatchAttemptLogsProcessor.class);
     private static final Pattern textTimestampPattern = Pattern.compile("([\\w-:.+]+)");
@@ -438,15 +443,16 @@ public class CloudWatchAttemptLogsProcessor {
      */
     private boolean checkLogStartPattern(ComponentLogFileInformation componentLogFileInformation, String logLine) {
         Pattern multiLineStartPattern = componentLogFileInformation.getMultiLineStartPattern();
-        if (multiLineStartPattern != null) {
-            try {
-                return multiLineStartPattern.matcher(logLine).find();
-            } catch (StackOverflowError e) {
-                // Not logging error cause because it's a huge recursive stack trace
-                logger.atWarn().kv("componentName", componentLogFileInformation.getName())
-                        .log("StackOverflowError thrown when matching log against pattern {}. "
-                                + "Check for leading non-whitespace instead", multiLineStartPattern.pattern());
-            }
+        if (multiLineStartPattern == null) {
+            multiLineStartPattern = DEFAULT_MULTILINE_PATTERN;
+        }
+        try {
+            return multiLineStartPattern.matcher(logLine).find();
+        } catch (StackOverflowError e) {
+            // Not logging error cause because it's a huge recursive stack trace
+            logger.atWarn().kv("componentName", componentLogFileInformation.getName())
+                    .log("StackOverflowError thrown when matching log against pattern {}. "
+                            + "Check for leading non-whitespace instead", multiLineStartPattern.pattern());
         }
         // The default pattern is to check if the line starts with non-whitespace. If so, the line is considered
         // the start of a new log event.

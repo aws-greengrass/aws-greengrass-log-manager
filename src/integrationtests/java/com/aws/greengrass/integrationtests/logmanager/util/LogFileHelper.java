@@ -5,6 +5,11 @@
 
 package com.aws.greengrass.integrationtests.logmanager.util;
 
+import com.aws.greengrass.logging.api.Logger;
+import com.aws.greengrass.logging.impl.LogManager;
+import com.aws.greengrass.logging.impl.config.LogStore;
+import com.aws.greengrass.logging.impl.config.model.LogConfigUpdate;
+
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.IOException;
@@ -54,8 +59,20 @@ public final class LogFileHelper {
         for (String messageBytes : randomMessages) {
             addDataToFile(messageBytes, file.toPath());
         }
-
         return file;
+    }
+
+    public static void writeExampleLogs(Path tempDirectoryPath, String fileNamePrefix)
+            throws IOException {
+        Logger l = LogManager.getLogger(fileNamePrefix,
+                LogConfigUpdate.builder().fileName(fileNamePrefix)
+                        .outputDirectory(tempDirectoryPath.toString()).outputType(LogStore.FILE).build());
+        List<String> randomMessages = generateRandomMessages();
+        for (String messageBytes : randomMessages) {
+            l.info(messageBytes);
+        }
+        l.error("this is an error", new RuntimeException("known"));
+        l.info("after error");
     }
 
     public static void createFileAndWriteData(Path tempDirectoryPath, String fileName)

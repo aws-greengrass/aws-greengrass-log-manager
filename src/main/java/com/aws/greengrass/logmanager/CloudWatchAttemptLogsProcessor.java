@@ -312,6 +312,10 @@ public class CloudWatchAttemptLogsProcessor {
      * @return a structuredLogMessage if the deserialization is successful, else an empty optional object.
      */
     private Optional<GreengrassLogMessage> tryGetStructuredLogMessage(String data) {
+        // Fail fast as Jackson will take longer to fail. This is roughly 1000x times faster.
+        if (data == null || !data.startsWith("{")) {
+            return Optional.empty();
+        }
         try {
             return Optional.ofNullable(DESERIALIZER.readValue(data, GreengrassLogMessage.class));
         } catch (JsonProcessingException ignored) {

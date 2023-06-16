@@ -16,15 +16,17 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.PriorityQueue;
+import java.util.Queue;
 
 @Builder
 @Data
 @Getter
 @Setter
 public class CloudWatchAttemptLogInformation {
-    protected static final Comparator<InputLogEvent> EVENT_COMPARATOR = Comparator.comparing(InputLogEvent::timestamp);
+    public static final Comparator<InputLogEvent> EVENT_COMPARATOR = Comparator.comparing(InputLogEvent::timestamp);
     @Builder.Default
-    private List<InputLogEvent> logEvents = new ArrayList<>();
+    private Queue<InputLogEvent> logEvents = new PriorityQueue<>(EVENT_COMPARATOR);
     @Builder.Default
     private Map<String, CloudWatchAttemptLogFileInformation> attemptLogFileInformationMap = new HashMap<>();
     private String componentName;
@@ -37,7 +39,6 @@ public class CloudWatchAttemptLogInformation {
      */
     public List<InputLogEvent> getSortedLogEvents() {
         // Sort by timestamp because CloudWatch requires that the logs are in chronological order
-        logEvents.sort(EVENT_COMPARATOR);
-        return logEvents;
+        return new ArrayList<>(logEvents);
     }
 }

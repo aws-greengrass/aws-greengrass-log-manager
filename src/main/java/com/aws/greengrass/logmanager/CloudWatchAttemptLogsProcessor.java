@@ -40,7 +40,6 @@ import java.time.format.DateTimeParseException;
 import java.time.temporal.ChronoUnit;
 import java.time.temporal.TemporalAccessor;
 import java.util.Arrays;
-import java.util.Comparator;
 import java.util.Date;
 import java.util.Locale;
 import java.util.Map;
@@ -373,9 +372,8 @@ public class CloudWatchAttemptLogsProcessor {
         // If the earliest time + 24 hours is before the new time then we cannot insert it because the gap
         // from earliest to latest is greater than 24 hours. Otherwise we can add it.
         // Using 23 instead of 24 hours to have a bit of leeway.
-        Optional<InputLogEvent> earliestTime =
-                attemptLogInformation.getLogEvents().stream().min(Comparator.comparingLong(InputLogEvent::timestamp));
-        if (earliestTime.isPresent() && Instant.ofEpochMilli(earliestTime.get().timestamp()).plus(23, ChronoUnit.HOURS)
+        InputLogEvent earliestTime = attemptLogInformation.getLogEvents().peek();
+        if (earliestTime != null && Instant.ofEpochMilli(earliestTime.timestamp()).plus(23, ChronoUnit.HOURS)
                 .isBefore(timestamp)) {
             return new Pair<>(true, new AtomicInteger());
         }

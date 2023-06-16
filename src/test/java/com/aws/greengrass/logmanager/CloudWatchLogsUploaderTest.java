@@ -35,17 +35,19 @@ import software.amazon.awssdk.services.cloudwatchlogs.model.ResourceAlreadyExist
 import software.amazon.awssdk.services.cloudwatchlogs.model.ResourceNotFoundException;
 
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.PriorityQueue;
+import java.util.Queue;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
+import static com.aws.greengrass.logmanager.model.CloudWatchAttemptLogInformation.EVENT_COMPARATOR;
 import static com.aws.greengrass.testcommons.testutilities.ExceptionLogProtector.ignoreExceptionOfType;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.lessThan;
@@ -85,7 +87,7 @@ public class CloudWatchLogsUploaderTest extends GGServiceTestUtil {
         String mockNextSequenceToken = UUID.randomUUID().toString();
         CloudWatchAttempt attempt = new CloudWatchAttempt();
         Map<String, CloudWatchAttemptLogInformation> logSteamForGroup1Map = new ConcurrentHashMap<>();
-        List<InputLogEvent> inputLogEventsForStream1OfGroup1 = new ArrayList<>();
+        Queue<InputLogEvent> inputLogEventsForStream1OfGroup1 = new PriorityQueue<>(EVENT_COMPARATOR);
         inputLogEventsForStream1OfGroup1.add(InputLogEvent.builder()
                 .timestamp(Instant.now().toEpochMilli() + 5_000) // Put this in the future to show that sorting on
                 // timestamp works
@@ -106,7 +108,8 @@ public class CloudWatchLogsUploaderTest extends GGServiceTestUtil {
         logSteamForGroup1Map.put(mockStreamNameForGroup, logInfo);
 
         // Verify that log events were sorted correctly
-        assertThat(logInfo.getSortedLogEvents().get(0).timestamp(), is(lessThan(logInfo.getLogEvents().get(1).timestamp())));
+        assertThat(logInfo.getSortedLogEvents().get(0).timestamp(),
+                is(lessThan(logInfo.getSortedLogEvents().get(1).timestamp())));
 
         attempt.setLogGroupName(mockGroupName);
         attempt.setLogStreamsToLogEventsMap(logSteamForGroup1Map);
@@ -168,7 +171,7 @@ public class CloudWatchLogsUploaderTest extends GGServiceTestUtil {
         String mockNextSequenceToken = UUID.randomUUID().toString();
         CloudWatchAttempt attempt = new CloudWatchAttempt();
         Map<String, CloudWatchAttemptLogInformation> logSteamForGroup1Map = new ConcurrentHashMap<>();
-        List<InputLogEvent> inputLogEventsForStream1OfGroup1 = new ArrayList<>();
+        Queue<InputLogEvent> inputLogEventsForStream1OfGroup1 = new PriorityQueue<>(EVENT_COMPARATOR);
         inputLogEventsForStream1OfGroup1.add(InputLogEvent.builder()
                 .timestamp(Instant.now().toEpochMilli())
                 .message("test")
@@ -240,7 +243,7 @@ public class CloudWatchLogsUploaderTest extends GGServiceTestUtil {
         String mockNextSequenceToken = UUID.randomUUID().toString();
         CloudWatchAttempt attempt = new CloudWatchAttempt();
         Map<String, CloudWatchAttemptLogInformation> logSteamForGroup1Map = new ConcurrentHashMap<>();
-        List<InputLogEvent> inputLogEventsForStream1OfGroup1 = new ArrayList<>();
+        Queue<InputLogEvent> inputLogEventsForStream1OfGroup1 = new PriorityQueue<>(EVENT_COMPARATOR);
         inputLogEventsForStream1OfGroup1.add(InputLogEvent.builder()
                 .timestamp(Instant.now().toEpochMilli())
                 .message("test")
@@ -316,7 +319,7 @@ public class CloudWatchLogsUploaderTest extends GGServiceTestUtil {
         String mockNextSequenceToken2 = UUID.randomUUID().toString();
         CloudWatchAttempt attempt = new CloudWatchAttempt();
         Map<String, CloudWatchAttemptLogInformation> logSteamForGroup1Map = new ConcurrentHashMap<>();
-        List<InputLogEvent> inputLogEventsForStream1OfGroup1 = new ArrayList<>();
+        Queue<InputLogEvent> inputLogEventsForStream1OfGroup1 = new PriorityQueue<>(EVENT_COMPARATOR);
         inputLogEventsForStream1OfGroup1.add(InputLogEvent.builder()
                 .timestamp(Instant.now().toEpochMilli())
                 .message("test")
@@ -387,7 +390,7 @@ public class CloudWatchLogsUploaderTest extends GGServiceTestUtil {
         String mockSequenceToken = UUID.randomUUID().toString();
         CloudWatchAttempt attempt = new CloudWatchAttempt();
         Map<String, CloudWatchAttemptLogInformation> logSteamForGroup1Map = new ConcurrentHashMap<>();
-        List<InputLogEvent> inputLogEventsForStream1OfGroup1 = new ArrayList<>();
+        Queue<InputLogEvent> inputLogEventsForStream1OfGroup1 = new PriorityQueue<>(EVENT_COMPARATOR);
         inputLogEventsForStream1OfGroup1.add(InputLogEvent.builder()
                 .timestamp(Instant.now().toEpochMilli())
                 .message("test")
@@ -433,7 +436,7 @@ public class CloudWatchLogsUploaderTest extends GGServiceTestUtil {
         String mockSequenceToken = UUID.randomUUID().toString();
         CloudWatchAttempt attempt = new CloudWatchAttempt();
         Map<String, CloudWatchAttemptLogInformation> logSteamForGroup1Map = new ConcurrentHashMap<>();
-        List<InputLogEvent> inputLogEventsForStream1OfGroup1 = new ArrayList<>();
+        Queue<InputLogEvent> inputLogEventsForStream1OfGroup1 = new PriorityQueue<>(EVENT_COMPARATOR);
         inputLogEventsForStream1OfGroup1.add(InputLogEvent.builder()
                 .timestamp(Instant.now().toEpochMilli())
                 .message("test")
@@ -478,7 +481,7 @@ public class CloudWatchLogsUploaderTest extends GGServiceTestUtil {
         String mockSequenceToken = UUID.randomUUID().toString();
         CloudWatchAttempt attempt = new CloudWatchAttempt();
         Map<String, CloudWatchAttemptLogInformation> logSteamForGroup1Map = new ConcurrentHashMap<>();
-        List<InputLogEvent> inputLogEventsForStream1OfGroup1 = new ArrayList<>();
+        Queue<InputLogEvent> inputLogEventsForStream1OfGroup1 = new PriorityQueue<>(EVENT_COMPARATOR);
         inputLogEventsForStream1OfGroup1.add(InputLogEvent.builder()
                 .timestamp(Instant.now().toEpochMilli())
                 .message("test")
@@ -522,7 +525,7 @@ public class CloudWatchLogsUploaderTest extends GGServiceTestUtil {
         String mockSequenceToken = UUID.randomUUID().toString();
         CloudWatchAttempt attempt = new CloudWatchAttempt();
         Map<String, CloudWatchAttemptLogInformation> logSteamForGroup1Map = new ConcurrentHashMap<>();
-        List<InputLogEvent> inputLogEventsForStream1OfGroup1 = new ArrayList<>();
+        Queue<InputLogEvent> inputLogEventsForStream1OfGroup1 = new PriorityQueue<>(EVENT_COMPARATOR);
         inputLogEventsForStream1OfGroup1.add(InputLogEvent.builder()
                 .timestamp(Instant.now().toEpochMilli())
                 .message("test")
@@ -570,7 +573,7 @@ public class CloudWatchLogsUploaderTest extends GGServiceTestUtil {
         String mockSequenceToken = UUID.randomUUID().toString();
         CloudWatchAttempt attempt = new CloudWatchAttempt();
         Map<String, CloudWatchAttemptLogInformation> logSteamForGroup1Map = new ConcurrentHashMap<>();
-        List<InputLogEvent> inputLogEventsForStream1OfGroup1 = new ArrayList<>();
+        Queue<InputLogEvent> inputLogEventsForStream1OfGroup1 = new PriorityQueue<>(EVENT_COMPARATOR);
         inputLogEventsForStream1OfGroup1.add(InputLogEvent.builder()
                 .timestamp(Instant.now().toEpochMilli())
                 .message("test")
@@ -625,7 +628,7 @@ public class CloudWatchLogsUploaderTest extends GGServiceTestUtil {
                 .build());
         logSteamForGroup1Map.put(mockStreamNameForGroup,
                 CloudWatchAttemptLogInformation.builder()
-                        .logEvents(new ArrayList<>())
+                        .logEvents(new PriorityQueue<>(EVENT_COMPARATOR))
                         .attemptLogFileInformationMap(attemptLogFileInformationMap)
                         .build());
         attempt.setLogGroupName(mockGroupName);

@@ -228,8 +228,13 @@ public class LogManagerService extends PluginService {
                             Pattern.quote(LogManager.getRootLogConfiguration().getFileName()))))
                     .directoryPath(logsDirectoryPath)
                     .name(SYSTEM_LOGS_COMPONENT_NAME)
-                    .componentType(ComponentType.GreengrassSystemComponent)
-                    .build();
+                    .componentType(ComponentType.GreengrassSystemComponent).build();
+
+            String multiLineStartPatternString =
+                    Coerce.toString(systemConfigMap.get(MULTILINE_PATTERN_CONFIG_TOPIC_NAME));
+            if (Utils.isNotEmpty(multiLineStartPatternString)) {
+                systemConfiguration.setMultiLineStartPattern(Pattern.compile(multiLineStartPatternString));
+            }
 
             setCommonComponentConfiguration(systemConfigMap, systemConfiguration);
             newComponentLogConfigurations.put(systemConfiguration.getName(), systemConfiguration);

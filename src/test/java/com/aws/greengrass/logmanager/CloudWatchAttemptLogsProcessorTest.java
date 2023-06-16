@@ -80,6 +80,8 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
         DATE_FORMATTER.setTimeZone(TimeZone.getTimeZone("UTC"));
     }
 
+    private final Pattern WHITESPACE = Pattern.compile("[^\\s]");
+
     @Mock
     private DeviceConfiguration mockDeviceConfiguration;
     private final Clock defaultClock = Clock.fixed(Instant.parse("2020-12-17T12:00:00.00Z"), ZoneId.systemDefault());
@@ -255,6 +257,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
             ComponentLogFileInformation componentLogFileInformation = ComponentLogFileInformation.builder()
                     .name("TestComponent")
                     .desiredLogLevel(Level.INFO)
+                    .multiLineStartPattern(WHITESPACE)
                     .componentType(ComponentType.GreengrassSystemComponent)
                     .logFileInformationList(logFileInformationSet)
                     .build();
@@ -307,7 +310,8 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
                 int length = 1024;
                 boolean useLetters = true;
                 boolean useNumbers = false;
-                StringBuilder generatedString = new StringBuilder(RandomStringUtils.random(length, useLetters, useNumbers));
+                StringBuilder generatedString =
+                        new StringBuilder(RandomStringUtils.random(length, useLetters, useNumbers));
                 generatedString.append("\r\n");
                 fileOutputStream.write(generatedString.toString().getBytes(StandardCharsets.UTF_8));
             }
@@ -319,6 +323,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
             logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile).fileHash(fileHash).build());
             ComponentLogFileInformation componentLogFileInformation = ComponentLogFileInformation.builder()
                     .name("TestComponent")
+                    .multiLineStartPattern(WHITESPACE)
                     .desiredLogLevel(Level.INFO)
                     .componentType(ComponentType.GreengrassSystemComponent)
                     .logFileInformationList(logFileInformationSet)
@@ -454,6 +459,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
         ComponentLogFileInformation componentLogFileInformation = ComponentLogFileInformation.builder()
                 .name("TestComponent")
                 .desiredLogLevel(Level.INFO)
+                .multiLineStartPattern(WHITESPACE)
                 .componentType(ComponentType.GreengrassSystemComponent)
                 .logFileInformationList(logFileInformationSet)
                 .build();
@@ -594,7 +600,9 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
             logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile).fileHash(fileHash).build());
             ComponentLogFileInformation componentLogFileInformation =
                     ComponentLogFileInformation.builder().name("TestComponent")
-                            .desiredLogLevel(Level.INFO).componentType(ComponentType.GreengrassSystemComponent)
+                            .desiredLogLevel(Level.INFO)
+                            .multiLineStartPattern(WHITESPACE)
+                            .componentType(ComponentType.GreengrassSystemComponent)
                             .logFileInformationList(logFileInformationSet).build();
 
             logsProcessor = new CloudWatchAttemptLogsProcessor(mockDeviceConfiguration, defaultClock);
@@ -747,8 +755,8 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
         assertTrue(file.setReadable(true));
         assertTrue(file.setWritable(true));
         try (OutputStream fileOutputStream = Files.newOutputStream(file.toPath())) {
-            fileOutputStream.write("[INFO] (pool-2-thread-5) ComponentManager:\n".getBytes(StandardCharsets.UTF_8));
-            fileOutputStream.write("[ERROR] (pool-2-thread-5) DeploymentService:\n".getBytes(StandardCharsets.UTF_8));
+            fileOutputStream.write("[2022-01-10] [INFO] (pool-2-thread-5) ComponentManager:\n".getBytes(StandardCharsets.UTF_8));
+            fileOutputStream.write("[2022-01-10] [ERROR] (pool-2-thread-5) DeploymentService:\n".getBytes(StandardCharsets.UTF_8));
             fileOutputStream.write("java.util.concurrent.ExecutionException: NoAvailableComponentVersion\n".getBytes(StandardCharsets.UTF_8));
             fileOutputStream.write("    at java.util.concurrent\n".getBytes(StandardCharsets.UTF_8));
             fileOutputStream.write("    at java.util.concurrent\n".getBytes(StandardCharsets.UTF_8));
@@ -777,7 +785,8 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
             CloudWatchAttemptLogInformation logEventsForStream1 = attempt.getLogStreamsToLogEventsMap().values().iterator()
                     .next();
             assertNotNull(logEventsForStream1.getLogEvents());
-            assertEquals(4, logEventsForStream1.getLogEvents().size());
+            // We expect only 2 logs. 1 is the info log, 1 is the error log including stacktrace in the same log event
+            assertEquals(2, logEventsForStream1.getLogEvents().size());
         } finally {
             assertTrue(file.delete());
         }

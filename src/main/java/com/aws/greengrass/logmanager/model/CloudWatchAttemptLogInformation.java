@@ -38,7 +38,10 @@ public class CloudWatchAttemptLogInformation {
      * @return sorted events
      */
     public List<InputLogEvent> getSortedLogEvents() {
-        // Sort by timestamp because CloudWatch requires that the logs are in chronological order
-        return new ArrayList<>(logEvents);
+        // Sort by timestamp because CloudWatch requires that the logs are in chronological order.
+        // Priority queue conversion to a list does NOT maintain proper ordering, so we must sort ourselves.
+        ArrayList<InputLogEvent> l = new ArrayList<>(logEvents);
+        l.sort(EVENT_COMPARATOR);
+        return l;
     }
 }

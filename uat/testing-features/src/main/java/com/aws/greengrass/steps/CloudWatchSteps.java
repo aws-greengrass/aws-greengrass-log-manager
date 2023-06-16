@@ -16,9 +16,8 @@ import io.cucumber.guice.ScenarioScoped;
 import io.cucumber.java.en.Then;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-
+import software.amazon.awssdk.core.pagination.sync.SdkIterable;
 import software.amazon.awssdk.services.cloudwatchlogs.CloudWatchLogsClient;
-import software.amazon.awssdk.services.cloudwatchlogs.model.DeleteLogGroupRequest;
 import software.amazon.awssdk.services.cloudwatchlogs.model.GetLogEventsRequest;
 import software.amazon.awssdk.services.cloudwatchlogs.model.GetLogEventsResponse;
 import software.amazon.awssdk.services.cloudwatchlogs.model.LogStream;
@@ -195,7 +194,7 @@ public class CloudWatchSteps {
             // The OTF watch steps check evey 100ms this to avoids hammering the api. Ideally OTF
             // can allow us to configure the check interval rate
             Thread.sleep(VERIFICATION_RATE_MILLISECONDS);
-            List<LogStream> streams = logsLifecycle.findStream(logGroupName, streamName);
+            SdkIterable<LogStream> streams = logsLifecycle.findStream(logGroupName, streamName);
             boolean exists = streams.stream().anyMatch(stream -> stream.logStreamName().matches(streamName));
 
             if (exists) {

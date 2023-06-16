@@ -69,6 +69,7 @@ import static com.aws.greengrass.integrationtests.logmanager.util.LogFileHelper.
 import static com.aws.greengrass.integrationtests.logmanager.util.LogFileHelper.DEFAULT_LOG_LINE_IN_FILE;
 import static com.aws.greengrass.integrationtests.logmanager.util.LogFileHelper.createFileAndWriteData;
 import static com.aws.greengrass.integrationtests.logmanager.util.LogFileHelper.createTempFileAndWriteData;
+import static com.aws.greengrass.integrationtests.logmanager.util.LogFileHelper.writeExampleLogs;
 import static com.aws.greengrass.logging.impl.config.LogConfig.newLogConfigFromRootConfig;
 import static com.aws.greengrass.logmanager.CloudWatchAttemptLogsProcessor.DEFAULT_LOG_STREAM_NAME;
 import static com.aws.greengrass.logmanager.LogManagerService.COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME;
@@ -80,6 +81,7 @@ import static com.aws.greengrass.testcommons.testutilities.ExceptionLogProtector
 import static com.aws.greengrass.testcommons.testutilities.ExceptionLogProtector.ignoreExceptionWithMessage;
 import static com.github.grantwest.eventually.EventuallyLambdaMatcher.eventuallyEval;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.is;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -177,6 +179,46 @@ class LogManagerTest extends BaseITCase {
     void afterEach() {
         kernel.shutdown();
     }
+
+    @Test
+    void GIVEN_user_component_with_stacktrace_logs_WHEN_interval_elapses_THEN_logs_are_uploaded_to_cloud(
+            ExtensionContext context) throws Exception {
+        ignoreExceptionWithMessage(context, "known");
+        when(cloudWatchLogsClient.putLogEvents(any(PutLogEventsRequest.class))).thenReturn(
+                PutLogEventsResponse.builder().nextSequenceToken("nextToken").build());
+
+        tempDirectoryPath = Files.createTempDirectory(tempRootDir, "IntegrationTestsTemporaryLogFiles");
+
+        writeExampleLogs(tempDirectoryPath, "integTestRandomLogFiles");
+
+        setupKernel(tempDirectoryPath, "smallPeriodicIntervalUserComponentConfigNoMultiline.yaml");
+
+        Runnable waitForActiveFileToBeProcessed = subscribeToActiveFileProcessed(logManagerService, 30);
+        waitForActiveFileToBeProcessed.run();
+        verify(cloudWatchLogsClient, atLeastOnce()).putLogEvents(captor.capture());
+
+        List<PutLogEventsRequest> putLogEventsRequests = captor.getAllValues();
+        assertEquals(1, putLogEventsRequests.size());
+        PutLogEventsRequest request = putLogEventsRequests.get(0);
+        assertEquals(calculateLogStreamName(THING_NAME, LOCAL_DEPLOYMENT_GROUP_NAME), request.logStreamName());
+        assertEquals("/aws/greengrass/UserComponent/" + AWS_REGION + "/UserComponentA", request.logGroupName());
+        assertNotNull(request.logEvents());
+
+        // Must have exactly 12 lines. 10 are regular logs, 1 is a log with stacktrace, 1 is the log after the
+        // stacktrace
+        assertEquals(DEFAULT_LOG_LINE_IN_FILE + 2, request.logEvents().size());
+        assertThat(request.logEvents().get(10).message(), containsString(
+                "com.aws.greengrass.integrationtests" + ".logmanager.LogManagerTest"
+                        + ".GIVEN_user_component_with_stacktrace_logs_WHEN_interval_elapses_THEN_logs_are_uploaded_to_cloud"));
+
+        Pattern logFileNamePattern = Pattern.compile("^integTestRandomLogFiles.log\\w*");
+        ComponentLogConfiguration compLogInfo =
+                ComponentLogConfiguration.builder().directoryPath(tempDirectoryPath).fileNameRegex(logFileNamePattern)
+                        .name("UserComponentA").build();
+        LogFileGroup logFileGroup = LogFileGroup.create(compLogInfo, mockInstant, workDir);
+        assertEquals(1, logFileGroup.getLogFiles().size());
+    }
+
 
     @Test
     void GIVEN_user_component_config_with_small_periodic_interval_WHEN_interval_elapses_THEN_logs_are_uploaded_to_cloud()

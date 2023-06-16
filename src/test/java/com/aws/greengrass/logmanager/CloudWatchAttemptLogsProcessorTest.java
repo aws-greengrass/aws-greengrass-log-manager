@@ -550,7 +550,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
             CloudWatchAttemptLogInformation logEventsForStream1 = attempt.getLogStreamsToLogEventsMap().get(logStream);
             assertNotNull(logEventsForStream1.getLogEvents());
 
-            List<InputLogEvent> logEvents = logEventsForStream1.getLogEvents();
+            List<InputLogEvent> logEvents = logEventsForStream1.getSortedLogEvents();
             assertEquals(4, logEvents.size());
             // Over size log line got divided and successfully added as log events
             assertEquals(overSizeLogLine.substring(0, MAX_EVENT_LENGTH), logEvents.get(1).message());

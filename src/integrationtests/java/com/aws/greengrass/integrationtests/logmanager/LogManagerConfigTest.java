@@ -111,6 +111,7 @@ class LogManagerConfigTest extends BaseITCase {
         kernel.getContext().put(DeviceConfiguration.class, deviceConfiguration);
         kernel.launch();
         assertTrue(logManagerRunning.await(10, TimeUnit.SECONDS));
+        kernel.getContext().waitForPublishQueueToClear();
     }
 
     @BeforeEach

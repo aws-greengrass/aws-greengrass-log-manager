@@ -5,20 +5,27 @@
 
 package com.aws.greengrass.logmanager;
 
+import com.aws.greengrass.config.Configuration;
 import com.aws.greengrass.config.Topic;
 import com.aws.greengrass.config.Topics;
 import com.aws.greengrass.config.UnsupportedInputTypeException;
 import com.aws.greengrass.config.UpdateBehaviorTree;
 import com.aws.greengrass.dependency.Context;
-import com.aws.greengrass.dependency.Crashable;
 import com.aws.greengrass.logging.impl.LogManager;
 import com.aws.greengrass.logging.impl.config.LogConfig;
 import com.aws.greengrass.logging.impl.config.LogStore;
 import com.aws.greengrass.logging.impl.config.model.LogConfigUpdate;
 import com.aws.greengrass.logmanager.exceptions.InvalidLogGroupException;
-import com.aws.greengrass.logmanager.model.*;
+import com.aws.greengrass.logmanager.model.CloudWatchAttempt;
+import com.aws.greengrass.logmanager.model.CloudWatchAttemptLogFileInformation;
+import com.aws.greengrass.logmanager.model.CloudWatchAttemptLogInformation;
+import com.aws.greengrass.logmanager.model.ComponentLogConfiguration;
+import com.aws.greengrass.logmanager.model.ComponentLogFileInformation;
+import com.aws.greengrass.logmanager.model.ComponentType;
+import com.aws.greengrass.logmanager.model.LogFile;
+import com.aws.greengrass.logmanager.model.LogFileGroup;
+import com.aws.greengrass.logmanager.model.ProcessingFiles;
 import com.aws.greengrass.testcommons.testutilities.GGExtension;
-import com.aws.greengrass.testcommons.testutilities.GGServiceTestUtil;
 import com.aws.greengrass.util.Coerce;
 import com.aws.greengrass.util.NucleusPaths;
 import com.fasterxml.jackson.databind.exc.MismatchedInputException;
@@ -27,7 +34,6 @@ import org.hamcrest.core.IsNot;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.extension.ExtensionContext;
@@ -91,7 +97,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.lenient;
@@ -101,7 +106,7 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith({MockitoExtension.class, GGExtension.class})
 @SuppressWarnings("PMD.ExcessiveClassLength")
-class LogManagerServiceTest extends GGServiceTestUtil {
+class LogManagerServiceTest {
     @Mock
     private CloudWatchLogsUploader mockUploader;
     @Mock
@@ -110,10 +115,6 @@ class LogManagerServiceTest extends GGServiceTestUtil {
     private ArgumentCaptor<ComponentLogFileInformation> componentLogsInformationCaptor;
     @Captor
     private ArgumentCaptor<Consumer<CloudWatchAttempt>> callbackCaptor;
-    @Captor
-    private ArgumentCaptor<Map<String, Object>> updateFromMapCaptor;
-    @Captor
-    private ArgumentCaptor<Number> numberObjectCaptor;
     private static NucleusPaths nucleusPaths;
 
     @TempDir
@@ -123,6 +124,9 @@ class LogManagerServiceTest extends GGServiceTestUtil {
     private LogManagerService logsUploaderService;
     private final ExecutorService executor = Executors.newCachedThreadPool();
     private final Instant mockInstant = Instant.EPOCH;
+    private final Context context = new Context();
+    private final Configuration configuration = new Configuration(context);
+    private final Topics config = configuration.lookupTopics("a");
 
     @BeforeAll
     static void setupBefore() throws IOException, InterruptedException {
@@ -200,70 +204,32 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         }
     }
 
-    @BeforeEach
-    public void setup() {
-        serviceFullName = "aws.greengrass.LogManager";
-        initializeMockedConfig();
-        lenient().when(context.runOnPublishQueueAndWait(any())).thenAnswer((s) -> {
-            ((Crashable) s.getArgument(0)).run();
-            return null;
-        });
-    }
-
     private void mockDefaultPersistedState() {
-        Topics allCurrentProcessingComponentTopics1 =
-                Topics.of(context, PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION, null);
-        Topics currentProcessingComponentTopics1 =
-                Topics.of(context, SYSTEM_LOGS_COMPONENT_NAME, allCurrentProcessingComponentTopics1);
-        Topics currentProcessingComponentTopics2 =
-                Topics.of(context, "UserComponentA", allCurrentProcessingComponentTopics1);
-        Topics currentProcessingComponentTopics3 =
-                Topics.of(context, "UserComponentB", allCurrentProcessingComponentTopics1);
-
         // 2.3.0 and prior
-        lenient().when(config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC)
-                        .lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION,
-                                SYSTEM_LOGS_COMPONENT_NAME))
-                .thenReturn(currentProcessingComponentTopics1);
+        config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC, PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION,
+                SYSTEM_LOGS_COMPONENT_NAME);
         // 2.3.1 and after
-        lenient().when(config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC)
-                        .lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION_V2,
-                                SYSTEM_LOGS_COMPONENT_NAME))
-                .thenReturn(currentProcessingComponentTopics1);
+        config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC, PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION_V2,
+                SYSTEM_LOGS_COMPONENT_NAME);
+
         // 2.3.0 and prior
-        lenient().when(config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC)
-                        .lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION, "UserComponentA"))
-                .thenReturn(currentProcessingComponentTopics2);
+        config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC,PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION,
+                "UserComponentA");
         // 2.3.1 and after
-        lenient().when(config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC)
-                        .lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION_V2, "UserComponentA"))
-                .thenReturn(currentProcessingComponentTopics2);
+        config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC,
+                        PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION_V2, "UserComponentA");
         // 2.3.0 and prior
-        lenient().when(config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC)
-                        .lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION, "UserComponentB"))
-                .thenReturn(currentProcessingComponentTopics3);
-        lenient().when(config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC)
-                        .lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION_V2, "UserComponentB"))
-                .thenReturn(currentProcessingComponentTopics3);
+        config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC,
+                PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION, "UserComponentB");
+        config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC, PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION_V2,
+                "UserComponentB");
 
-        Topics allLastFileProcessedComponentTopics =
-                Topics.of(context, PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP, null);
-        Topics lastFileProcessedComponentTopics1 =
-                Topics.of(context, SYSTEM_LOGS_COMPONENT_NAME, allLastFileProcessedComponentTopics);
-        Topics lastFileProcessedComponentTopics2 =
-                Topics.of(context, "UserComponentA", allLastFileProcessedComponentTopics);
-        Topics lastFileProcessedComponentTopics3 =
-                Topics.of(context, "UserComponentB", allLastFileProcessedComponentTopics);
-
-        lenient().when(config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC)
-                        .lookupTopics(PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP, SYSTEM_LOGS_COMPONENT_NAME))
-                .thenReturn(lastFileProcessedComponentTopics1);
-        lenient().when(config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC)
-                        .lookupTopics(PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP, "UserComponentA"))
-                .thenReturn(lastFileProcessedComponentTopics2);
-        lenient().when(config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC)
-                        .lookupTopics(PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP, "UserComponentB"))
-                .thenReturn(lastFileProcessedComponentTopics3);
+        config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC,
+                PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP, SYSTEM_LOGS_COMPONENT_NAME);
+        config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC,
+                PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP, "UserComponentA");
+        config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC,
+                PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP, "UserComponentB");
     }
 
     @AfterEach
@@ -275,23 +241,19 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         }
 
         executor.shutdownNow();
+        context.shutdown();
     }
 
     @Test
     void GIVEN_system_log_files_to_be_uploaded_WHEN_merger_merges_THEN_we_get_all_log_files()
             throws InterruptedException, IOException {
         mockDefaultPersistedState();
-        Topic periodicUpdateIntervalSecTopic = Topic.of(context, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC, "1");
-        when(config.findOrDefault(any(), eq(CONFIGURATION_CONFIG_KEY), eq(LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC)))
-                .thenReturn(periodicUpdateIntervalSecTopic);
+        config.lookup(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC)
+                .withValue("1");
         when(mockMerger.processLogFiles(componentLogsInformationCaptor.capture())).thenReturn(new CloudWatchAttempt());
 
-        Topics configTopics = Topics.of(context, CONFIGURATION_CONFIG_KEY, null);
-        when(config.lookupTopics(CONFIGURATION_CONFIG_KEY)).thenReturn(configTopics);
-        Topics logsUploaderConfigTopics = Topics.of(context, LOGS_UPLOADER_CONFIGURATION_TOPIC, null);
-
-        Topics componentConfigTopics =
-                logsUploaderConfigTopics.createInteriorChild(COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME);
+        Topics componentConfigTopics = config.lookupTopics(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC,
+                COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME);
         Topics componentATopic = componentConfigTopics.createInteriorChild("UserComponentA");
         componentATopic.createLeafChild(FILE_REGEX_CONFIG_TOPIC_NAME).withValue("^log.txt\\\\w*");
         componentATopic.createLeafChild(FILE_DIRECTORY_PATH_CONFIG_TOPIC_NAME).withValue(directoryPath.toAbsolutePath().toString());
@@ -300,13 +262,13 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         componentATopic.createLeafChild(DISK_SPACE_LIMIT_UNIT_CONFIG_TOPIC_NAME).withValue("GB");
         componentATopic.createLeafChild(DELETE_LOG_FILES_AFTER_UPLOAD_CONFIG_TOPIC_NAME).withValue("false");
 
-        Topics systemConfigTopics = logsUploaderConfigTopics.createInteriorChild(SYSTEM_LOGS_CONFIG_TOPIC_NAME);
+        Topics systemConfigTopics = config.lookupTopics(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC,
+                SYSTEM_LOGS_CONFIG_TOPIC_NAME);
         systemConfigTopics.createLeafChild(UPLOAD_TO_CW_CONFIG_TOPIC_NAME).withValue("true");
         systemConfigTopics.createLeafChild(MIN_LOG_LEVEL_CONFIG_TOPIC_NAME).withValue("INFO");
         systemConfigTopics.createLeafChild(DISK_SPACE_LIMIT_CONFIG_TOPIC_NAME).withValue("25");
         systemConfigTopics.createLeafChild(DISK_SPACE_LIMIT_UNIT_CONFIG_TOPIC_NAME).withValue("MB");
-        when(config.lookupTopics(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC))
-                .thenReturn(logsUploaderConfigTopics);
+
         doNothing().when(mockUploader).registerAttemptStatus(anyString(), callbackCaptor.capture());
 
         logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, nucleusPaths);
@@ -335,14 +297,9 @@ class LogManagerServiceTest extends GGServiceTestUtil {
     void GIVEN_user_component_log_files_to_be_uploaded_with_required_config_as_array_WHEN_merger_merges_THEN_we_get_all_log_files()
             throws InterruptedException, UnsupportedInputTypeException, IOException {
         mockDefaultPersistedState();
-        Topic periodicUpdateIntervalSecTopic = Topic.of(context, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC, "1");
-        when(config.findOrDefault(any(), eq(CONFIGURATION_CONFIG_KEY), eq(LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC)))
-                .thenReturn(periodicUpdateIntervalSecTopic);
+        config.lookup(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC)
+                .withValue("1");
         when(mockMerger.processLogFiles(componentLogsInformationCaptor.capture())).thenReturn(new CloudWatchAttempt());
-
-        Topics configTopics = Topics.of(context, CONFIGURATION_CONFIG_KEY, null);
-        when(config.lookupTopics(CONFIGURATION_CONFIG_KEY)).thenReturn(configTopics);
-        Topics logsUploaderConfigTopics = Topics.of(context, LOGS_UPLOADER_CONFIGURATION_TOPIC, null);
 
         List<Map<String, Object>> componentLogsInformationList = new ArrayList<>();
         Map<String, Object> componentAConfig = new HashMap<>();
@@ -352,15 +309,15 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         componentAConfig.put(DISK_SPACE_LIMIT_UNIT_CONFIG_TOPIC_NAME, "GB");
         componentAConfig.put(DELETE_LOG_FILES_AFTER_UPLOAD_CONFIG_TOPIC_NAME, "false");
         componentLogsInformationList.add(componentAConfig);
-        logsUploaderConfigTopics.createLeafChild(COMPONENT_LOGS_CONFIG_TOPIC_NAME).withValueChecked(componentLogsInformationList);
+        config.lookup(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC,
+                COMPONENT_LOGS_CONFIG_TOPIC_NAME).withValueChecked(componentLogsInformationList);
 
-        Topics systemConfigTopics = logsUploaderConfigTopics.createInteriorChild(SYSTEM_LOGS_CONFIG_TOPIC_NAME);
+        Topics systemConfigTopics = config.lookupTopics(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC,
+                SYSTEM_LOGS_CONFIG_TOPIC_NAME);
         systemConfigTopics.createLeafChild(UPLOAD_TO_CW_CONFIG_TOPIC_NAME).withValue("false");
         systemConfigTopics.createLeafChild(MIN_LOG_LEVEL_CONFIG_TOPIC_NAME).withValue("INFO");
         systemConfigTopics.createLeafChild(DISK_SPACE_LIMIT_CONFIG_TOPIC_NAME).withValue("25");
         systemConfigTopics.createLeafChild(DISK_SPACE_LIMIT_UNIT_CONFIG_TOPIC_NAME).withValue("MB");
-        when(config.lookupTopics(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC))
-                .thenReturn(logsUploaderConfigTopics);
 
         doNothing().when(mockUploader).registerAttemptStatus(anyString(), callbackCaptor.capture());
 
@@ -388,31 +345,24 @@ class LogManagerServiceTest extends GGServiceTestUtil {
     void GIVEN_user_component_log_files_to_be_uploaded_with_required_config_WHEN_merger_merges_THEN_we_get_all_log_files()
             throws InterruptedException, IOException {
         mockDefaultPersistedState();
-        Topic periodicUpdateIntervalSecTopic = Topic.of(context, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC, "1");
-        when(config.findOrDefault(any(), eq(CONFIGURATION_CONFIG_KEY), eq(LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC)))
-                .thenReturn(periodicUpdateIntervalSecTopic);
+        config.lookup(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC)
+                .withValue("1");
         when(mockMerger.processLogFiles(componentLogsInformationCaptor.capture())).thenReturn(new CloudWatchAttempt());
 
-        Topics configTopics = Topics.of(context, CONFIGURATION_CONFIG_KEY, null);
-        when(config.lookupTopics(CONFIGURATION_CONFIG_KEY)).thenReturn(configTopics);
-        Topics logsUploaderConfigTopics = Topics.of(context, LOGS_UPLOADER_CONFIGURATION_TOPIC, null);
-
-        Topics componentConfigTopics =
-                logsUploaderConfigTopics.createInteriorChild(COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME);
-        Topics componentATopic = componentConfigTopics.createInteriorChild("UserComponentA");
+        Topics componentATopic = config.lookupTopics(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC,
+                COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME, "UserComponentA");
         componentATopic.createLeafChild(FILE_DIRECTORY_PATH_CONFIG_TOPIC_NAME).withValue(directoryPath.toAbsolutePath().toString());
         componentATopic.createLeafChild(MIN_LOG_LEVEL_CONFIG_TOPIC_NAME).withValue("DEBUG");
         componentATopic.createLeafChild(DISK_SPACE_LIMIT_CONFIG_TOPIC_NAME).withValue("10");
         componentATopic.createLeafChild(DISK_SPACE_LIMIT_UNIT_CONFIG_TOPIC_NAME).withValue("GB");
         componentATopic.createLeafChild(DELETE_LOG_FILES_AFTER_UPLOAD_CONFIG_TOPIC_NAME).withValue("false");
 
-        Topics systemConfigTopics = logsUploaderConfigTopics.createInteriorChild(SYSTEM_LOGS_CONFIG_TOPIC_NAME);
+        Topics systemConfigTopics = config.lookupTopics(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC,
+                SYSTEM_LOGS_CONFIG_TOPIC_NAME);
         systemConfigTopics.createLeafChild(UPLOAD_TO_CW_CONFIG_TOPIC_NAME).withValue("false");
         systemConfigTopics.createLeafChild(MIN_LOG_LEVEL_CONFIG_TOPIC_NAME).withValue("INFO");
         systemConfigTopics.createLeafChild(DISK_SPACE_LIMIT_CONFIG_TOPIC_NAME).withValue("25");
         systemConfigTopics.createLeafChild(DISK_SPACE_LIMIT_UNIT_CONFIG_TOPIC_NAME).withValue("MB");
-        when(config.lookupTopics(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC))
-                .thenReturn(logsUploaderConfigTopics);
 
         doNothing().when(mockUploader).registerAttemptStatus(anyString(), callbackCaptor.capture());
 
@@ -440,18 +390,12 @@ class LogManagerServiceTest extends GGServiceTestUtil {
     void GIVEN_user_component_log_files_to_be_uploaded_with_all_config_WHEN_merger_merges_THEN_we_get_all_log_files()
             throws InterruptedException, IOException {
         mockDefaultPersistedState();
-        Topic periodicUpdateIntervalSecTopic = Topic.of(context, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC, "1");
-        when(config.findOrDefault(any(), eq(CONFIGURATION_CONFIG_KEY), eq(LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC)))
-                .thenReturn(periodicUpdateIntervalSecTopic);
+        config.lookup(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC)
+                .withValue("1");
         when(mockMerger.processLogFiles(componentLogsInformationCaptor.capture())).thenReturn(new CloudWatchAttempt());
 
-        Topics configTopics = Topics.of(context, CONFIGURATION_CONFIG_KEY, null);
-        when(config.lookupTopics(CONFIGURATION_CONFIG_KEY)).thenReturn(configTopics);
-        Topics logsUploaderConfigTopics = Topics.of(context, LOGS_UPLOADER_CONFIGURATION_TOPIC, null);
-
-        Topics componentConfigTopics =
-                logsUploaderConfigTopics.createInteriorChild(COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME);
-        Topics componentATopic = componentConfigTopics.createInteriorChild("UserComponentA");
+        Topics componentATopic = config.lookupTopics(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC,
+                COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME, "UserComponentA");
         componentATopic.createLeafChild(FILE_REGEX_CONFIG_TOPIC_NAME).withValue("^UserComponentA\\w*\\.log");
         componentATopic.createLeafChild(FILE_DIRECTORY_PATH_CONFIG_TOPIC_NAME).withValue(directoryPath.toAbsolutePath().toString());
         componentATopic.createLeafChild(MIN_LOG_LEVEL_CONFIG_TOPIC_NAME).withValue("DEBUG");
@@ -459,13 +403,12 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         componentATopic.createLeafChild(DISK_SPACE_LIMIT_UNIT_CONFIG_TOPIC_NAME).withValue("GB");
         componentATopic.createLeafChild(DELETE_LOG_FILES_AFTER_UPLOAD_CONFIG_TOPIC_NAME).withValue("false");
 
-        Topics systemConfigTopics = logsUploaderConfigTopics.createInteriorChild(SYSTEM_LOGS_CONFIG_TOPIC_NAME);
+        Topics systemConfigTopics = config.lookupTopics(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC,
+                SYSTEM_LOGS_CONFIG_TOPIC_NAME);
         systemConfigTopics.createLeafChild(UPLOAD_TO_CW_CONFIG_TOPIC_NAME).withValue("false");
         systemConfigTopics.createLeafChild(MIN_LOG_LEVEL_CONFIG_TOPIC_NAME).withValue("INFO");
         systemConfigTopics.createLeafChild(DISK_SPACE_LIMIT_CONFIG_TOPIC_NAME).withValue("25");
         systemConfigTopics.createLeafChild(DISK_SPACE_LIMIT_UNIT_CONFIG_TOPIC_NAME).withValue("MB");
-        when(config.lookupTopics(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC))
-                .thenReturn(logsUploaderConfigTopics);
 
         doNothing().when(mockUploader).registerAttemptStatus(anyString(), callbackCaptor.capture());
 
@@ -493,18 +436,12 @@ class LogManagerServiceTest extends GGServiceTestUtil {
     void GIVEN_multiple_user_components_log_files_to_be_uploaded_with_all_config_WHEN_merger_merges_THEN_we_get_all_log_files()
             throws InterruptedException, IOException {
         mockDefaultPersistedState();
-        Topic periodicUpdateIntervalSecTopic = Topic.of(context, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC, "1");
-        when(config.findOrDefault(any(), eq(CONFIGURATION_CONFIG_KEY), eq(LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC)))
-                .thenReturn(periodicUpdateIntervalSecTopic);
+        config.lookup(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC)
+                .withValue("1");
         when(mockMerger.processLogFiles(componentLogsInformationCaptor.capture())).thenReturn(new CloudWatchAttempt());
 
-        Topics configTopics = Topics.of(context, CONFIGURATION_CONFIG_KEY, null);
-        when(config.lookupTopics(CONFIGURATION_CONFIG_KEY)).thenReturn(configTopics);
-        Topics logsUploaderConfigTopics = Topics.of(context, LOGS_UPLOADER_CONFIGURATION_TOPIC, null);
-
-        Topics componentConfigTopics =
-                logsUploaderConfigTopics.createInteriorChild(COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME);
-        Topics componentATopic = componentConfigTopics.createInteriorChild("UserComponentA");
+        Topics componentATopic = config.lookupTopics(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC,
+                COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME, "UserComponentA");
         componentATopic.createLeafChild(FILE_REGEX_CONFIG_TOPIC_NAME).withValue("^log.txt\\\\w*");
         componentATopic.createLeafChild(FILE_DIRECTORY_PATH_CONFIG_TOPIC_NAME).withValue(directoryPath.toAbsolutePath().toString());
         componentATopic.createLeafChild(MIN_LOG_LEVEL_CONFIG_TOPIC_NAME).withValue("DEBUG");
@@ -512,7 +449,8 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         componentATopic.createLeafChild(DISK_SPACE_LIMIT_UNIT_CONFIG_TOPIC_NAME).withValue("GB");
         componentATopic.createLeafChild(DELETE_LOG_FILES_AFTER_UPLOAD_CONFIG_TOPIC_NAME).withValue("false");
 
-        Topics componentBTopic = componentConfigTopics.createInteriorChild("UserComponentB");
+        Topics componentBTopic = config.lookupTopics(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC,
+                COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME, "UserComponentB");
         componentBTopic.createLeafChild(FILE_REGEX_CONFIG_TOPIC_NAME).withValue("^UserComponentB\\w*\\.log");
         componentBTopic.createLeafChild(FILE_DIRECTORY_PATH_CONFIG_TOPIC_NAME).withValue(directoryPath.toAbsolutePath().toString());
         componentBTopic.createLeafChild(MIN_LOG_LEVEL_CONFIG_TOPIC_NAME).withValue("DEBUG");
@@ -520,13 +458,12 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         componentBTopic.createLeafChild(DISK_SPACE_LIMIT_UNIT_CONFIG_TOPIC_NAME).withValue("GB");
         componentBTopic.createLeafChild(DELETE_LOG_FILES_AFTER_UPLOAD_CONFIG_TOPIC_NAME).withValue("false");
 
-        Topics systemConfigTopics = logsUploaderConfigTopics.createInteriorChild(SYSTEM_LOGS_CONFIG_TOPIC_NAME);
+        Topics systemConfigTopics = config.lookupTopics(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC,
+                SYSTEM_LOGS_CONFIG_TOPIC_NAME);
         systemConfigTopics.createLeafChild(UPLOAD_TO_CW_CONFIG_TOPIC_NAME).withValue("false");
         systemConfigTopics.createLeafChild(MIN_LOG_LEVEL_CONFIG_TOPIC_NAME).withValue("INFO");
         systemConfigTopics.createLeafChild(DISK_SPACE_LIMIT_CONFIG_TOPIC_NAME).withValue("25");
         systemConfigTopics.createLeafChild(DISK_SPACE_LIMIT_UNIT_CONFIG_TOPIC_NAME).withValue("MB");
-        when(config.lookupTopics(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC))
-                .thenReturn(logsUploaderConfigTopics);
 
         doNothing().when(mockUploader).registerAttemptStatus(anyString(), callbackCaptor.capture());
 
@@ -563,15 +500,9 @@ class LogManagerServiceTest extends GGServiceTestUtil {
     void GIVEN_null_config_WHEN_config_is_processed_THEN_no_component_config_is_added(
             ExtensionContext context1) throws IOException {
         ignoreExceptionOfType(context1, MismatchedInputException.class);
-        Topics configTopics = Topics.of(context, CONFIGURATION_CONFIG_KEY, null);
-        when(config.lookupTopics(CONFIGURATION_CONFIG_KEY)).thenReturn(configTopics);
-        Topic periodicUpdateIntervalSecTopic = Topic.of(context, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC, "3");
-        when(config.findOrDefault(any(), eq(CONFIGURATION_CONFIG_KEY), eq(LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC)))
-                .thenReturn(periodicUpdateIntervalSecTopic);
-        Topics logsUploaderConfigTopic = Topics.of(context, LOGS_UPLOADER_CONFIGURATION_TOPIC, null);
-        when(config.lookupTopics(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC))
-                .thenReturn(logsUploaderConfigTopic);
-
+        config.lookup(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC)
+                .withValue("3");
+        config.lookupTopics(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC);
 
         logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, nucleusPaths);
         startServiceOnAnotherThread();
@@ -584,62 +515,15 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         mockDefaultPersistedState();
         LogFile processingFile = createLogFileWithSize(directoryPath.resolve("testlogs1.log").toUri(), 1061);
         LogFile lastProcessedFile = createLogFileWithSize(directoryPath.resolve("testlogs2.log").toUri(), 2943);
-        Topic periodicUpdateIntervalSecTopic = Topic.of(context, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC, "1000");
-        when(config.findOrDefault(any(), eq(CONFIGURATION_CONFIG_KEY), eq(LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC)))
-                .thenReturn(periodicUpdateIntervalSecTopic);
-        Topics configTopics = Topics.of(context, CONFIGURATION_CONFIG_KEY, null);
-        when(config.lookupTopics(CONFIGURATION_CONFIG_KEY)).thenReturn(configTopics);
-        Topics logsUploaderConfigTopics = Topics.of(context, LOGS_UPLOADER_CONFIGURATION_TOPIC, null);
-        Topics systemConfigTopics = logsUploaderConfigTopics.createInteriorChild(SYSTEM_LOGS_CONFIG_TOPIC_NAME);
+        config.lookup(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC)
+                .withValue("1000");
+
+        Topics systemConfigTopics = config.lookupTopics(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC,
+                SYSTEM_LOGS_CONFIG_TOPIC_NAME);
         systemConfigTopics.createLeafChild(UPLOAD_TO_CW_CONFIG_TOPIC_NAME).withValue("false");
         systemConfigTopics.createLeafChild(MIN_LOG_LEVEL_CONFIG_TOPIC_NAME).withValue("INFO");
         systemConfigTopics.createLeafChild(DISK_SPACE_LIMIT_CONFIG_TOPIC_NAME).withValue("25");
         systemConfigTopics.createLeafChild(DISK_SPACE_LIMIT_UNIT_CONFIG_TOPIC_NAME).withValue("MB");
-        when(config.lookupTopics(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC))
-                .thenReturn(logsUploaderConfigTopics);
-
-        Topics component1ProcessedTopics = mock(Topics.class);
-        Topic component1LastFileProcessedTimeStampTopics = mock(Topic.class);
-        when(component1ProcessedTopics.createLeafChild(any())).thenReturn(component1LastFileProcessedTimeStampTopics);
-        when(component1LastFileProcessedTimeStampTopics.withValue(numberObjectCaptor.capture()))
-                .thenReturn(component1LastFileProcessedTimeStampTopics);
-
-        Topics component2ProcessedTopics = mock(Topics.class);
-        Topic component2lastFileProcessedTimeStampTopics = mock(Topic.class);
-        lenient().when(component2ProcessedTopics.createLeafChild(any())).thenReturn(component2lastFileProcessedTimeStampTopics);
-        lenient().when(component2lastFileProcessedTimeStampTopics.withValue(anyInt())).thenReturn(component2lastFileProcessedTimeStampTopics);
-
-        Topics component2ProcessingTopics = mock(Topics.class);
-        doNothing().when(component2ProcessingTopics).updateFromMap(updateFromMapCaptor.capture(), any());
-
-        Topics component1ProcessingTopics = mock(Topics.class);
-        lenient().doNothing().when(component1ProcessingTopics).updateFromMap(any(), any());
-
-
-        Topics runtimeConfig = mock(Topics.class);
-        when(config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC))
-                .thenReturn(runtimeConfig);
-
-        // 2.3.0 and below
-        lenient().when(runtimeConfig.lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION,
-                "TestComponent2")).thenReturn(component2ProcessingTopics);
-        // After 2.3.1
-        lenient().when(runtimeConfig.lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION_V2,
-                "TestComponent2")).thenReturn(component2ProcessingTopics);
-
-        lenient().when(runtimeConfig.lookupTopics(PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP, "TestComponent"))
-                .thenReturn(component1ProcessedTopics);
-
-        // 2.3.0 and below
-        lenient().when(runtimeConfig.lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION,
-                "TestComponent")).thenReturn(component1ProcessingTopics);
-        // After 2.3.1
-        lenient().when(runtimeConfig.lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION_V2,
-                "TestComponent")).thenReturn(component1ProcessingTopics);
-
-        lenient().when(runtimeConfig.lookupTopics(PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP, "TestComponent2"))
-                .thenReturn(component2ProcessedTopics);
-
 
         CloudWatchAttempt attempt = new CloudWatchAttempt();
         Map<String, CloudWatchAttemptLogInformation> logStreamsToLogInformationMap = new HashMap<>();
@@ -709,18 +593,15 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         startServiceOnAnotherThread();
         callbackCaptor.getValue().accept(attempt);
 
-        assertThat(updateFromMapCaptor.getAllValues(), IsNot.not(IsEmptyCollection.empty()));
-        assertThat(numberObjectCaptor.getAllValues(), IsNot.not(IsEmptyCollection.empty()));
-        List<Number> completedComponentLastProcessedFileInformation = numberObjectCaptor.getAllValues();
-        List<Map<String, Object>> partiallyReadComponentLogFileInformation = updateFromMapCaptor.getAllValues();
-        assertEquals(1, completedComponentLastProcessedFileInformation.size());
-        assertEquals(2, partiallyReadComponentLogFileInformation.size());
-        assertEquals(lastProcessedFile.lastModified(),
-                Coerce.toLong(completedComponentLastProcessedFileInformation.get(0)));
+        assertEquals(lastProcessedFile.lastModified(), Coerce.toLong(config.find(RUNTIME_STORE_NAMESPACE_TOPIC,
+                PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP, "TestComponent", PERSISTED_LAST_FILE_PROCESSED_TIMESTAMP)));
 
         LogManagerService.CurrentProcessingFileInformation currentProcessingFileInformation =
                 LogManagerService.CurrentProcessingFileInformation.convertFromMapOfObjects(
-                        (Map<String, Object>) partiallyReadComponentLogFileInformation.get(1).get(processingFile.hashString()));
+                        (Map<String, Object>) config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC,
+                                        PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION_V2, "TestComponent2")
+                                .toPOJO()
+                                .get(processingFile.hashString()));
         assertEquals(processingFile.hashString(), currentProcessingFileInformation.getFileHash());
         assertEquals(1061, currentProcessingFileInformation.getStartPosition());
         assertEquals(processingFile.lastModified(), currentProcessingFileInformation.getLastModifiedTime());
@@ -744,22 +625,16 @@ class LogManagerServiceTest extends GGServiceTestUtil {
     void GIVEN_some_system_files_uploaded_and_another_partially_uploaded_WHEN_merger_merges_THEN_sets_the_start_position_correctly()
             throws InterruptedException, IOException {
         mockDefaultPersistedState();
-        Topic periodicUpdateIntervalSecTopic = Topic.of(context, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC, "3");
-        when(config.findOrDefault(any(), eq(CONFIGURATION_CONFIG_KEY), eq(LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC)))
-                .thenReturn(periodicUpdateIntervalSecTopic);
+        config.lookup(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC)
+                .withValue("3");
         when(mockMerger.processLogFiles(componentLogsInformationCaptor.capture())).thenReturn(new CloudWatchAttempt());
 
-        Topics configTopics = Topics.of(context, CONFIGURATION_CONFIG_KEY, null);
-        when(config.lookupTopics(CONFIGURATION_CONFIG_KEY)).thenReturn(configTopics);
-        Topics logsUploaderConfigTopics = Topics.of(context, LOGS_UPLOADER_CONFIGURATION_TOPIC, null);
-
-        Topics systemConfigTopics = logsUploaderConfigTopics.createInteriorChild(SYSTEM_LOGS_CONFIG_TOPIC_NAME);
+        Topics systemConfigTopics = config.lookupTopics(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC,
+                SYSTEM_LOGS_CONFIG_TOPIC_NAME);
         systemConfigTopics.createLeafChild(UPLOAD_TO_CW_CONFIG_TOPIC_NAME).withValue("true");
         systemConfigTopics.createLeafChild(MIN_LOG_LEVEL_CONFIG_TOPIC_NAME).withValue("INFO");
         systemConfigTopics.createLeafChild(DISK_SPACE_LIMIT_CONFIG_TOPIC_NAME).withValue("25");
         systemConfigTopics.createLeafChild(DISK_SPACE_LIMIT_UNIT_CONFIG_TOPIC_NAME).withValue("MB");
-        when(config.lookupTopics(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC))
-                .thenReturn(logsUploaderConfigTopics);
 
         logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, nucleusPaths);
         // These two files are existed, and the active file is greengrass.log
@@ -801,22 +676,16 @@ class LogManagerServiceTest extends GGServiceTestUtil {
     void GIVEN_a_partially_uploaded_file_but_rotated_WHEN_merger_merges_THEN_sets_the_start_position_correctly()
             throws InterruptedException, IOException {
         mockDefaultPersistedState();
-        Topic periodicUpdateIntervalSecTopic = Topic.of(context, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC, "3");
-        when(config.findOrDefault(any(), eq(CONFIGURATION_CONFIG_KEY), eq(LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC)))
-                .thenReturn(periodicUpdateIntervalSecTopic);
+        config.lookup(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC)
+                .withValue("3");
         when(mockMerger.processLogFiles(componentLogsInformationCaptor.capture())).thenReturn(new CloudWatchAttempt());
 
-        Topics configTopics = Topics.of(context, CONFIGURATION_CONFIG_KEY, null);
-        when(config.lookupTopics(CONFIGURATION_CONFIG_KEY)).thenReturn(configTopics);
-        Topics logsUploaderConfigTopics = Topics.of(context, LOGS_UPLOADER_CONFIGURATION_TOPIC, null);
-
-        Topics systemConfigTopics = logsUploaderConfigTopics.createInteriorChild(SYSTEM_LOGS_CONFIG_TOPIC_NAME);
+        Topics systemConfigTopics = config.lookupTopics(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC,
+                SYSTEM_LOGS_CONFIG_TOPIC_NAME);
         systemConfigTopics.createLeafChild(UPLOAD_TO_CW_CONFIG_TOPIC_NAME).withValue("true");
         systemConfigTopics.createLeafChild(MIN_LOG_LEVEL_CONFIG_TOPIC_NAME).withValue("INFO");
         systemConfigTopics.createLeafChild(DISK_SPACE_LIMIT_CONFIG_TOPIC_NAME).withValue("25");
         systemConfigTopics.createLeafChild(DISK_SPACE_LIMIT_UNIT_CONFIG_TOPIC_NAME).withValue("MB");
-        when(config.lookupTopics(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC))
-                .thenReturn(logsUploaderConfigTopics);
 
         logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, nucleusPaths);
         startServiceOnAnotherThread();
@@ -852,15 +721,12 @@ class LogManagerServiceTest extends GGServiceTestUtil {
     @Test
     void GIVEN_persisted_data_WHEN_log_uploader_initialises_THEN_correctly_sets_the_persisted_data() throws
             IOException {
-        Topic periodicUpdateIntervalSecTopic = Topic.of(context, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC, "3");
-        when(config.findOrDefault(any(), eq(CONFIGURATION_CONFIG_KEY), eq(LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC)))
-                .thenReturn(periodicUpdateIntervalSecTopic);
-        Topics configTopics = Topics.of(context, CONFIGURATION_CONFIG_KEY, null);
-        when(config.lookupTopics(CONFIGURATION_CONFIG_KEY)).thenReturn(configTopics);
-        Topics logsUploaderConfigTopics = Topics.of(context, LOGS_UPLOADER_CONFIGURATION_TOPIC, null);
+        config.lookup(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC)
+                .withValue("1");
 
         Topics componentConfigTopics =
-                logsUploaderConfigTopics.createInteriorChild(COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME);
+                config.lookupTopics(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC,
+                        COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME);
         Topics componentATopic = componentConfigTopics.createInteriorChild("UserComponentA");
         componentATopic.createLeafChild(FILE_REGEX_CONFIG_TOPIC_NAME).withValue("^log.txt\\w*");
         componentATopic.createLeafChild(FILE_DIRECTORY_PATH_CONFIG_TOPIC_NAME).withValue(directoryPath.toAbsolutePath().toString());
@@ -869,22 +735,15 @@ class LogManagerServiceTest extends GGServiceTestUtil {
         componentATopic.createLeafChild(DISK_SPACE_LIMIT_UNIT_CONFIG_TOPIC_NAME).withValue("GB");
         componentATopic.createLeafChild(DELETE_LOG_FILES_AFTER_UPLOAD_CONFIG_TOPIC_NAME).withValue("false");
 
-        Topics systemConfigTopics = logsUploaderConfigTopics.createInteriorChild(SYSTEM_LOGS_CONFIG_TOPIC_NAME);
+        Topics systemConfigTopics = config.lookupTopics(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC,
+                SYSTEM_LOGS_CONFIG_TOPIC_NAME);
         systemConfigTopics.createLeafChild(UPLOAD_TO_CW_CONFIG_TOPIC_NAME).withValue("true");
         systemConfigTopics.createLeafChild(MIN_LOG_LEVEL_CONFIG_TOPIC_NAME).withValue("INFO");
         systemConfigTopics.createLeafChild(DISK_SPACE_LIMIT_CONFIG_TOPIC_NAME).withValue("25");
         systemConfigTopics.createLeafChild(DISK_SPACE_LIMIT_UNIT_CONFIG_TOPIC_NAME).withValue("MB");
-        when(config.lookupTopics(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC))
-                .thenReturn(logsUploaderConfigTopics);
 
         Instant now = Instant.now();
         Instant tenSecondsAgo = Instant.now().minusSeconds(10);
-        Topics allCurrentProcessingComponentTopics1 =
-                Topics.of(context, PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION, null);
-        Topics currentProcessingComponentTopics1 =
-                Topics.of(context, SYSTEM_LOGS_COMPONENT_NAME, allCurrentProcessingComponentTopics1);
-        Topics currentProcessingComponentTopics2 =
-                Topics.of(context, "UserComponentA", allCurrentProcessingComponentTopics1);
         LogManagerService.CurrentProcessingFileInformation currentProcessingFileInformation1 =
                 LogManagerService.CurrentProcessingFileInformation.builder()
                         .fileHash("TestFileHash")
@@ -897,40 +756,19 @@ class LogManagerServiceTest extends GGServiceTestUtil {
                         .lastModifiedTime(now.toEpochMilli())
                         .startPosition(10000)
                         .build();
-        currentProcessingComponentTopics1.updateFromMap(currentProcessingFileInformation1.convertToMapOfObjects(),
-                new UpdateBehaviorTree(UpdateBehaviorTree.UpdateBehavior.REPLACE, now.toEpochMilli()));
-        currentProcessingComponentTopics2.updateFromMap(currentProcessingFileInformation2.convertToMapOfObjects(),
-                new UpdateBehaviorTree(UpdateBehaviorTree.UpdateBehavior.REPLACE, now.toEpochMilli()));
 
-        Topics allLastFileProcessedComponentTopics =
-                Topics.of(context, PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP, null);
-        Topics lastFileProcessedComponentTopics1 =
-                Topics.of(context, SYSTEM_LOGS_COMPONENT_NAME, allLastFileProcessedComponentTopics);
-        Topics lastFileProcessedComponentTopics2 =
-                Topics.of(context, "UserComponentA", allLastFileProcessedComponentTopics);
-        Topic leafChild1 = lastFileProcessedComponentTopics1.createLeafChild(PERSISTED_LAST_FILE_PROCESSED_TIMESTAMP);
-        leafChild1.withValue(tenSecondsAgo.toEpochMilli());
+        config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC)
+                .lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION, SYSTEM_LOGS_COMPONENT_NAME)
+                .updateFromMap(currentProcessingFileInformation1.convertToMapOfObjects(),
+                        new UpdateBehaviorTree(UpdateBehaviorTree.UpdateBehavior.REPLACE, now.toEpochMilli()));
+        config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC)
+                .lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION, "UserComponentA")
+                .updateFromMap(currentProcessingFileInformation2.convertToMapOfObjects(),
+                        new UpdateBehaviorTree(UpdateBehaviorTree.UpdateBehavior.REPLACE, now.toEpochMilli()));
 
-        when(config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC)
-                .lookupTopics(PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP, SYSTEM_LOGS_COMPONENT_NAME))
-                .thenReturn(lastFileProcessedComponentTopics1);
-        when(config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC)
-                .lookupTopics(PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP, "UserComponentA"))
-                .thenReturn(lastFileProcessedComponentTopics2);
-        // mock deprecated topic version 2.3.0 and below
-        when(config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC)
-                .lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION, SYSTEM_LOGS_COMPONENT_NAME))
-                .thenReturn(currentProcessingComponentTopics1);
-        when(config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC)
-                .lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION, "UserComponentA"))
-                .thenReturn(currentProcessingComponentTopics2);
-        // mock topic for version 2.3.1 and above
-        when(config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC)
-                .lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION_V2, SYSTEM_LOGS_COMPONENT_NAME))
-                .thenReturn(currentProcessingComponentTopics1);
-        when(config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC)
-                .lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION_V2, "UserComponentA"))
-                .thenReturn(currentProcessingComponentTopics2);
+        config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC)
+                .lookup(PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP, SYSTEM_LOGS_COMPONENT_NAME,
+                        PERSISTED_LAST_FILE_PROCESSED_TIMESTAMP).withValue(tenSecondsAgo.toEpochMilli());
 
         logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, nucleusPaths);
 

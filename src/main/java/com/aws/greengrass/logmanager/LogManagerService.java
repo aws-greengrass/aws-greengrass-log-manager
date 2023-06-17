@@ -62,6 +62,7 @@ import javax.inject.Inject;
 
 import static com.aws.greengrass.componentmanager.KernelConfigResolver.CONFIGURATION_CONFIG_KEY;
 import static com.aws.greengrass.logmanager.LogManagerService.LOGS_UPLOADER_SERVICE_TOPICS;
+import static com.aws.greengrass.logmanager.util.ConfigUtil.updateFromMapWhenChanged;
 
 
 @ImplementsService(name = LOGS_UPLOADER_SERVICE_TOPICS, version = "2.0.0")
@@ -404,7 +405,8 @@ public class LogManagerService extends PluginService {
                 .lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION, componentName);
 
 
-        if (currentProcessingComponentTopicsDeprecated != null
+        if (isDeprecatedVersionSupported()
+                && currentProcessingComponentTopicsDeprecated != null
                 && !currentProcessingComponentTopicsDeprecated.isEmpty()) {
             CurrentProcessingFileInformation processingFileInformation =
                     CurrentProcessingFileInformation.builder().build();
@@ -520,15 +522,18 @@ public class LogManagerService extends PluginService {
         // Update the runtime configuration and store the last processed file information
         context.runOnPublishQueueAndWait(() -> {
             processingFilesInformation.forEach((componentName, processingFiles) -> {
-                // Update old config value to handle downgrade from v 2.3.1 to older ones
-                Topics componentTopicsDeprecated =
-                        getRuntimeConfig().lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION,
-                                componentName);
+                if (isDeprecatedVersionSupported()) {
+                    // Update old config value to handle downgrade from v 2.3.1 to older ones
+                    Topics componentTopicsDeprecated =
+                            getRuntimeConfig().lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION,
+                                    componentName);
 
-                if (processingFiles.getMostRecentlyUsed() != null) {
-                    componentTopicsDeprecated.updateFromMap(
-                            processingFiles.getMostRecentlyUsed().convertToMapOfObjects(),
-                        new UpdateBehaviorTree(UpdateBehaviorTree.UpdateBehavior.REPLACE, System.currentTimeMillis()));
+                    if (processingFiles.getMostRecentlyUsed() != null) {
+                        updateFromMapWhenChanged(componentTopicsDeprecated,
+                                processingFiles.getMostRecentlyUsed().convertToMapOfObjects(),
+                                new UpdateBehaviorTree(UpdateBehaviorTree.UpdateBehavior.REPLACE,
+                                        System.currentTimeMillis()));
+                    }
                 }
 
                 // Handle version 2.3.1 and above
@@ -537,7 +542,7 @@ public class LogManagerService extends PluginService {
                         getRuntimeConfig().lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION_V2,
                                 componentName);
 
-                componentTopics.updateFromMap(processingFiles.toMap(),
+                updateFromMapWhenChanged(componentTopics, processingFiles.toMap(),
                         new UpdateBehaviorTree(UpdateBehaviorTree.UpdateBehavior.REPLACE, System.currentTimeMillis()));
             });
         });
@@ -550,6 +555,10 @@ public class LogManagerService extends PluginService {
             lastFileProcessedTimeStamp.withValue(instant.toEpochMilli());
         });
         isCurrentlyUploading.set(false);
+    }
+
+    private boolean isDeprecatedVersionSupported() {
+        return Coerce.toBoolean(getConfig().findOrDefault(true, CONFIGURATION_CONFIG_KEY, "deprecatedVersionSupport"));
     }
 
     /**

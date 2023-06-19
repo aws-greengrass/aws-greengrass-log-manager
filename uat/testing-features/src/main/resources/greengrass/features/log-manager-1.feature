@@ -282,3 +282,46 @@ Feature: Greengrass V2 LogManager
         Then I verify that it created a log group of type GreengrassSystemComponent for component System, with streams within 300 seconds in CloudWatch
         And I verify that it created a log group of type UserComponent for component UserComponentW, with streams within 300 seconds in CloudWatch
         And I verify 10000 logs for UserComponentW of type UserComponent have been uploaded to Cloudwatch within 120 seconds
+
+    Scenario: LogManager-1-T6: Log manager can upload 200,000 logs quickly
+        Given I create a log directory for component called UserComponentWLogDirectory
+        And I create a Greengrass deployment with components
+            | aws.greengrass.Cli        | LATEST                                    |
+            | aws.greengrass.LogManager | classpath:/greengrass/recipes/recipe.yaml |
+        When I update my Greengrass deployment configuration, setting the component aws.greengrass.LogManager configuration to:
+        """
+        {
+            "MERGE": {
+                "logsUploaderConfiguration": {
+                    "componentLogsConfiguration": [
+                        {
+                            "logFileRegex": "UserComponentW(.*).log",
+                            "logFileDirectoryPath": "${UserComponentWLogDirectory}",
+                            "componentName": "UserComponentW"
+                        }
+                    ]
+                },
+                "periodicUploadIntervalSec": "0.001",
+                "deprecatedVersionSupport": "false"
+            }
+        }
+        """
+        And I deploy the Greengrass deployment configuration
+        And the Greengrass deployment is COMPLETED on the device after 3 minutes
+        And I install the component LogGenerator from local store with configuration
+        """
+        {
+           "MERGE":{
+                "LogFileName": "UserComponentW",
+                "WriteFrequencyMs": "0",
+                "LogsDirectory": "${UserComponentWLogDirectory}",
+                "NumberOfLogLines": "200000"
+           }
+        }
+        """
+        And the local Greengrass deployment is SUCCEEDED on the device after 180 seconds
+        And I verify that it created a log group of type UserComponent for component UserComponentW, with streams within 300 seconds in CloudWatch
+        And I verify 200000 logs for UserComponentW of type UserComponent have been uploaded to Cloudwatch within 120 seconds
+        # Can achieve ~1.4MBps running on codebuild, presumably due to high upload speed and low ping time.
+        # This test may fail when run on your own computer as your ping time to CloudWatch will be higher.
+        And I verify that logs for UserComponentW of type UserComponent uploaded with a rate greater than 1.0 MBps

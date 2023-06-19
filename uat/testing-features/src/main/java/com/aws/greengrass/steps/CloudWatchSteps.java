@@ -19,13 +19,15 @@ import org.apache.logging.log4j.Logger;
 import software.amazon.awssdk.core.pagination.sync.SdkIterable;
 import software.amazon.awssdk.services.cloudwatchlogs.CloudWatchLogsClient;
 import software.amazon.awssdk.services.cloudwatchlogs.model.GetLogEventsRequest;
-import software.amazon.awssdk.services.cloudwatchlogs.model.GetLogEventsResponse;
 import software.amazon.awssdk.services.cloudwatchlogs.model.LogStream;
 import software.amazon.awssdk.services.cloudwatchlogs.model.OutputLogEvent;
 import software.amazon.awssdk.services.cloudwatchlogs.model.ResourceNotFoundException;
 import software.amazon.awssdk.services.cloudwatchlogs.model.ServiceUnavailableException;
+import software.amazon.awssdk.services.cloudwatchlogs.paginators.GetLogEventsIterable;
 
+import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Date;
@@ -33,6 +35,9 @@ import java.util.List;
 import java.util.Locale;
 import java.util.TimeZone;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
+
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 
 @ScenarioScoped
@@ -137,31 +142,61 @@ public class CloudWatchSteps {
         }
     }
 
+    @Then("I verify that logs for {word} of type {word} uploaded with a rate greater than {double} MBps")
+    public void verifyLogRate(String componentName, String componentType, double desiredMBps) throws
+            Exception {
+        // Logs written by the log generator append a sequence number per log line along with the component name
+        GetLogEventsRequest request = GetLogEventsRequest.builder()
+                .logGroupName(getLogGroupName(componentType, componentName))
+                .logStreamName(getLogStreamName())
+                .startFromHead(true)
+                .endTime(Instant.now().toEpochMilli())
+                .limit(10_000) // limit of 10000 logs
+                .build();
+        GetLogEventsIterable response = cwClient.getLogEventsPaginator(request);
+        List<OutputLogEvent> events = response.events().stream().collect(Collectors.toCollection(ArrayList::new));
+        events.sort(Comparator.comparingLong(OutputLogEvent::ingestionTime));
+
+        OutputLogEvent first = events.get(0);
+        OutputLogEvent last = events.get(events.size() - 1);
+
+        long totalSizeBytes = events.stream().mapToLong(i -> i.message().getBytes(StandardCharsets.UTF_8).length).sum();
+        long ingestionTimeSpanMs = last.ingestionTime() - first.ingestionTime();
+
+        double bytesPerSecond = totalSizeBytes / (ingestionTimeSpanMs / 1000.0);
+
+        double gotMBps = bytesPerSecond / (1024.0 * 1024.0);
+        LOGGER.info("Found {} logs uploaded at an average rate of {} MBps", events.size(), gotMBps);
+        assertTrue(gotMBps >= desiredMBps,
+                String.format("Got %f MBps uploaded to CloudWatch, but wanted at least %f", gotMBps, desiredMBps));
+    }
+
 
     private boolean haveAllLogsBeenUploaded(int numberOfLogLines, String componentName, String componentType) {
         // Logs written by the log generator append a sequence number per log line along with the component name
         GetLogEventsRequest request = GetLogEventsRequest.builder()
                 .logGroupName(getLogGroupName(componentType, componentName))
                 .logStreamName(getLogStreamName())
-                .limit(numberOfLogLines) // limit of 10000 logs (this method could be optimized
+                .startFromHead(true)
+                .endTime(Instant.now().toEpochMilli())
+                .limit(10_000) // limit of 10000 logs
                 .build();
 
         try {
             // The OTF watch steps check evey 100ms this to avoids hammering the api. Ideally OTF
             // can allow us to configure the check interval rate
             TimeUnit.SECONDS.sleep(5L);
-            GetLogEventsResponse response = cwClient.getLogEvents(request);
-            List<OutputLogEvent> events = response.events();
+            GetLogEventsIterable response = cwClient.getLogEventsPaginator(request);
+            List<OutputLogEvent> events = response.events().stream().collect(Collectors.toCollection(ArrayList::new));
 
             if (events.size() != numberOfLogLines) {
                 this.lastReceivedCloudWatchEvents = events;
+                LOGGER.info("Found {} events, not the expected {}", events.size(), numberOfLogLines);
                 return false;
             }
 
-            // events is an unmodifiable list
-            List<OutputLogEvent> copy = new ArrayList<>(events);
-            copy.sort(Comparator.comparingLong(OutputLogEvent::timestamp));
-            return wereThereDuplicatesOrMisses(numberOfLogLines, componentName, copy);
+            events.sort(Comparator.comparingLong(OutputLogEvent::timestamp));
+            return wereThereDuplicatesOrMisses(numberOfLogLines, componentName, events);
         } catch (ServiceUnavailableException | InterruptedException e) {
             return false;
         }

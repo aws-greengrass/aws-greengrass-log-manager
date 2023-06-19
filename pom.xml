@@ -367,6 +367,7 @@
                         </goals>
                         <configuration>
                             <dataFile>${project.build.directory}/jacoco.exec</dataFile>
+                            <skip>${skipTests}</skip>
                             <rules>
                                 <rule>
                                     <element>BUNDLE</element>

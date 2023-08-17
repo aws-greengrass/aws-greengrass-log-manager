@@ -135,7 +135,7 @@ public final class LogFileGroup {
         try {
             logFiles = convertToLogFiles(files, componentHardlinksDirectory);
         } catch (IOException e) {
-            logger.atDebug().cause(e).log("Failed to create hardlinks for files. Falling to using regular "
+            logger.atDebug().cause(e).log("Failed to create hardlinks for files. Falling back to using regular "
                     + " files");
             isUsingHardlinks = false;
             logFiles = convertToLogFiles(files);

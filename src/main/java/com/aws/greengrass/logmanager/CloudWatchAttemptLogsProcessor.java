@@ -28,6 +28,7 @@ import software.amazon.awssdk.services.cloudwatchlogs.model.InputLogEvent;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.channels.Channels;
+import java.nio.channels.ClosedByInterruptException;
 import java.nio.channels.SeekableByteChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -187,12 +188,21 @@ public class CloudWatchAttemptLogsProcessor {
 
                         // Need to read more lines until we get a complete log line. Let's add this to the SB.
                         data.append(partialLogLine);
+                    } catch (ClosedByInterruptException e) {
+                        Thread.currentThread().interrupt();
+                        logger.atInfo().log("Interrupted while reading log");
+                        componentLogFileInformation.getLogFileInformationList().remove(0);
+                        break;
                     } catch (IOException e) {
                         logger.atError().cause(e).log("Unable to read file {}", logFile.getAbsolutePath());
                         componentLogFileInformation.getLogFileInformationList().remove(0);
                         break;
                     }
                 }
+            } catch (ClosedByInterruptException e) {
+                Thread.currentThread().interrupt();
+                logger.atInfo().log("Interrupted while reading log");
+                componentLogFileInformation.getLogFileInformationList().remove(0);
             } catch (IOException e) {
                 // File probably does not exist.
                 logger.atError().cause(e).log("Unable to read file {}", logFile.getAbsolutePath());

@@ -681,9 +681,9 @@ public class LogManagerService extends PluginService {
      *     It will then get all the log files which have not yet been uploaded to the cloud. This is done by checking
      *     the last uploaded log file time for that component.
      */
-    @SuppressWarnings("PMD.CollapsibleIfStatements")
+    @SuppressWarnings({"PMD.CollapsibleIfStatements", "PMD.PrematureDeclaration"})
     private void processLogsAndUpload() throws InterruptedException {
-        while (true) {
+        while (!Thread.currentThread().isInterrupted()) {
             //TODO: this is only done for passing the current text. But in practise, we don`t need to intentionally
             // sleep here.
             if (!isCurrentlyUploading.compareAndSet(false, true)) {
@@ -702,6 +702,9 @@ public class LogManagerService extends PluginService {
                 try {
                     LogFileGroup logFileGroup = LogFileGroup.create(componentLogConfiguration,
                             lastUploadedLogFileTimeMs, workDir);
+                    if (Thread.currentThread().isInterrupted()) {
+                        return;
+                    }
 
                     if (logFileGroup.getLogFiles().isEmpty()) {
                         continue;

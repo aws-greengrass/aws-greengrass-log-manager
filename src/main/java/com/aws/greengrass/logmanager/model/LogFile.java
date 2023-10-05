@@ -11,6 +11,7 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
+import java.nio.channels.ClosedByInterruptException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -89,6 +90,9 @@ public class LogFile extends File {
         } catch (FileNotFoundException e) {
             // The file may be deleted as expected.
             logger.atDebug().cause(e).log("The file {} does not exist", this.getAbsolutePath());
+        } catch (ClosedByInterruptException e) {
+            Thread.currentThread().interrupt();
+            logger.atDebug().log("Interrupted while getting log file hash");
         } catch (IOException e) {
             // File may not exist
             logger.atError().cause(e).log("Unable to read file {}", this.getAbsolutePath());

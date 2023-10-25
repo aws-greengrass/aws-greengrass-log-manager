@@ -331,7 +331,11 @@ public class CloudWatchAttemptLogsProcessor {
             return Optional.empty();
         }
         try {
-            return Optional.ofNullable(DESERIALIZER.readValue(data, GreengrassLogMessage.class));
+            GreengrassLogMessage message = DESERIALIZER.readValue(data, GreengrassLogMessage.class);
+            if (message == null || Utils.isEmpty(message.getLevel())) {
+                return Optional.empty();
+            }
+            return Optional.of(message);
         } catch (JsonProcessingException ignored) {
             // If unable to deserialize, then we treat it as a normal log line and do not need to smartly upload.
             return Optional.empty();
@@ -359,7 +363,7 @@ public class CloudWatchAttemptLogsProcessor {
                                                       GreengrassLogMessage logMessage) {
         Level currentLogLevel = Level.valueOf(logMessage.getLevel());
         if (currentLogLevel.toInt() < desiredLogLevel.toInt()) {
-            return new Pair(false, new AtomicInteger());
+            return new Pair<>(false, new AtomicInteger());
         }
         return addNewLogEvent(totalBytesRead, attemptLogInformation, data, dataSize,
                 Instant.ofEpochMilli(logMessage.getTimestamp()));
@@ -439,7 +443,7 @@ public class CloudWatchAttemptLogsProcessor {
 
             currChunk++;
         }
-        return new Pair(reachedMaxBatchSize, currBytesRead);
+        return new Pair<>(reachedMaxBatchSize, currBytesRead);
     }
 
     /**

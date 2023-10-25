@@ -502,7 +502,6 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
         assertTrue(logEventsForStream2.getAttemptLogFileInformationMap().containsKey(fileHash2));
         assertEquals(0, logEventsForStream2.getAttemptLogFileInformationMap().get(fileHash2).getStartPosition());
         assertEquals(1237, logEventsForStream2.getAttemptLogFileInformationMap().get(fileHash2).getBytesRead());
-        System.out.println(logEventsForStream2.getAttemptLogFileInformationMap().get(fileHash2));
         assertEquals("TestComponent", logEventsForStream2.getComponentName());
     }
 

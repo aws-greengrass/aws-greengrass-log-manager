@@ -476,8 +476,8 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
         String logStream2 = "/2020/12/18/thing/testThing";
         assertTrue(attempt.getLogStreamsToLogEventsMap().containsKey(logStream));
         assertTrue(attempt.getLogStreamsToLogEventsMap().containsKey(logStream2));
-        CloudWatchAttemptLogInformation logEventsForStream1 = attempt.getLogStreamsToLogEventsMap().get(logStream);
-        CloudWatchAttemptLogInformation logEventsForStream2 = attempt.getLogStreamsToLogEventsMap().get(logStream2);
+        CloudWatchAttemptLogInformation logEventsForStream1 = attempt.getLogStreamsToLogEventsMap().remove(logStream);
+        CloudWatchAttemptLogInformation logEventsForStream2 = attempt.getLogStreamsToLogEventsMap().remove(logStream2);
         assertNotNull(logEventsForStream1.getLogEvents());
         assertEquals(13, logEventsForStream1.getLogEvents().size());
         assertTrue(logEventsForStream1.getAttemptLogFileInformationMap().containsKey(fileHash1));
@@ -494,10 +494,14 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
         }
 
         assertNotNull(logEventsForStream2.getLogEvents());
-        assertEquals(4, logEventsForStream2.getLogEvents().size());
+        assertEquals(3, logEventsForStream2.getLogEvents().size());
+        // Read the 1 remaining cloudwatch log stream which will have today's date because the log lines
+        // had no parsed timestamp.
+        assertEquals(2, attempt.getLogStreamsToLogEventsMap()
+                .get(attempt.getLogStreamsToLogEventsMap().keySet().stream().findFirst().get()).getLogEvents().size());
         assertTrue(logEventsForStream2.getAttemptLogFileInformationMap().containsKey(fileHash2));
         assertEquals(0, logEventsForStream2.getAttemptLogFileInformationMap().get(fileHash2).getStartPosition());
-        assertEquals(1239, logEventsForStream2.getAttemptLogFileInformationMap().get(fileHash2).getBytesRead());
+        assertEquals(1237, logEventsForStream2.getAttemptLogFileInformationMap().get(fileHash2).getBytesRead());
         assertEquals("TestComponent", logEventsForStream2.getComponentName());
     }
 

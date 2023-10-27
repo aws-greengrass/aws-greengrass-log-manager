@@ -1,5 +1,6 @@
-{"contexts":{"component":"demo","device":"asdf"},"eventType":"th1-event","level":"INFO","loggerName":"com.aws.greengrass.logging.examples.LoggerDemo","message":"test th1 info","timestamp":1608292800000}
+{"contexts":{"component":"demo","device":"asdf"},"eventType":"th1-event","level":null,"loggerName":"com.aws.greengrass.logging.examples.LoggerDemo","message":"test th1 info","timestamp":1608292800000}
 {"contexts":{"component":"demo","device":"asdf"},"eventType":"th2-event","level":"INFO","loggerName":"com.aws.greengrass.logging.examples.LoggerDemo","message":"test th2 info","timestamp":1608292800000}
 {"contexts":{"component":"th1-override","device":"asdf"},"level":"DEBUG","loggerName":"com.aws.greengrass.logging.examples.LoggerDemo","message":"test th1 debug","timestamp":1608292800000}
 {"contexts":{"component":"demo","device":"asdf"},"level":"INFO","loggerName":"com.aws.greengrass.logging.examples.LoggerDemo","message":"test main info","timestamp":1608292800000}
 {"cause":{"localizedMessage":"some error","message":"some error","stackTrace":[{"className":"com.aws.greengrass.logging.examples.LoggerDemo","fileName":"LoggerDemo.java","lineNumber":56,"methodName":"main","nativeMethod":false}],"suppressed":[]},"contexts":{"key2":"value2","component":"demo","device":"asdf"},"eventType":"error-event","level":"ERROR","loggerName":"com.aws.greengrass.logging.examples.LoggerDemo","message":"test error","timestamp":1608292800000}
+{"something which parses": "as json, but isn't a GreengrassStructuredLogMessage"}

@@ -234,7 +234,7 @@ public final class LogFileGroup {
     public boolean hasExceededDiskUsage() {
         return this.maxBytes
                 .map((val) -> this.totalSizeInBytes() > val)
-                .orElse(false);
+                .orElseGet(() -> false);
     }
 
     /**

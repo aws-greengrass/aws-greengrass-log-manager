@@ -152,6 +152,7 @@ Feature: Greengrass V2 LogManager
     Scenario: LogManager-1-T3: As a customer I can configure the logs uploader to delete log oldest log files to keep the
     disk space limit specified on the configuration
         Given 15 temporary rotated log files for component UserComponentB have been created
+        And 15 temporary rotated log files for component UserComponentC have been created
         And 5 temporary rotated log files for component aws.greengrass.Nucleus have been created
         And 5 temporary rotated log files for component UserComponentA have been created
         Given I create a Greengrass deployment with components
@@ -166,6 +167,15 @@ Feature: Greengrass V2 LogManager
                         "UserComponentB": {
                             "logFileRegex": "UserComponentB_(.)+.log",
                             "logFileDirectoryPath": "${UserComponentBLogDirectory}",
+                            "diskSpaceLimit":"100",
+                            "diskSpaceLimitUnit":"KB",
+                            "minimumLogLevel": "WARN",
+                            "uploadToCloudWatch": "true",
+                            "deleteLogFileAfterCloudUpload": "false"
+                        },
+                        "UserComponentC": {
+                            "logFileRegex": "UserComponentC_(.)+.log",
+                            "logFileDirectoryPath": "${UserComponentCLogDirectory}",
                             "diskSpaceLimit":"100",
                             "diskSpaceLimitUnit":"KB",
                             "minimumLogLevel": "INFO",
@@ -189,7 +199,8 @@ Feature: Greengrass V2 LogManager
         Then the Greengrass deployment is COMPLETED on the device after 3 minutes
         Then I verify the aws.greengrass.LogManager component is RUNNING using the greengrass-cli
         And I wait 5 seconds
-        Then I verify that 15 log files for component UserComponentB are still available
+        Then I verify that 9 log files for component UserComponentB are still available
+        And I verify that 9 log files for component UserComponentC are still available
 
     @network
     Scenario: LogManager-1-T4: As a developer, logs uploader will handle network interruptions gracefully and upload logs from the last uploaded log after network resumes

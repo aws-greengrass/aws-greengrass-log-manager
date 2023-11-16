@@ -76,7 +76,7 @@ class DiskSpaceManagementServiceTest extends GGServiceTestUtil {
     }
 
     @Test
-    void GIVEN_log_files_WHEN_max_disk_usage_exceeded_THEN_only_unprocessed_files_are_deletable()
+    void GIVEN_log_files_WHEN_max_disk_usage_exceeded_THEN_all_files_are_deletable_to_get_under_limit()
             throws IOException, InvalidLogGroupException, InterruptedException {
         // Given
         LogFile cLogFile = arrangeLogFile("test.log.3", 2048);
@@ -91,10 +91,10 @@ class DiskSpaceManagementServiceTest extends GGServiceTestUtil {
         service.freeDiskSpace(group);
 
         // Then
-        assertEquals(2, group.getLogFiles().size());
+        assertEquals(1, group.getLogFiles().size());
         assertTrue(Files.notExists(cLogFile.toPath()));
         assertTrue(Files.notExists(bLogFile.toPath()));
-        assertTrue(Files.exists(aLogFile.toPath()));
+        assertTrue(Files.notExists(aLogFile.toPath()));
         assertTrue(Files.exists(activeFile.toPath()));
     }
 
@@ -142,11 +142,12 @@ class DiskSpaceManagementServiceTest extends GGServiceTestUtil {
         LogFile aLogFile = arrangeLogFile("test.log.1", 2048);
         LogFile prevActive = arrangeLogFile("test.log", 1024);
         Instant lastProcessedFileInstant =  Instant.ofEpochMilli(aLogFile.lastModified());
-        LogFileGroup group = arrangeLogGroup(Pattern.compile("test.log\\w*"), lastProcessedFileInstant, 0L);
 
         // When
         File newActive = rotateFilesByRenamingThem(prevActive, aLogFile); // Files rotate before diskSpace runs
         assertTrue(Files.exists(directoryPath.resolve("test.log.2")));
+
+        LogFileGroup group = arrangeLogGroup(Pattern.compile("test.log\\w*"), lastProcessedFileInstant, 0L);
 
         DiskSpaceManagementService service = new DiskSpaceManagementService();
         service.freeDiskSpace(group);

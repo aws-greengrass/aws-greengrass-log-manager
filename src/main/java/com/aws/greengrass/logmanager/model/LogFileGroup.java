@@ -46,6 +46,7 @@ public final class LogFileGroup {
                 // Greater than or equal comparison means lastProcessed is afterOrEqual to the file.lastModified
                 .filter(file -> this.lastProcessed.compareTo(Instant.ofEpochMilli(file.lastModified())) >= 0)
                 .filter(file -> !this.isActiveFile(file))
+                .sorted(Comparator.comparingLong(LogFile::lastModified))
                 .collect(Collectors.toList());
     }
 
@@ -55,6 +56,7 @@ public final class LogFileGroup {
     public List<LogFile> getLogFiles() {
         return this.logFiles.stream()
                 .filter(file -> this.lastProcessed.isBefore(Instant.ofEpochMilli(file.lastModified())))
+                .sorted(Comparator.comparingLong(LogFile::lastModified))
                 .collect(Collectors.toList());
     }
 
@@ -245,6 +247,8 @@ public final class LogFileGroup {
      */
     public boolean isActiveFile(LogFile file) {
         if (!isUsingHardlinks) {
+            // If not using hardlinks, then the active log file is already removed by:
+            // https://github.com/aws-greengrass/aws-greengrass-log-manager/blob/d7b14d68d5cdc0ddd792af5441dbc4e3149e976e/src/main/java/com/aws/greengrass/logmanager/model/LogFileGroup.java#L205
             return false;
         }
 

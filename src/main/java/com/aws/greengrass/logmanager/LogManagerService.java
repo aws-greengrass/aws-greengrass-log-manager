@@ -506,14 +506,6 @@ public class LogManagerService extends PluginService {
                 return;
             }
 
-            ProcessingFiles processingFiles = processingFilesInformation.get(componentName);
-
-            // Delete files based on diskspace
-            List<String> deletedHashes =
-                    this.diskSpaceManagementService.freeDiskSpace(attemptLogInformation.getLogFileGroup());
-
-            processingFiles.remove(deletedHashes); // Stop tracking files already uploaded
-
             // Delete after upload
             ComponentLogConfiguration componentLogConfiguration = componentLogConfigurations.get(componentName);
             completedFiles.forEach(file -> this.deleteFile(componentLogConfiguration, file));
@@ -704,6 +696,14 @@ public class LogManagerService extends PluginService {
                             lastUploadedLogFileTimeMs, workDir);
                     if (Thread.currentThread().isInterrupted()) {
                         return;
+                    }
+
+                    ProcessingFiles componentProcessingFiles = processingFilesInformation.get(componentName);
+                    // Delete files based on diskspace
+                    List<String> deletedHashes =
+                            this.diskSpaceManagementService.freeDiskSpace(logFileGroup);
+                    if (componentProcessingFiles != null) {
+                        componentProcessingFiles.remove(deletedHashes); // Stop tracking files that are deleted
                     }
 
                     if (logFileGroup.getLogFiles().isEmpty()) {

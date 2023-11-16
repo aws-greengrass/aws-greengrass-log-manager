@@ -14,7 +14,7 @@ phases:
       - mvn -U -ntp verify -DskipTests=true
       - mvn -U -ntp clean verify -f uat/pom.xml
       - java -Dggc.archive=/tmp/greengrass-nucleus-latest.zip
-        -Dtags='LogManager&!unstable' -Dggc.install.root=$CODEBUILD_SRC_DIR -Dggc.log.level=INFO -Daws.region=us-west-2
+        -Dtags='MyTest&LogManager&!unstable' -Dggc.install.root=$CODEBUILD_SRC_DIR -Dggc.log.level=INFO -Daws.region=us-west-2
         -jar uat/testing-features/target/greengrass-log-manager-testing-features.jar
 
 artifacts:

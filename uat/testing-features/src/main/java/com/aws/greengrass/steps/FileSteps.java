@@ -64,7 +64,8 @@ public class FileSteps {
         List<String> msgs = new ArrayList<>();
         for (int i = 0; i < n; i++) {
             // TODO: Improves this as this is not how the logger writes the logs
-            msgs.add(RANDOM_STRING_GENERATOR.generate(length));
+            String message = RANDOM_STRING_GENERATOR.generate(length);
+            msgs.add("{\"level\": \"INFO\", \"message\": \"" + message + "\"}");
         }
         return msgs;
     }

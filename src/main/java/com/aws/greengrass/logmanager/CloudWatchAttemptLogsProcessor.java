@@ -138,7 +138,7 @@ public class CloudWatchAttemptLogsProcessor {
             long startPosition = logFileInformation.getStartPosition();
             String fileHash = logFileInformation.getFileHash();
             //This has been handled in the service, but leave here to prevent processor crash
-            if (logFile.isEmpty() || startPosition == logFile.length()) {
+            if (logFile.isEmpty() || startPosition >= logFile.length()) {
                 componentLogFileInformation.getLogFileInformationList().remove(0);
                 continue;
             }

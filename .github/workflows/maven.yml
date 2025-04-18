@@ -28,13 +28,13 @@ jobs:
           AWS_REGION: us-west-2
         run: mvn -ntp -U clean verify
       - name: Upload Failed Test Report
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         if: failure()
         with:
           name: Failed Test Report
           path: target/surefire-reports
       - name: Upload Coverage
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         if: always()
         with:
           name: Coverage Report
@@ -65,7 +65,7 @@ jobs:
           cp target/jacoco-report/cobertura-it.xml ./pr/jacoco-report/cobertura-it.xml
         if: github.event_name == 'pull_request'
       - name: Upload files
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: pr
           path: pr/

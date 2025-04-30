@@ -151,7 +151,7 @@ class LogManagerTest extends BaseITCase {
             if (service.getName().equals(LogManagerService.LOGS_UPLOADER_SERVICE_TOPICS)
                     && newState.equals(State.RUNNING)) {
                 logManagerService = (LogManagerService) service;
-                logManagerService.getUploader().setCloudWatchLogsClient(cloudWatchLogsClient);
+                logManagerService.getUploader().getCloudWatchWrapper().setClient(cloudWatchLogsClient);
                 logManagerRunning.countDown();
             }
         });

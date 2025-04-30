@@ -24,11 +24,15 @@ import software.amazon.awssdk.services.iam.model.ServiceFailureException;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.function.Supplier;
 import javax.inject.Inject;
 
 @Getter
 public class CloudWatchClientFactory {
-    private final CloudWatchLogsClient cloudWatchLogsClient;
+    private final Supplier<CloudWatchLogsClient> clientFactory;
+    private final SdkClientWrapper<CloudWatchLogsClient> wrapper;
+    private final Region region;
+    private final LazyCredentialProvider credentialsProvider;
     //TODO: Handle fips
     //private static String CLOUD_WATCH_FIPS_HOST = "logs-fips.%s.amazonaws.com";
     private static final Set<Class<? extends Exception>> retryableCWLogsExceptions =
@@ -51,11 +55,20 @@ public class CloudWatchClientFactory {
     @Inject
     public CloudWatchClientFactory(DeviceConfiguration deviceConfiguration,
                                    LazyCredentialProvider credentialsProvider) {
-        Region region = Region.of(Coerce.toString(deviceConfiguration.getAWSRegion()));
+        this.region = Region.of(Coerce.toString(deviceConfiguration.getAWSRegion()));
+        this.credentialsProvider = credentialsProvider;
+        this.clientFactory = this::createClient;
+        this.wrapper = new SdkClientWrapper<>(clientFactory);
+    }
 
-        this.cloudWatchLogsClient = CloudWatchLogsClient.builder().credentialsProvider(credentialsProvider)
+    private CloudWatchLogsClient createClient() {
+        return CloudWatchLogsClient.builder()
+                .credentialsProvider(credentialsProvider)
                 .httpClient(ProxyUtils.getSdkHttpClient())
-                .overrideConfiguration(ClientOverrideConfiguration.builder().retryPolicy(retryPolicy).build())
-                .region(region).build();
+                .overrideConfiguration(ClientOverrideConfiguration.builder()
+                        .retryPolicy(retryPolicy)
+                        .build())
+                .region(region)
+                .build();
     }
 }

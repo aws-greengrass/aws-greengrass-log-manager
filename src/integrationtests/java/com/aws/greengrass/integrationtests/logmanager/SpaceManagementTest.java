@@ -172,7 +172,7 @@ class SpaceManagementTest extends BaseITCase {
         // set required instances from context
         kernel.launch();
         assertTrue(logManagerRunning.await(10, TimeUnit.SECONDS));
-        logManagerService.getUploader().setCloudWatchLogsClient(cloudWatchLogsClient);
+        logManagerService.getUploader().getCloudWatchWrapper().setClient(cloudWatchLogsClient);
     }
 
     @Test

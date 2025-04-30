@@ -9,6 +9,8 @@ import com.aws.greengrass.logging.api.Logger;
 import com.aws.greengrass.logging.impl.LogManager;
 import com.aws.greengrass.logmanager.model.CloudWatchAttempt;
 import com.aws.greengrass.logmanager.util.CloudWatchClientFactory;
+import com.aws.greengrass.logmanager.util.SdkClientWrapper;
+import lombok.Getter;
 import lombok.Setter;
 import software.amazon.awssdk.awscore.exception.AwsServiceException;
 import software.amazon.awssdk.core.exception.SdkException;
@@ -37,6 +39,9 @@ public class CloudWatchLogsUploader {
     private final Map<String, Consumer<CloudWatchAttempt>> listeners = new ConcurrentHashMap<>();
     @Setter
     private CloudWatchLogsClient cloudWatchLogsClient;
+    // Getter only for unit testing purpose
+    @Getter
+    private final SdkClientWrapper<CloudWatchLogsClient> cloudWatchWrapper;
     private static final int MAX_RETRIES = 3;
 
     // logGroup -> logStream -> savedSequenceToken
@@ -44,7 +49,7 @@ public class CloudWatchLogsUploader {
 
     @Inject
     public CloudWatchLogsUploader(CloudWatchClientFactory cloudWatchClientFactory) {
-        this.cloudWatchLogsClient = cloudWatchClientFactory.getCloudWatchLogsClient();
+        this.cloudWatchWrapper = cloudWatchClientFactory.getWrapper();
     }
 
     /**
@@ -134,7 +139,8 @@ public class CloudWatchLogsUploader {
             .build();
 
         try {
-            PutLogEventsResponse putLogEventsResponse = this.cloudWatchLogsClient.putLogEvents(request);
+            PutLogEventsResponse putLogEventsResponse = cloudWatchWrapper
+                    .execute(client -> client.putLogEvents(request));
             if (putLogEventsResponse.nextSequenceToken() != null) {
                 addNextSequenceToken(logGroupName, logStreamName, putLogEventsResponse.nextSequenceToken());
             }
@@ -184,7 +190,7 @@ public class CloudWatchLogsUploader {
         logger.atDebug().log("Creating log group {}", logGroupName);
         CreateLogGroupRequest request = CreateLogGroupRequest.builder().logGroupName(logGroupName).build();
         try {
-            this.cloudWatchLogsClient.createLogGroup(request);
+            this.cloudWatchWrapper.execute(client -> client.createLogGroup(request));
         } catch (ResourceAlreadyExistsException e) {
             // Don't do anything if the resource already exists.
         } catch (CloudWatchLogsException e) {
@@ -206,7 +212,7 @@ public class CloudWatchLogsUploader {
                 .logStreamName(logStreamName)
                 .build();
         try {
-            this.cloudWatchLogsClient.createLogStream(request);
+            this.cloudWatchWrapper.execute(client -> client.createLogStream(request));
         } catch (ResourceAlreadyExistsException e) {
             // Don't do anything if the resource already exists.
         } catch (CloudWatchLogsException e) {

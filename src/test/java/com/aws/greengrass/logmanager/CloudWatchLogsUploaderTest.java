@@ -9,8 +9,11 @@ import com.aws.greengrass.logmanager.model.CloudWatchAttempt;
 import com.aws.greengrass.logmanager.model.CloudWatchAttemptLogFileInformation;
 import com.aws.greengrass.logmanager.model.CloudWatchAttemptLogInformation;
 import com.aws.greengrass.logmanager.util.CloudWatchClientFactory;
+import com.aws.greengrass.logmanager.util.SdkClientWrapper;
 import com.aws.greengrass.testcommons.testutilities.GGExtension;
 import com.aws.greengrass.testcommons.testutilities.GGServiceTestUtil;
+import java.util.function.Supplier;
+import org.apache.http.NoHttpResponseException;
 import org.hamcrest.collection.IsEmptyCollection;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -22,6 +25,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import software.amazon.awssdk.awscore.exception.AwsServiceException;
 import software.amazon.awssdk.core.RequestOverrideConfiguration;
+import software.amazon.awssdk.core.exception.SdkClientException;
 import software.amazon.awssdk.services.cloudwatchlogs.CloudWatchLogsClient;
 import software.amazon.awssdk.services.cloudwatchlogs.model.CreateLogGroupRequest;
 import software.amazon.awssdk.services.cloudwatchlogs.model.CreateLogStreamRequest;
@@ -55,6 +59,8 @@ import static org.hamcrest.core.Is.is;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.times;
@@ -67,6 +73,12 @@ public class CloudWatchLogsUploaderTest extends GGServiceTestUtil {
     private CloudWatchClientFactory mockCloudWatchClientFactory;
     @Mock
     private CloudWatchLogsClient mockCloudWatchLogsClient;
+    @Mock
+    private CloudWatchLogsClient mockCloudWatchLogsClient2;
+    @Mock
+    private SdkClientWrapper<CloudWatchLogsClient> mockWrapper;
+    @Mock
+    Supplier<CloudWatchLogsClient> clientFactory;
     @Captor
     private ArgumentCaptor<PutLogEventsRequest> putLogEventsRequestArgumentCaptor;
 
@@ -74,7 +86,9 @@ public class CloudWatchLogsUploaderTest extends GGServiceTestUtil {
 
     @BeforeEach
     public void setup() {
-        when(mockCloudWatchClientFactory.getCloudWatchLogsClient()).thenReturn(mockCloudWatchLogsClient);
+        when(clientFactory.get()).thenReturn(mockCloudWatchLogsClient, mockCloudWatchLogsClient2);
+        mockWrapper = new SdkClientWrapper<>(clientFactory);
+        when(mockCloudWatchClientFactory.getWrapper()).thenReturn(mockWrapper);
     }
 
     @Test
@@ -646,5 +660,119 @@ public class CloudWatchLogsUploaderTest extends GGServiceTestUtil {
 
         assertTrue(attemptFinishedLatch.await(5, TimeUnit.SECONDS));
         verify(mockCloudWatchLogsClient, times(0)).putLogEvents(any(PutLogEventsRequest.class));
+    }
+
+    @SuppressWarnings("PMD.CloseResource")
+    @Test
+    public void GIVEN_mock_cloud_watch_attempt_WHEN_NoHttpResponseException_THEN_clients_recreated_and_log_uploaded(ExtensionContext context1)
+            throws InterruptedException {
+        ignoreExceptionOfType(context1, NoHttpResponseException.class);
+        ignoreExceptionOfType(context1, SdkClientException.class);
+        ignoreExceptionOfType(context1, ResourceNotFoundException.class);
+
+        String mockGroupName = "testGroup";
+        String mockStreamNameForGroup = "testStream";
+        String mockSequenceToken = UUID.randomUUID().toString();
+        String mockNextSequenceToken = UUID.randomUUID().toString();
+        CloudWatchAttempt attempt = new CloudWatchAttempt();
+        Map<String, CloudWatchAttemptLogInformation> logSteamForGroup1Map = new ConcurrentHashMap<>();
+        Queue<InputLogEvent> inputLogEventsForStream1OfGroup1 = new PriorityQueue<>(EVENT_COMPARATOR);
+        inputLogEventsForStream1OfGroup1.add(InputLogEvent.builder()
+                .timestamp(Instant.now().toEpochMilli() + 5_000) // Put this in the future to show that sorting on
+                // timestamp works
+                .message("test")
+                .build());
+        inputLogEventsForStream1OfGroup1.add(InputLogEvent.builder()
+                .timestamp(Instant.now().toEpochMilli())
+                .message("test2")
+                .build());
+        Map<String, CloudWatchAttemptLogFileInformation> attemptLogFileInformationMap = new HashMap<>();
+        attemptLogFileInformationMap.put("test.log", CloudWatchAttemptLogFileInformation.builder()
+                .startPosition(0)
+                .bytesRead(100)
+                .build());
+        CloudWatchAttemptLogInformation logInfo =
+                CloudWatchAttemptLogInformation.builder().logEvents(inputLogEventsForStream1OfGroup1)
+                        .attemptLogFileInformationMap(attemptLogFileInformationMap).build();
+        logSteamForGroup1Map.put(mockStreamNameForGroup, logInfo);
+
+        // Verify that log events were sorted correctly
+        assertThat(logInfo.getSortedLogEvents().get(0).timestamp(),
+                is(lessThan(logInfo.getSortedLogEvents().get(1).timestamp())));
+
+        attempt.setLogGroupName(mockGroupName);
+        attempt.setLogStreamsToLogEventsMap(logSteamForGroup1Map);
+
+        // Create NoHttpResponseException
+        NoHttpResponseException noHttpResponseException =
+                new NoHttpResponseException("The target server failed to respond");
+
+        // Create the main SdkClientException
+        SdkClientException mainException = SdkClientException.builder()
+                .message("Unable to execute HTTP request: The target server failed to respond")
+                .cause(noHttpResponseException)
+                .build();
+
+        uploader = new CloudWatchLogsUploader(mockCloudWatchClientFactory);
+        uploader.addNextSequenceToken(mockGroupName, mockStreamNameForGroup, mockSequenceToken);
+        CountDownLatch attemptFinishedLatch = new CountDownLatch(1);
+        uploader.registerAttemptStatus(UUID.randomUUID().toString(), cloudWatchAttempt -> {
+            assertTrue(cloudWatchAttempt.getLogStreamUploadedSet().contains("testStream"));
+            attemptFinishedLatch.countDown();
+        });
+
+        //Get current client before upload logs
+        CloudWatchLogsClient initialClient = mockWrapper.getClient();
+
+        // First client throws exception
+        when(mockCloudWatchLogsClient.putLogEvents(any(PutLogEventsRequest.class)))
+                .thenThrow(mainException);
+
+        // Setup second client to throw a non-refreshable error and return success
+        PutLogEventsResponse response = PutLogEventsResponse.builder().nextSequenceToken(mockNextSequenceToken).build();
+        when(mockCloudWatchLogsClient2.putLogEvents(any(PutLogEventsRequest.class)))
+                .thenThrow(ResourceNotFoundException.class)
+                .thenReturn(response);
+
+        uploader.upload(attempt, 1);
+
+        // Verify factory was called twice (initial + refresh)
+        verify(clientFactory, times(2)).get();
+        verify(mockCloudWatchLogsClient, times(1)).putLogEvents(putLogEventsRequestArgumentCaptor.capture());
+        // Verify second client making calls for ResourceNotFoundException retry + success response
+        verify(mockCloudWatchLogsClient2, times(2)).putLogEvents(putLogEventsRequestArgumentCaptor.capture());
+
+        //Verify the clients has been changed
+        CloudWatchLogsClient refreshedClient = mockWrapper.getClient();
+        assertSame(initialClient, mockCloudWatchLogsClient);
+        assertNotSame(initialClient, refreshedClient);
+        assertSame(refreshedClient, mockCloudWatchLogsClient2);
+
+        Set<String> messageTextToCheck = new HashSet<>();
+        messageTextToCheck.add("test");
+        messageTextToCheck.add("test2");
+
+        List<PutLogEventsRequest> putLogEventsRequests = putLogEventsRequestArgumentCaptor.getAllValues();
+        assertEquals(3, putLogEventsRequests.size());
+
+        PutLogEventsRequest request = putLogEventsRequests.get(1);
+        assertTrue(request.hasLogEvents());
+        assertTrue(request.overrideConfiguration().isPresent());
+        RequestOverrideConfiguration requestOverrideConfiguration = request.overrideConfiguration().get();
+        List<String> amznLogFormatHeader = requestOverrideConfiguration.headers().get("x-amzn-logs-format");
+        assertNotNull(amznLogFormatHeader);
+        assertTrue(amznLogFormatHeader.contains("json/emf"));
+        assertEquals(mockGroupName, request.logGroupName());
+        assertEquals(mockStreamNameForGroup, request.logStreamName());
+        assertEquals(mockSequenceToken, request.sequenceToken());
+        assertEquals(2, request.logEvents().size());
+        request.logEvents().forEach(inputLogEvent -> {
+            assertNotNull(inputLogEvent.message());
+            assertNotNull(inputLogEvent.timestamp());
+            messageTextToCheck.remove(inputLogEvent.message());
+        });
+
+        assertEquals(0, messageTextToCheck.size());
+        assertEquals(mockNextSequenceToken, uploader.logGroupsToSequenceTokensMap.get(mockGroupName).get(mockStreamNameForGroup));
     }
 }

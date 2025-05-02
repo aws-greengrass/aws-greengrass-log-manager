@@ -74,7 +74,8 @@ public final class SdkClientWrapper<T extends SdkClient> {
     private boolean shouldRefreshClient(SdkClientException e) {
         Throwable cause = e;
         while (cause != null) {
-            if (cause instanceof SocketException && "Connection reset".equals(cause.getMessage())) {
+            if (cause.getMessage() != null && cause instanceof SocketException
+                    && "connection reset".contains(cause.getMessage().toLowerCase())) {
                 return true;
             }
             if (cause instanceof NoHttpResponseException) {

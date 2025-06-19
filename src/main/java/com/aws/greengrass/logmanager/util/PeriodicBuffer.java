@@ -8,13 +8,13 @@ package com.aws.greengrass.logmanager.util;
 import com.aws.greengrass.logging.api.Logger;
 import com.aws.greengrass.logging.impl.LogManager;
 
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
-import java.util.Map;
 
 /**
  * Generic buffer that accumulates updates and flushes them periodically.
@@ -51,7 +51,10 @@ public class PeriodicBuffer<K, V> {
     }
 
     /**
-     * Starts the periodic flushing.
+     * Starts the periodic buffer flushing operation.
+     * Initializes a scheduled task that flushes the buffer at fixed intervals.
+     *
+     * @throws IllegalStateException if the buffer has already been shutdown
      */
     public void start() {
         if (isShutdown) {

@@ -107,7 +107,7 @@ public class LogManagerService extends PluginService {
     public static final String MULTILINE_PATTERN_CONFIG_TOPIC_NAME = "multiLineStartPattern";
     public static final String BUFFER_INTERVAL_SEC = "bufferIntervalSec";
     public static final double DEFAULT_PERIODIC_UPDATE_INTERVAL_SEC = 300;
-    public static final int MAX_CACHE_INACTIVE_TIME_SECONDS = 60 * 60 * 24; // 1 day
+    public static final int MAX_CACHE_INACTIVE_TIME_SECONDS = (int) TimeUnit.DAYS.toSeconds(1);
 
     private final List<Consumer<EventType>> serviceStatusListeners = new ArrayList<>();
 
@@ -162,11 +162,13 @@ public class LogManagerService extends PluginService {
 
     private void initializeConfigUpdateBuffers(Topics topics) {
         long bufferIntervalSeconds =
-                Coerce.toLong(topics.findOrDefault(LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC,
-                        CONFIGURATION_CONFIG_KEY, BUFFER_INTERVAL_SEC));
+                Coerce.toLong(topics.findOrDefault(
+                        LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC, CONFIGURATION_CONFIG_KEY, BUFFER_INTERVAL_SEC));
         
         // Ensure buffer interval is at least as large as periodicUpdateIntervalSec
         bufferIntervalSeconds = Math.max(bufferIntervalSeconds, (long) periodicUpdateIntervalSec);
+        
+        logger.atInfo().log("Initializing config update buffers with interval: {} seconds", bufferIntervalSeconds);
         
         // Buffer for processing files information
         processingFilesBuffer = new PeriodicBuffer<>(
@@ -528,7 +530,7 @@ public class LogManagerService extends PluginService {
 
             // Record the last processed file timestamp
             completedFiles.forEach(file -> {
-                updatelastComponentUploadedLogFile(lastComponentUploadedLogFileInstantMap, componentName, file);
+                updateLastComponentUploadedLogFile(lastComponentUploadedLogFileInstantMap, componentName, file);
             });
 
             if (!componentLogConfigurations.containsKey(componentName)) {
@@ -659,7 +661,7 @@ public class LogManagerService extends PluginService {
      * @param componentName componentName.
      * @param logFile the logFile that is going to be recorded.
      */
-    private void updatelastComponentUploadedLogFile(Map<String, Instant> lastComponentUploadedLogFileInstantMap,
+    private void updateLastComponentUploadedLogFile(Map<String, Instant> lastComponentUploadedLogFileInstantMap,
                                                     String componentName,
                                                     LogFile logFile) {
         if (!lastComponentUploadedLogFileInstantMap.containsKey(componentName)
@@ -747,7 +749,7 @@ public class LogManagerService extends PluginService {
                         if (startPosition < file.length()) {
                             logFileInfo.getLogFileInformationList().add(logFileInformation);
                         } else if (startPosition == file.length() && !logFileGroup.isActiveFile(file)) {
-                            updatelastComponentUploadedLogFile(lastComponentUploadedLogFileInstantMap,
+                            updateLastComponentUploadedLogFile(lastComponentUploadedLogFileInstantMap,
                                     componentName, file);
 
                             // NOTE: This handles the scenario where we are uploading the active file constantly and

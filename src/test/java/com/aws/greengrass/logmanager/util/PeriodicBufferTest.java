@@ -339,13 +339,20 @@ class PeriodicBufferTest {
     @Test
     void testFlushDuringConcurrentModification() throws InterruptedException {
         AtomicReference<Exception> flushException = new AtomicReference<>();
+        CountDownLatch flushProcessingStarted = new CountDownLatch(1);
+        CountDownLatch continueFlushProcessing = new CountDownLatch(1);
+        AtomicReference<Map<String, String>> capturedFlushData = new AtomicReference<>();
+        
         Consumer<Map<String, String>> safeFlushHandler = data -> {
             try {
+                capturedFlushData.set(new ConcurrentHashMap<>(data));
+                flushProcessingStarted.countDown();
+                // Wait for modification thread to start
+                assertTrue(continueFlushProcessing.await(2, TimeUnit.SECONDS));
                 // Simulate processing time
                 Thread.sleep(50);
                 defaultFlushHandler.accept(data);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
+            } catch (Exception e) {
                 flushException.set(e);
             }
         };
@@ -358,18 +365,18 @@ class PeriodicBufferTest {
             buffer.put("key" + i, "value" + i);
         }
 
-        CountDownLatch flushStarted = new CountDownLatch(1);
         CountDownLatch modificationComplete = new CountDownLatch(1);
 
-        Thread flushThread = new Thread(() -> {
-            flushStarted.countDown();
-            buffer.flush();
-        });
+        // Start flush which will swap the buffer immediately
+        Thread flushThread = new Thread(() -> buffer.flush());
+        flushThread.start();
 
+        // Wait for flush processing to start (buffer has been swapped)
+        assertTrue(flushProcessingStarted.await(2, TimeUnit.SECONDS));
+
+        // Now modify the buffer - these changes should go into the new buffer
         Thread modificationThread = new Thread(() -> {
             try {
-                flushStarted.await();
-                // Try to modify buffer during flush
                 for (int i = 100; i < 200; i++) {
                     buffer.put("key" + i, "value" + i);
                     if (i % 10 == 0) {
@@ -377,28 +384,42 @@ class PeriodicBufferTest {
                     }
                 }
                 modificationComplete.countDown();
-            } catch (InterruptedException e) {
+            } catch (Exception e) {
                 Thread.currentThread().interrupt();
             }
         });
-
-        flushThread.start();
         modificationThread.start();
 
+        // Allow flush processing to continue
+        continueFlushProcessing.countDown();
+
+        // Wait for both threads to complete
         flushThread.join(5000);
         assertTrue(modificationComplete.await(5, TimeUnit.SECONDS));
+
+        // Give time for async flush to complete
+        Thread.sleep(200);
 
         // Verify no exceptions occurred
         if (flushException.get() != null) {
             fail("Exception during flush: " + flushException.get());
         }
 
-        // First flush should have the original 100 items
+        // First flush should have exactly the original 100 items (buffer was swapped)
         assertEquals(1, flushedData.size());
         assertEquals(100, flushedData.get(0).size());
+        
+        // Verify the flushed data contains the original items
+        Map<String, String> flushedMap = capturedFlushData.get();
+        assertNotNull(flushedMap);
+        for (int i = 0; i < 100; i++) {
+            assertEquals("value" + i, flushedMap.get("key" + i));
+        }
 
         // Buffer should contain new items added during flush
+        // The new buffer should have items 100-199 minus some removed items
         assertTrue(buffer.size() > 0);
+        assertTrue(buffer.size() < 100); // Should be less than 100 due to removals
     }
 
     @Test
@@ -434,48 +455,41 @@ class PeriodicBufferTest {
     }
 
     @Test
-    void testConcurrentFlushSkipping() throws InterruptedException {
-        CountDownLatch flushInProgress = new CountDownLatch(1);
-        CountDownLatch secondFlushAttempted = new CountDownLatch(1);
-        AtomicInteger actualFlushCount = new AtomicInteger(0);
-        
-        Consumer<Map<String, String>> slowFlushHandler = data -> {
+    void testConcurrentFlushSkipping() throws Exception {
+        CountDownLatch firstFlushStarted = new CountDownLatch(1);
+        CountDownLatch allowFirstFlushToProceed = new CountDownLatch(1);
+        AtomicInteger flushCallCount = new AtomicInteger(0);
+
+        PeriodicBuffer<String, String> buffer = new PeriodicBuffer<>("testBuffer", 10, items -> {
+            flushCallCount.incrementAndGet();
+            firstFlushStarted.countDown();          // Let the test know flush has started
             try {
-                actualFlushCount.incrementAndGet();
-                flushInProgress.countDown();
-                Thread.sleep(500); // Simulate slow flush
-                defaultFlushHandler.accept(data);
+                allowFirstFlushToProceed.await();   // Wait here to simulate long-running flush
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
-        };
-
-        buffer = new PeriodicBuffer<>("TestBuffer", 60, slowFlushHandler);
-        buffer.start();
-
-        buffer.put("key1", "value1");
-
-        // Start first flush in separate thread
-        Thread firstFlush = new Thread(() -> buffer.flush());
-        firstFlush.start();
-
-        // Wait for first flush to start
-        assertTrue(flushInProgress.await(1, TimeUnit.SECONDS));
-
-        // Try second flush while first is in progress
-        Thread secondFlush = new Thread(() -> {
-            buffer.flush();
-            secondFlushAttempted.countDown();
         });
-        secondFlush.start();
 
-        assertTrue(secondFlushAttempted.await(1, TimeUnit.SECONDS));
-        firstFlush.join(2000);
-        secondFlush.join(2000);
+        buffer.put("k", "v");
 
-        // Only one actual flush should have occurred
-        assertEquals(1, actualFlushCount.get());
-        assertEquals(1, flushCount.get());
+        // Thread 1 will start the flush and block
+        Thread flushThread1 = new Thread(buffer::flush);
+        flushThread1.start();
+
+        // Wait until flushThread1 gets into the flush method
+        assertTrue(firstFlushStarted.await(3, TimeUnit.SECONDS), "First flush didn't start in time");
+
+        // Thread 2 will attempt to flush but should skip since flushInProgress = 1
+        Thread flushThread2 = new Thread(buffer::flush);
+        flushThread2.start();
+
+        // Allow flush to complete
+        allowFirstFlushToProceed.countDown();
+
+        flushThread1.join();
+        flushThread2.join();
+
+        assertEquals(1, flushCallCount.get(), "Only one flush should have been performed");
     }
 
     @Test

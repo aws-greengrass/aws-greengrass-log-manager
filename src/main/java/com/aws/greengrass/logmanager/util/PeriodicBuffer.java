@@ -9,6 +9,7 @@ import com.aws.greengrass.logging.api.Logger;
 import com.aws.greengrass.logging.impl.LogManager;
 
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
@@ -40,6 +41,7 @@ public class PeriodicBuffer<K, V> {
     private final AtomicLong flushSuccessCount = new AtomicLong(0);
     private final AtomicLong flushFailureCount = new AtomicLong(0);
     private final AtomicInteger flushInProgress = new AtomicInteger(0);
+    private volatile CompletableFuture<Void> currentFlushFuture = CompletableFuture.completedFuture(null);
 
     private ScheduledFuture<?> flushTask;
     private volatile boolean isShutdown = false;
@@ -120,7 +122,7 @@ public class PeriodicBuffer<K, V> {
     }
 
     /**
-     * Manually triggers a flush of the buffer.
+     * Triggers a flush of the buffer.
      */
     public void flush() {
         flush(false);
@@ -133,99 +135,109 @@ public class PeriodicBuffer<K, V> {
      */
     @SuppressWarnings("PMD.AvoidCatchingGenericException")
     private void flush(boolean waitForInProgress) {
-        // Early check for empty buffer to avoid unnecessary locking
-        synchronized (bufferLock) {
-            if (buffer.isEmpty()) {
-                logger.atDebug().log("Buffer '{}' is empty, nothing to flush", bufferName);
-                return;
-            }
+        // Don't attempt to flush after shutdown (unless waitForInProgress is true for shutdown flush)
+        if (isShutdown && !waitForInProgress) {
+            return;
         }
 
-        // Check if another flush is already in progress
-        if (!flushInProgress.compareAndSet(0, 1)) {
-            if (waitForInProgress) {
-                logger.atDebug().log("Flush already in progress for buffer '{}', waiting for completion", bufferName);
-                // Wait for the current flush to complete
-                while (flushInProgress.get() != 0) {
-                    try {
-                        Thread.sleep(10);
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                        logger.atWarn().log("Interrupted while waiting for flush to complete in buffer '{}'",
-                                bufferName);
-                        return;
-                    }
-                }
-                // Try again after the previous flush completed
-                flush(waitForInProgress);
-            } else {
-                logger.atDebug().log("Flush already in progress for buffer '{}', skipping", bufferName);
+        Map<K, V> bufferToFlush = swapBuffer();
+
+        // if buffer is empty, skip the flush
+        if (bufferToFlush.isEmpty()) {
+            try {
+                logger.atDebug().log("Flush skipped for empty buffer '{}'", bufferName);
+            } finally {
+                flushInProgress.set(0);
+                currentFlushFuture = CompletableFuture.completedFuture(null);
             }
             return;
         }
 
-        try {
-            Map<K, V> bufferToFlush;
-            boolean shouldFlush;
-            synchronized (bufferLock) {
-                // Double-check if buffer is still non-empty
-                if (buffer.isEmpty()) {
-                    logger.atDebug().log("Buffer '{}' became empty, nothing to flush", bufferName);
-                    // Don't return here - we need to go through finally block
-                    bufferToFlush = new ConcurrentHashMap<>();
-                    shouldFlush = false;
-                } else {
-                    logger.atInfo().log("Flushing buffer '{}' with {} items", bufferName, buffer.size());
-
-                    // Swap the buffer instead of copying for better performance
-                    bufferToFlush = buffer;
-                    buffer = new ConcurrentHashMap<>();
-                    shouldFlush = true;
-                }
+        if (waitForInProgress) {
+            // During shutdown, ensure any previous flush is finished
+            currentFlushFuture.join();
+        } else {
+            // If a flush is already in progress, skip this one
+            if (!flushInProgress.compareAndSet(0, 1)) {
+                return;
             }
+        }
 
-            // Only proceed with flush if we have data
-            if (shouldFlush) {
-                long startTime = System.currentTimeMillis();
-                try {
-                    flushHandler.accept(bufferToFlush);
-                    
-                    long duration = System.currentTimeMillis() - startTime;
-                    flushSuccessCount.incrementAndGet();
-                    
-                    logger.atDebug()
-                            .kv("itemCount", bufferToFlush.size())
-                            .kv("durationMs", duration)
-                            .kv("successCount", flushSuccessCount.get())
-                            .log("Successfully flushed buffer '{}'", bufferName);
-                            
-                } catch (RejectedExecutionException e) {
-                    // Put the items back if flush was rejected
-                    synchronized (bufferLock) {
-                        bufferToFlush.forEach(buffer::putIfAbsent);
+
+        if (waitForInProgress) {
+            // run performFlush directly on the same thread for manual triggered flush
+            try {
+                performFlush(bufferToFlush);
+            } finally {
+                flushInProgress.set(0);
+            }
+            currentFlushFuture = CompletableFuture.completedFuture(null);
+        } else {
+            // otherwise, for lambda triggered flush, we run the performFlush on a background thread
+            // assign the returned future to currentFlushFuture so that we can optionally wait for it in the next flush
+            try {
+                currentFlushFuture = CompletableFuture.runAsync(() -> {
+                    try {
+                        performFlush(bufferToFlush);
+                    } finally {
+                        flushInProgress.set(0);
                     }
-                    flushFailureCount.incrementAndGet();
-                    logger.atError().cause(e)
-                            .kv("failureCount", flushFailureCount.get())
-                            .log("Flush rejected for buffer '{}', items restored", bufferName);
-                } catch (RuntimeException e) {
-                    // Catching RuntimeException because the flushHandler is a Consumer<Map<K, V>> that
-                    // can throw any unchecked exception. We need to handle all possible runtime exceptions
-                    // to ensure the buffer continues to function properly.
-                    // CHECKSTYLE:OFF - We need to catch all runtime exceptions from user-provided handler
-                    // PMD:OFF:AvoidCatchingGenericException - The flushHandler is a user-provided Consumer
-                    // that can throw any unchecked exception, and we must ensure the buffer continues to
-                    // function even if the handler fails. This is a valid use case for catching RuntimeException.
-                    flushFailureCount.incrementAndGet();
-                    logger.atError().cause(e)
-                            .kv("failureCount", flushFailureCount.get())
-                            .log("Failed to flush buffer '{}'. Items lost.", bufferName);
-                    // CHECKSTYLE:ON
-                    // PMD:ON:AvoidCatchingGenericException
+                }, scheduler);
+            } catch (RejectedExecutionException e) {
+                // catching the scheduler exception, backup plan in case the async flush failed to schedule, force flush here
+                try {
+                    performFlush(bufferToFlush);
+                } finally {
+                    flushInProgress.set(0);
                 }
+                currentFlushFuture = CompletableFuture.completedFuture(null);
             }
-        } finally {
-            flushInProgress.set(0);
+        }
+    }
+
+    private Map<K, V> swapBuffer() {
+        synchronized (bufferLock) {
+            if (buffer.isEmpty()) {
+                return new ConcurrentHashMap<>();
+            }
+            Map<K, V> bufferToFlush = buffer;
+            buffer = new ConcurrentHashMap<>();
+            return bufferToFlush;
+        }
+    }
+
+    @SuppressWarnings("PMD.AvoidCatchingGenericException")
+    private void performFlush(Map<K, V> bufferToFlush) {
+        logger.atInfo().log("Flushing buffer '{}' with {} items", bufferName, bufferToFlush.size());
+        long startTime = System.currentTimeMillis();
+        
+        try {
+            flushHandler.accept(bufferToFlush);
+            
+            long duration = System.currentTimeMillis() - startTime;
+            flushSuccessCount.incrementAndGet();
+            
+            logger.atDebug()
+                    .kv("itemCount", bufferToFlush.size())
+                    .kv("durationMs", duration)
+                    .kv("successCount", flushSuccessCount.get())
+                    .log("Successfully flushed buffer '{}'", bufferName);
+                    
+        } catch (RejectedExecutionException e) {
+            synchronized (bufferLock) {
+                // Restore items to buffer if flush failed
+                logger.atError().cause(e).log("Flush rejected for buffer '{}', items restored", bufferName);
+                bufferToFlush.forEach(buffer::putIfAbsent);
+            }
+            flushFailureCount.incrementAndGet();
+            logger.atError().cause(e)
+                    .kv("failureCount", flushFailureCount.get())
+                    .log("Flush rejected for buffer '{}', items restored", bufferName);
+        } catch (RuntimeException e) {
+            flushFailureCount.incrementAndGet();
+            logger.atError().cause(e)
+                    .kv("failureCount", flushFailureCount.get())
+                    .log("Flush failed for buffer '{}'", bufferName);
         }
     }
 
@@ -263,24 +275,28 @@ public class PeriodicBuffer<K, V> {
         if (flushTask != null) {
             flushTask.cancel(false);
         }
-
-        // Flush any remaining items, waiting for any in-progress flush to complete
+        
+        // Then flush any remaining items
         try {
             flush(true);
+            currentFlushFuture.join(); // Wait for final flush to complete
         } catch (RuntimeException e) {
-            // Catching RuntimeException because the flush method can throw any unchecked exception
-            // from the flushHandler. We need to ensure shutdown completes even if the final flush fails.
-            // CHECKSTYLE:OFF - We need to catch all runtime exceptions from user-provided handler
-            // PMD:OFF:AvoidCatchingGenericException - The flushHandler called via flush(true) can throw
-            // any unchecked exception. We must ensure shutdown completes successfully even if the final
-            // flush operation fails. This is a valid use case for catching RuntimeException.
-            logger.atError().cause(e).log("Error during final flush");
-            // CHECKSTYLE:ON
-            // PMD:ON:AvoidCatchingGenericException
+            logger.atWarn().cause(e).log("Exception during shutdown flush for buffer '{}'", bufferName);
         }
 
         // Shutdown the scheduler
-        scheduler.shutdownNow();
+        scheduler.shutdown();
+        try {
+            if (!scheduler.awaitTermination(5, TimeUnit.SECONDS)) {
+                scheduler.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            scheduler.shutdownNow();
+
+            // the final flush operation fails. This is a valid use case for catching RuntimeException.
+            logger.atError().cause(e).log("Error during final flush");
+        }
 
         logger.atInfo()
                 .kv("successfulFlushes", flushSuccessCount.get())

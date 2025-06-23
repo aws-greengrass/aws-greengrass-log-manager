@@ -3,6 +3,7 @@ services:
   aws.greengrass.LogManager:
     configuration:
       periodicUploadIntervalSec: 10
+      bufferIntervalSec: 20
       logsUploaderConfiguration:
         componentLogsConfiguration:
           - componentName: 'UserComponentA'

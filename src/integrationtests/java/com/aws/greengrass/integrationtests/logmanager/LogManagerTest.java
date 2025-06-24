@@ -5,7 +5,9 @@
 
 package com.aws.greengrass.integrationtests.logmanager;
 
+import com.aws.greengrass.config.Topic;
 import com.aws.greengrass.config.Topics;
+import com.aws.greengrass.config.WhatHappened;
 import com.aws.greengrass.dependency.State;
 import com.aws.greengrass.deployment.DeviceConfiguration;
 import com.aws.greengrass.deployment.exceptions.DeviceConfigurationException;
@@ -22,9 +24,11 @@ import com.aws.greengrass.logmanager.model.EventType;
 import com.aws.greengrass.logmanager.model.LogFileGroup;
 import com.aws.greengrass.logmanager.model.ProcessingFiles;
 import com.aws.greengrass.testcommons.testutilities.GGExtension;
+import com.aws.greengrass.util.Coerce;
 import com.aws.greengrass.util.exceptions.TLSAuthException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -77,6 +81,8 @@ import static com.aws.greengrass.logmanager.LogManagerService.DEFAULT_FILE_REGEX
 import static com.aws.greengrass.logmanager.LogManagerService.LOGS_UPLOADER_CONFIGURATION_TOPIC;
 import static com.aws.greengrass.logmanager.LogManagerService.MIN_LOG_LEVEL_CONFIG_TOPIC_NAME;
 import static com.aws.greengrass.logmanager.LogManagerService.PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION_V2;
+import static com.aws.greengrass.logmanager.LogManagerService.PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP;
+import static com.aws.greengrass.logmanager.LogManagerService.PERSISTED_LAST_FILE_PROCESSED_TIMESTAMP;
 import static com.aws.greengrass.testcommons.testutilities.ExceptionLogProtector.ignoreExceptionOfType;
 import static com.aws.greengrass.testcommons.testutilities.ExceptionLogProtector.ignoreExceptionWithMessage;
 import static com.github.grantwest.eventually.EventuallyLambdaMatcher.eventuallyEval;
@@ -338,6 +344,155 @@ class LogManagerTest extends BaseITCase {
         LogFileGroup logFileGroup =
                 LogFileGroup.create(compLogInfo, mockInstant, workDir);
         assertEquals(1, logFileGroup.getLogFiles().size());
+    }
+
+    @Test
+    void GIVEN_user_component_config_with_periodic_interval_and_buffer_interval_time_THEN_config_update_by_buffer() throws Exception {
+        // Given randomly generated logs
+        tempDirectoryPath = Files.createTempDirectory(tempRootDir, "IntegrationTestsTemporaryLogFiles");
+        for (int i = 0; i < 5; i++) {
+            createTempFileAndWriteData(tempDirectoryPath, "integTestRandomLogFiles.log_", Coerce.toString(i));
+        }
+        setupKernel(tempDirectoryPath, "smallPeriodicIntervalUserComponentConfig.yaml");
+
+        // When
+        String componentName = "UserComponentA";
+
+        // Track how many times CloudWatch upload is called
+        AtomicInteger uploadCount = new AtomicInteger(0);
+        CountDownLatch uploadLatch = new CountDownLatch(2);
+        CountDownLatch firstUploadLatch = new CountDownLatch(1);
+        AtomicInteger configTlogWriteCount = new AtomicInteger(0);
+
+
+        // Buffer flush countdown mechanism for each component map
+        CountDownLatch bufferFlushLatch = new CountDownLatch(2);
+
+
+        when(cloudWatchLogsClient.putLogEvents(any(PutLogEventsRequest.class))).thenAnswer(invocation -> {
+            uploadCount.incrementAndGet();
+            firstUploadLatch.countDown();
+            uploadLatch.countDown();
+            return PutLogEventsResponse.builder().nextSequenceToken("nextToken").build();
+        });
+
+        // Subscribe to buffer flush events for countdown tracking and by this time, buffer shouldn't flush
+        logManagerService.getRuntimeConfig()
+                .lookupTopics(PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP, componentName)
+                .subscribe((why, node) -> {
+                    if (why.equals(WhatHappened.childChanged)) {
+                        bufferFlushLatch.countDown();
+                        configTlogWriteCount.incrementAndGet();
+                    }
+                });
+
+        // Check initial state of runtime config. should be 0 since no flush has been performed by buffer
+        Topics initialComponentTopics = logManagerService.getRuntimeConfig()
+                .lookupTopics(PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP, componentName);
+        assertEquals(0, initialComponentTopics.size());
+
+        // Wait for first upload to ensure log manager is processing
+        assertTrue(firstUploadLatch.await(15, TimeUnit.SECONDS),
+                "Expected first CloudWatch upload within 15 seconds");
+
+        // Then write more logs and wait for the log manager to upload log
+        for (int i = 5; i < 10; i++) {
+            createTempFileAndWriteData(tempDirectoryPath, "integTestRandomLogFiles.log_", Coerce.toString(i));
+        }
+        assertTrue(uploadLatch.await(15, TimeUnit.SECONDS),
+                "Expected 2 CloudWatch uploads within 15 seconds");
+
+        // Wait for buffer flushes
+        assertTrue(bufferFlushLatch.await(10, TimeUnit.SECONDS),
+                "Expected buffer flush countdown to complete within 10 seconds");
+        // Verify buffer flushed twice
+        // We flush the first upload no matter what, and after the interval, we flush again
+        assertEquals(2, configTlogWriteCount.get());
+
+        // Verify Processing File information persisted
+        Topics afterFlushComponentTopics = logManagerService.getRuntimeConfig()
+                .lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION_V2, componentName);
+        assertEquals(1, afterFlushComponentTopics.size());
+
+        // Verify last uploaded timestamp is also persisted
+        Topics lastFileProcessedTopics = logManagerService.getRuntimeConfig()
+                .lookupTopics(PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP, componentName);
+        assertEquals(1, lastFileProcessedTopics.size());
+}
+
+
+    @Test
+    void GIVEN_logmanager_with_uploaded_logs_WHEN_shutdown_within_update_interval_THEN_config_is_persisted() throws Exception {
+        // Given: Setup for log uploads
+        tempDirectoryPath = Files.createTempDirectory(tempRootDir, "IntegrationTestsTemporaryLogFiles");
+        String componentName = "UserComponentA";
+
+        // Create initial set of log files
+        for (int i = 0; i < 5; i++) {
+            createTempFileAndWriteData(tempDirectoryPath, "integTestRandomLogFiles.log_", Coerce.toString(i));
+        }
+
+        // Setup kernel with small periodic interval
+        setupKernel(tempDirectoryPath, "smallPeriodicIntervalUserComponentConfig.yaml");
+
+        // Track config.tlog writes
+        AtomicInteger configWriteCount = new AtomicInteger(0);
+        CountDownLatch firstUploadLatch = new CountDownLatch(1);
+        CountDownLatch secondUploadLatch = new CountDownLatch(1);
+        CountDownLatch configWriteLatch = new CountDownLatch(3);
+
+        // Track TLOG writes for the component's last file processed timestamp
+        logManagerService.getRuntimeConfig()
+                .lookupTopics(PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP, componentName)
+                .subscribe((why, node) -> {
+                    if (why.equals(WhatHappened.childChanged)) {
+                        configWriteCount.incrementAndGet();
+                        configWriteLatch.countDown();
+                    }
+                });
+
+        // When: First upload occurs
+        when(cloudWatchLogsClient.putLogEvents(any(PutLogEventsRequest.class))).thenAnswer(invocation -> {
+            firstUploadLatch.countDown();
+            return PutLogEventsResponse.builder().nextSequenceToken("nextToken").build();
+        }).thenAnswer(invocation -> {
+            secondUploadLatch.countDown();
+            return PutLogEventsResponse.builder().nextSequenceToken("nextToken").build();
+        });
+
+        // Wait for first upload to complete
+        assertTrue(firstUploadLatch.await(15, TimeUnit.SECONDS),
+                "Expected first CloudWatch upload within 15 seconds");
+
+        // Create second batch of log files
+        for (int i = 5; i < 10; i++) {
+            createTempFileAndWriteData(tempDirectoryPath, "integTestRandomLogFiles.log_", Coerce.toString(i));
+        }
+
+        // Wait for second upload to complete
+        assertTrue(secondUploadLatch.await(15, TimeUnit.SECONDS),
+                "Expected second CloudWatch upload within 15 seconds");
+        //Verify write to tlog has not been performed before shutdown
+        assertEquals(2, configWriteCount.get());
+
+        // Perform shutdown within the update interval
+        logManagerService.shutdown();
+
+        // Then: Verify config.tlog writes occurred
+        assertTrue(configWriteLatch.await(10, TimeUnit.SECONDS));
+        assertEquals(3, configWriteCount.get(),
+                "Expected exactly 3 writes to config.tlog (initial + 1st upload + shutdown)");
+
+        // Verify runtime config matches the in-memory state before shutdown
+        // Last file processed timestamp
+        Topics lastFileProcessedTopics = logManagerService.getRuntimeConfig()
+                .findTopics(PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP, componentName);
+
+        Topic lastFileProcessedTimeStamp = lastFileProcessedTopics.lookup(PERSISTED_LAST_FILE_PROCESSED_TIMESTAMP);
+        assertNotNull(lastFileProcessedTimeStamp, "Last file processed timestamp should be persisted");
+
+        assertEquals(3, configWriteCount.get(),
+                "Expected exactly 3 writes to config.tlog (initial + 1st upload + shutdown)");
     }
 
     @Test

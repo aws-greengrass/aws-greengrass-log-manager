@@ -68,6 +68,7 @@ import static com.aws.greengrass.logmanager.util.ConfigUtil.updateFromMapWhenCha
 @ImplementsService(name = LOGS_UPLOADER_SERVICE_TOPICS, version = "2.0.0")
 public class LogManagerService extends PluginService {
     public static final String LOGS_UPLOADER_SERVICE_TOPICS = "aws.greengrass.LogManager";
+    public static final String UPDATE_TO_TLOG_INTERVAL_SEC = "updateToTlogIntervalSec";
     public static final String LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC = "periodicUploadIntervalSec";
     public static final String LOGS_UPLOADER_CONFIGURATION_TOPIC = "logsUploaderConfiguration";
     public static final String SYSTEM_LOGS_COMPONENT_NAME = "System";
@@ -126,6 +127,9 @@ public class LogManagerService extends PluginService {
     private final AtomicBoolean isCurrentlyUploading = new AtomicBoolean(false);
     @Getter
     private double periodicUpdateIntervalSec;
+    @Getter
+    private long updateToTlogIntervalSec;
+    private long lastConfigUpdateTimeMs = 0;
     private final Path workDir;
 
     /**
@@ -169,6 +173,13 @@ public class LogManagerService extends PluginService {
                     periodicUploadIntervalSecInput);
             periodicUpdateIntervalSec = DEFAULT_PERIODIC_UPDATE_INTERVAL_SEC;
         }
+        // handle write to tlog buffer config here
+        long updateToTogIntervalSecInput =
+                Coerce.toLong(topics.findOrDefault(LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC,
+                        CONFIGURATION_CONFIG_KEY, UPDATE_TO_TLOG_INTERVAL_SEC));
+
+        // Ensure buffer interval is at least as large as periodicUpdateIntervalSec
+        updateToTlogIntervalSec = Math.max(updateToTogIntervalSecInput, (long)periodicUpdateIntervalSec);
     }
 
     /**
@@ -519,7 +530,26 @@ public class LogManagerService extends PluginService {
             completedFiles.forEach(file -> this.deleteFile(componentLogConfiguration, file));
         });
 
-        // Update the runtime configuration and store the last processed file information
+        if (shouldUpdateConfig()) {
+            updateConfig();
+        }
+    }
+
+    private boolean shouldUpdateConfig() {
+        long currentTimeMs = System.currentTimeMillis();
+        long elapsedTimeMs = currentTimeMs - lastConfigUpdateTimeMs;
+        
+        // If it's been exceeding the interval config or more since the last update, return true and reset timer
+        if (elapsedTimeMs >= updateToTlogIntervalSec * 1000) {
+            lastConfigUpdateTimeMs = currentTimeMs;
+            return true;
+        }
+        // Otherwise return false
+        return false;
+    }
+
+    private void updateConfig() {
+        // Update the runtime configuration and store the last processed file information periodically
         context.runOnPublishQueueAndWait(() -> {
             processingFilesInformation.forEach((componentName, processingFiles) -> {
                 if (isDeprecatedVersionSupported()) {
@@ -804,7 +834,7 @@ public class LogManagerService extends PluginService {
     @SuppressWarnings("PMD.UselessOverridingMethod")
     public void shutdown() throws InterruptedException {
         super.shutdown();
-        isCurrentlyUploading.set(false);
+        updateConfig();
     }
 
     @Builder

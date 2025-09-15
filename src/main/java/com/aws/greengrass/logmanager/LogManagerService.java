@@ -406,7 +406,7 @@ public class LogManagerService extends PluginService {
         }
     }
 
-    private void loadProcessingFilesConfigDeprecated(String componentName) {
+    private void loadProcessingFilesConfigDeprecated(String componentName, Instant lastComponentUploadedTime) {
         // Versions 2.3.0 and below
         processingFilesInformation
                .putIfAbsent(componentName, new ProcessingFiles(MAX_CACHE_INACTIVE_TIME_SECONDS));
@@ -425,11 +425,18 @@ public class LogManagerService extends PluginService {
             currentProcessingComponentTopicsDeprecated.iterator().forEachRemaining(node ->
                     processingFileInformation.updateFromTopic((Topic) node));
 
-            processingFiles.putIfAbsent(processingFileInformation);
+            // Do not load from component processing file config  if the last modified time of the file is
+            // before the last component upload time. This change is needed to trim the config.tlog file
+            // populated by the previous versions of LM (<=2.3.10)
+            if (lastComponentUploadedTime == null 
+                    || Instant.ofEpochMilli(processingFileInformation.lastModifiedTime)
+                            .isAfter(lastComponentUploadedTime)) {
+                processingFiles.putIfAbsent(processingFileInformation);
+            }
         }
     }
 
-    private void loadProcessingFilesConfig(String componentName) {
+    private void loadProcessingFilesConfig(String componentName, Instant lastComponentUploadedTime) {
         processingFilesInformation
                 .putIfAbsent(componentName, new ProcessingFiles(MAX_CACHE_INACTIVE_TIME_SECONDS));
         ProcessingFiles processingFiles = processingFilesInformation.get(componentName);
@@ -447,20 +454,20 @@ public class LogManagerService extends PluginService {
                             .forEachRemaining(subNode -> {
                                 processingFileInformation.updateFromTopic((Topic) subNode);
                             });
-
-                    processingFiles.putIfAbsent(processingFileInformation);
+                    // Do not load from component processing file config  if the last modified time of the file is
+                    // before the last component upload time. This change is needed to trim the config.tlog file
+                    // populated by the previous versions of LM (<=2.3.10)
+                    if (lastComponentUploadedTime == null 
+                            || Instant.ofEpochMilli(processingFileInformation.lastModifiedTime)
+                                    .isAfter(lastComponentUploadedTime)) {
+                        processingFiles.putIfAbsent(processingFileInformation);
+                    }
                 }
             });
         }
     }
 
     private void loadStateFromConfiguration(String componentName) {
-        // Versions 2.3.1 and above
-        loadProcessingFilesConfig(componentName);
-
-        // Versions 2.3.0 and below
-        loadProcessingFilesConfigDeprecated(componentName);
-
         // Load last file modified timestamp
 
         Topics lastFileProcessedComponentTopics = getRuntimeConfig()
@@ -472,6 +479,13 @@ public class LogManagerService extends PluginService {
             lastComponentUploadedLogFileInstantMap.put(componentName,
                     Instant.ofEpochMilli(Coerce.toLong(lastFileProcessedTimeStamp)));
         }
+
+        Instant lastComponentUploadTime = lastComponentUploadedLogFileInstantMap.get(componentName);
+        // Versions 2.3.1 and above
+        loadProcessingFilesConfig(componentName, lastComponentUploadTime);
+
+        // Versions 2.3.0 and below
+        loadProcessingFilesConfigDeprecated(componentName, lastComponentUploadTime);
     }
 
     /**
@@ -508,26 +522,29 @@ public class LogManagerService extends PluginService {
             String componentName = attemptLogInformation.getComponentName();
             Set<LogFile> completedFiles = completedLogFilePerComponent.getOrDefault(componentName, new HashSet<>());
 
+
+            // If the component is not configured, delete the uploaded files along with their processing file info.
+            // Otherwise, delete the file based on the component delete configuration.
+            boolean shouldDeleteFile =
+                    !componentLogConfigurations.containsKey(componentName) || componentLogConfigurations.get(
+                            componentName).isDeleteLogFileAfterCloudUpload();
             // Record the last processed file timestamp
             completedFiles.forEach(file -> {
                 updatelastComponentUploadedLogFile(lastComponentUploadedLogFileInstantMap, componentName, file);
+                // This will always remove the processing file information of the uploaded file.
+                this.deleteFileFromGroup(componentName, shouldDeleteFile, file,
+                        attemptLogInformation.getLogFileGroup());
             });
-
-            if (!componentLogConfigurations.containsKey(componentName)) {
-                return;
-            }
-
-            ProcessingFiles processingFiles = processingFilesInformation.get(componentName);
 
             // Delete files based on diskspace
             List<String> deletedHashes =
                     this.diskSpaceManagementService.freeDiskSpace(attemptLogInformation.getLogFileGroup());
 
-            processingFiles.remove(deletedHashes); // Stop tracking files already uploaded
-
-            // Delete after upload
-            ComponentLogConfiguration componentLogConfiguration = componentLogConfigurations.get(componentName);
-            completedFiles.forEach(file -> this.deleteFile(componentLogConfiguration, file));
+            ProcessingFiles processingFiles = processingFilesInformation.get(componentName);
+            if (processingFiles != null) {
+                processingFiles.remove(deletedHashes); // Stop tracking the uploaded files that are removed due to disk
+                // space management
+            }
         });
 
         if (shouldUpdateConfig()) {
@@ -614,23 +631,22 @@ public class LogManagerService extends PluginService {
         logger.atDebug().kv("componentName", componentName).log("Removed processing files information from cache.");
     }
 
-    private void deleteFile(ComponentLogConfiguration config, LogFile file) {
-        if (!config.isDeleteLogFileAfterCloudUpload()) {
+    private void deleteFileFromGroup(String componentName, boolean deleteFile, LogFile file, LogFileGroup group) {
+        // Remove the file processing information from memory
+        ProcessingFiles processingFiles = processingFilesInformation.get(componentName);
+        if (processingFiles != null) {
+            processingFiles.remove(file.hashString());
+        }
+
+        if (!deleteFile) {
             return;
         }
 
-        boolean successfullyDeleted = file.delete();
+        boolean successfullyDeleted = group.remove(file);
         if (successfullyDeleted) {
             logger.atDebug().log("Successfully deleted file with name {}", file.getName());
         } else {
             logger.atWarn().log("Unable to delete file with name {}", file.getName());
-        }
-
-        // Stop tracking file currently processing information once deleted
-        ProcessingFiles processingFiles = processingFilesInformation.get(config.getName());
-
-        if (processingFiles != null) {
-            processingFiles.remove(file.hashString());
         }
     }
 
@@ -659,9 +675,8 @@ public class LogManagerService extends PluginService {
                     new HashSet<>());
             completedFiles.add(file);
             completedLogFilePerComponent.put(componentName, completedFiles);
-        }
-
-
+            // Do not add completed non-active file information to the list of processing files.
+        } else {
         // Track each file that got uploaded. So that if modified in the future we can still track upload
         // the new contents starting from the last upload position.
 
@@ -678,6 +693,7 @@ public class LogManagerService extends PluginService {
 
         ProcessingFiles processingFiles = processingFilesInformation.get(componentName);
         processingFiles.put(processingFileInformation);
+        }
     }
 
     /**
@@ -750,6 +766,8 @@ public class LogManagerService extends PluginService {
 
                     componentMetadata.add(logFileInfo);
 
+                    List<LogFile> filesToDelete = new ArrayList<>();
+                    
                     logFileGroup.getLogFiles().forEach(file -> {
                         long startPosition = 0;
                         String fileHash = file.hashString();
@@ -776,14 +794,11 @@ public class LogManagerService extends PluginService {
                         } else if (startPosition == file.length() && !logFileGroup.isActiveFile(file)) {
                             updatelastComponentUploadedLogFile(lastComponentUploadedLogFileInstantMap,
                                     componentName, file);
-
-                            // NOTE: This handles the scenario where we are uploading the active file constantly and
-                            // upload all its contents and then rotates. We would pick it again on the next cycle, and
-                            // it will fall under this condition but since it was the active file on the previous
-                            // cycle it didn't get deleted
-                            deleteFile(componentLogConfiguration, file);
+                            filesToDelete.add(file);
                         }
                     });
+                    filesToDelete.forEach(file -> deleteFileFromGroup(componentName,
+                            componentLogConfiguration.isDeleteLogFileAfterCloudUpload(), file, logFileGroup));
                 } catch (SecurityException e) {
                     logger.atError().cause(e).log("Unable to get log files for {} from {}",
                             componentName, componentLogConfiguration.getDirectoryPath());

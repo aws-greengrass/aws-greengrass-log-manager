@@ -21,10 +21,6 @@ public class DiskSpaceManagementService {
      * @param group - a Log File group
      */
     public List<String> freeDiskSpace(LogFileGroup group) {
-        if (!group.hasExceededDiskUsage()) {
-            return null;
-        }
-
         if (!group.getMaxBytes().isPresent()) {
             return null;
         }

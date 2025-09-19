@@ -69,7 +69,7 @@ public class LogGenerator implements Consumer<String[]> {
     private Logger configureLogger() {
         LoggerContext loggerContext = new LoggerContext();
         // Must set an MDC adapter for 1.3.8+. https://github.com/qos-ch/logback/issues/709
-        loggerContext.setMDCAdapter(new NOPMDCAdapter());
+//        loggerContext.setMDCAdapter(new NOPMDCAdapter());
         Logger logger = loggerContext.getLogger("LogGenerator");
 
         // appender: output destination

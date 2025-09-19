@@ -231,6 +231,20 @@ class LogManagerServiceTest {
                 PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP, "UserComponentA");
         config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC,
                 PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP, "UserComponentB");
+        
+        // Add TestComponent1 and TestComponent2 persisted state
+        config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC, PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION,
+                "TestComponent1");
+        config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC, PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION_V2,
+                "TestComponent1");
+        config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC, PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION,
+                "TestComponent2");
+        config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC, PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION_V2,
+                "TestComponent2");
+        config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC,
+                PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP, "TestComponent1");
+        config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC,
+                PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP, "TestComponent2");
     }
 
     @AfterEach
@@ -514,112 +528,147 @@ class LogManagerServiceTest {
     void GIVEN_cloud_watch_attempt_handler_WHEN_attempt_completes_THEN_successfully_updates_states_for_each_component()
             throws IOException, InvalidLogGroupException, InterruptedException {
         mockDefaultPersistedState();
-        LogFile processingFile = createLogFileWithSize(directoryPath.resolve("testlogs1.log").toUri(), 1061);
-        LogFile lastProcessedFile = createLogFileWithSize(directoryPath.resolve("testlogs2.log").toUri(), 2943);
+        LogFile component1TestLog = createLogFileWithSize(directoryPath.resolve("testlogs1.log").toUri(), 1061);
+        LogFile component2TestLog = createLogFileWithSize(directoryPath.resolve("testlogs2.log").toUri(), 2943);
+        // Create another file intentionally, so that the lastProcessedFile will be processed.
+        TimeUnit.SECONDS.sleep(5);
+        LogFile component1ActiveFile = createLogFileWithSize(directoryPath.resolve("testlogs1.log_active").toUri(),
+                1061);
+        LogFile component2ActiveFile = createLogFileWithSize(directoryPath.resolve("testlogs2.log_active").toUri(),
+                2943);
+        String pattern1 = "^testlogs1.log\\w*$";
+        String pattern2 = "^testlogs2.log\\w*$";
         config.lookup(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC)
-                .withValue("1000");
+                .withValue("50000");
 
         Topics systemConfigTopics = config.lookupTopics(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC,
                 SYSTEM_LOGS_CONFIG_TOPIC_NAME);
         systemConfigTopics.createLeafChild(UPLOAD_TO_CW_CONFIG_TOPIC_NAME).withValue("false");
         systemConfigTopics.createLeafChild(MIN_LOG_LEVEL_CONFIG_TOPIC_NAME).withValue("INFO");
-        systemConfigTopics.createLeafChild(DISK_SPACE_LIMIT_CONFIG_TOPIC_NAME).withValue("25");
-        systemConfigTopics.createLeafChild(DISK_SPACE_LIMIT_UNIT_CONFIG_TOPIC_NAME).withValue("MB");
+        Topics testComponent1ConfigTopics = config.lookupTopics(CONFIGURATION_CONFIG_KEY,
+                LOGS_UPLOADER_CONFIGURATION_TOPIC, COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME, "TestComponent1");
+        testComponent1ConfigTopics.createLeafChild(UPLOAD_TO_CW_CONFIG_TOPIC_NAME).withValue("true");
+        testComponent1ConfigTopics.createLeafChild(FILE_DIRECTORY_PATH_CONFIG_TOPIC_NAME).withValue(directoryPath.toString());
+        testComponent1ConfigTopics.createLeafChild(FILE_REGEX_CONFIG_TOPIC_NAME).withValue(pattern1);
 
-        CloudWatchAttempt attempt = new CloudWatchAttempt();
+        Topics testComponent2ConfigTopics = config.lookupTopics(CONFIGURATION_CONFIG_KEY,
+                LOGS_UPLOADER_CONFIGURATION_TOPIC,
+                COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME, "TestComponent2");
+        testComponent2ConfigTopics.createLeafChild(UPLOAD_TO_CW_CONFIG_TOPIC_NAME).withValue("true");
+        testComponent2ConfigTopics.createLeafChild(FILE_REGEX_CONFIG_TOPIC_NAME).withValue(pattern2);
+        testComponent2ConfigTopics.createLeafChild(FILE_DIRECTORY_PATH_CONFIG_TOPIC_NAME).withValue(directoryPath.toString());
+
         Map<String, CloudWatchAttemptLogInformation> logStreamsToLogInformationMap = new HashMap<>();
 
-        Pattern pattern1 = Pattern.compile("^testlogs2.log\\w*$");
-        // Create another file intentionally, so that the lastProcessedFile will be processed.
-        TimeUnit.SECONDS.sleep(5);
-        createLogFileWithSize(directoryPath.resolve("testlogs2.log_active").toUri(), 2943);
-        ComponentLogConfiguration compLogInfo = ComponentLogConfiguration.builder()
+        ComponentLogConfiguration comp1LogInfo = ComponentLogConfiguration.builder()
                 .directoryPath(directoryPath)
-                .fileNameRegex(pattern1).name("TestComponent2").build();
-        LogFileGroup lastProcessedLogFileGroup =
-                LogFileGroup.create(compLogInfo, mockInstant, workdirectory);
-        assertEquals(2, lastProcessedLogFileGroup.getLogFiles().size());
-        assertFalse(lastProcessedLogFileGroup.isActiveFile(lastProcessedFile));
+                .fileNameRegex(Pattern.compile(pattern1)).name("TestComponent1").build();
+        LogFileGroup component1LogFileGroup = LogFileGroup.create(comp1LogInfo,
+                Instant.ofEpochMilli(component1TestLog.lastModified() - 1), workdirectory);
+        assertEquals(2, component1LogFileGroup.getLogFiles().size());
+        assertFalse(component1LogFileGroup.isActiveFile(component1TestLog));
+        assertTrue(component1LogFileGroup.isActiveFile(component1ActiveFile));
 
-        createLogFileWithSize(directoryPath.resolve("testlogs1.log_processed").toUri(), 1061);
-        // Intentionally sleep to differ the creation time of two files
-        TimeUnit.SECONDS.sleep(5);
-        Pattern pattern2 = Pattern.compile("^testlogs1.log$");
-        ComponentLogConfiguration compLogInfo2 = ComponentLogConfiguration.builder()
+
+        ComponentLogConfiguration comp2LogInfo = ComponentLogConfiguration.builder()
                 .directoryPath(directoryPath)
-                .fileNameRegex(pattern2).name("TestComponent1").build();
-        LogFileGroup processingLogFileGroup = LogFileGroup.create(compLogInfo2,
-                Instant.ofEpochMilli(processingFile.lastModified() - 1), workdirectory);
-        assertEquals(1, processingLogFileGroup.getLogFiles().size());
-        assertTrue(processingLogFileGroup.isActiveFile(processingFile));
+                .fileNameRegex(Pattern.compile(pattern2)).name("TestComponent2").build();
+        LogFileGroup component2LogFileGroup = LogFileGroup.create(comp2LogInfo, mockInstant, workdirectory);
+        assertEquals(2, component2LogFileGroup.getLogFiles().size());
+        assertFalse(component2LogFileGroup.isActiveFile(component2TestLog));
+        assertTrue(component2LogFileGroup.isActiveFile(component2ActiveFile));
 
-        Map<String, CloudWatchAttemptLogFileInformation> LastProcessedAttemptLogFileInformationMap = new HashMap<>();
-        LastProcessedAttemptLogFileInformationMap.put(lastProcessedFile.hashString(),
+        Map<String, CloudWatchAttemptLogFileInformation> component2AttemptLogFileInfo = new HashMap<>();
+        component2AttemptLogFileInfo.put(component2TestLog.hashString(),
                 CloudWatchAttemptLogFileInformation.builder()
                         .startPosition(0)
                         .bytesRead(2943)
-                        .lastModifiedTime(lastProcessedFile.lastModified())
-                        .fileHash(lastProcessedFile.hashString())
+                        .lastModifiedTime(component2TestLog.lastModified())
+                        .fileHash(component2TestLog.hashString())
+                        .build());
+        component2AttemptLogFileInfo.put(component2ActiveFile.hashString(),
+                CloudWatchAttemptLogFileInformation.builder()
+                        .startPosition(0)
+                        .bytesRead(0)
+                        .lastModifiedTime(component2ActiveFile.lastModified())
+                        .fileHash(component2ActiveFile.hashString())
                         .build());
 
-        Map<String, CloudWatchAttemptLogFileInformation> processingAttemptLogFileInformationMap2 = new HashMap<>();
-        processingAttemptLogFileInformationMap2.put(processingFile.hashString(),
+        Map<String, CloudWatchAttemptLogFileInformation> component1AttemptLogFileInfo = new HashMap<>();
+        component1AttemptLogFileInfo.put(component1TestLog.hashString(),
                 CloudWatchAttemptLogFileInformation.builder()
                 .startPosition(0)
-                .bytesRead(1061)
-                .lastModifiedTime(processingFile.lastModified())
-                .fileHash(processingFile.hashString())
+                .bytesRead(1060)
+                .lastModifiedTime(component1TestLog.lastModified())
+                .fileHash(component1TestLog.hashString())
                 .build());
+        component1AttemptLogFileInfo.put(component1ActiveFile.hashString(),
+                CloudWatchAttemptLogFileInformation.builder()
+                        .startPosition(0)
+                        .bytesRead(0)
+                        .lastModifiedTime(component1ActiveFile.lastModified())
+                        .fileHash(component1ActiveFile.hashString())
+                        .build());
 
         CloudWatchAttemptLogInformation attemptLogInformation1 = CloudWatchAttemptLogInformation.builder()
-                .componentName("TestComponent")
-                .attemptLogFileInformationMap(LastProcessedAttemptLogFileInformationMap)
-                .logFileGroup(lastProcessedLogFileGroup)
+                .componentName("TestComponent1")
+                .attemptLogFileInformationMap(component1AttemptLogFileInfo)
+                .logFileGroup(component1LogFileGroup)
                 .build();
         CloudWatchAttemptLogInformation attemptLogInformation2 = CloudWatchAttemptLogInformation.builder()
                 .componentName("TestComponent2")
-                .attemptLogFileInformationMap(processingAttemptLogFileInformationMap2)
-                .logFileGroup(processingLogFileGroup)
+                .attemptLogFileInformationMap(component2AttemptLogFileInfo)
+                .logFileGroup(component2LogFileGroup)
                 .build();
         logStreamsToLogInformationMap.put("testStream", attemptLogInformation1);
         logStreamsToLogInformationMap.put("testStream2", attemptLogInformation2);
+        CloudWatchAttempt attempt = new CloudWatchAttempt();
         attempt.setLogStreamsToLogEventsMap(logStreamsToLogInformationMap);
         attempt.setLogStreamUploadedSet(new HashSet<>(Arrays.asList("testStream", "testStream2")));
         doNothing().when(mockUploader).registerAttemptStatus(anyString(), callbackCaptor.capture());
-        CloudWatchAttempt attempt1 = new CloudWatchAttempt();
-        ComponentLogFileInformation info1 = ComponentLogFileInformation.builder().build();
-        lenient().doReturn(attempt1).when(mockMerger).processLogFiles(info1);
-        lenient().doNothing().when(mockUploader).upload(attempt1, 1);
+        lenient().doNothing().when(mockUploader).upload(attempt, 1);
         logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, nucleusPaths);
         startServiceOnAnotherThread();
+        Thread.sleep(5000);
         callbackCaptor.getValue().accept(attempt);
+        assertEquals(component2TestLog.lastModified(), Coerce.toLong(config.find(RUNTIME_STORE_NAMESPACE_TOPIC,
+                PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP, "TestComponent2",
+                PERSISTED_LAST_FILE_PROCESSED_TIMESTAMP)));
 
-        assertEquals(lastProcessedFile.lastModified(), Coerce.toLong(config.find(RUNTIME_STORE_NAMESPACE_TOPIC,
-                PERSISTED_COMPONENT_LAST_FILE_PROCESSED_TIMESTAMP, "TestComponent", PERSISTED_LAST_FILE_PROCESSED_TIMESTAMP)));
+       Map<String, Object> componentRuntimeConfig1 = config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC,
+                                        PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION_V2, "TestComponent1").toPOJO();
 
-        LogManagerService.CurrentProcessingFileInformation currentProcessingFileInformation =
+       assertTrue(componentRuntimeConfig1.containsKey(component1TestLog.hashString()));
+       assertTrue(componentRuntimeConfig1.containsKey(component1ActiveFile.hashString()));
+
+        LogManagerService.CurrentProcessingFileInformation currentProcessingFileInformation1 =
                 LogManagerService.CurrentProcessingFileInformation.convertFromMapOfObjects(
-                        (Map<String, Object>) config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC,
-                                        PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION_V2, "TestComponent2")
-                                .toPOJO()
-                                .get(processingFile.hashString()));
-        assertEquals(processingFile.hashString(), currentProcessingFileInformation.getFileHash());
-        assertEquals(1061, currentProcessingFileInformation.getStartPosition());
-        assertEquals(processingFile.lastModified(), currentProcessingFileInformation.getLastModifiedTime());
+                        (Map<String, Object>) componentRuntimeConfig1.get(component1TestLog.hashString()));
+        assertEquals(component1TestLog.hashString(), currentProcessingFileInformation1.getFileHash());
+        assertEquals(1060, currentProcessingFileInformation1.getStartPosition());
+        assertEquals(component1TestLog.lastModified(), currentProcessingFileInformation1.getLastModifiedTime());
 
-        assertNotNull(logsUploaderService.lastComponentUploadedLogFileInstantMap);
-        assertThat(logsUploaderService.lastComponentUploadedLogFileInstantMap.entrySet(),
-                IsNot.not(IsEmptyCollection.empty()));
-        assertTrue(logsUploaderService.lastComponentUploadedLogFileInstantMap.containsKey("TestComponent"));
-        assertEquals(Instant.ofEpochMilli(lastProcessedFile.lastModified()),
-                logsUploaderService.lastComponentUploadedLogFileInstantMap.get("TestComponent"));
-        assertNotNull(logsUploaderService.processingFilesInformation);
-        assertThat(logsUploaderService.processingFilesInformation.entrySet(), IsNot.not(IsEmptyCollection.empty()));
-        assertTrue(logsUploaderService.processingFilesInformation.containsKey("TestComponent2"));
-        assertEquals(processingFile.hashString(), logsUploaderService.processingFilesInformation.get(
-                "TestComponent2").get(processingFile.hashString()).getFileHash());
-        assertEquals(1061, logsUploaderService.processingFilesInformation.get("TestComponent2")
-                .get(processingFile.hashString()).getStartPosition());
+        LogManagerService.CurrentProcessingFileInformation currentProcessingFileInformationActive1 =
+                LogManagerService.CurrentProcessingFileInformation.convertFromMapOfObjects(
+                        (Map<String, Object>) componentRuntimeConfig1.get(component1ActiveFile.hashString()));
+        assertEquals(component1ActiveFile.hashString(), currentProcessingFileInformationActive1.getFileHash());
+        assertEquals(0, currentProcessingFileInformationActive1.getStartPosition());
+        assertEquals(component1ActiveFile.lastModified(), currentProcessingFileInformationActive1.getLastModifiedTime());
+
+
+        Map<String, Object> componentRuntimeConfig2 = config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC,
+                PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION_V2, "TestComponent2").toPOJO();
+
+        assertFalse(componentRuntimeConfig2.containsKey(component2TestLog.hashString()));
+        assertTrue(componentRuntimeConfig2.containsKey(component2ActiveFile.hashString()));
+
+        LogManagerService.CurrentProcessingFileInformation currentProcessingFileInformationActive2 =
+                LogManagerService.CurrentProcessingFileInformation.convertFromMapOfObjects(
+                        (Map<String, Object>) componentRuntimeConfig2.get(component2ActiveFile.hashString()));
+
+        assertEquals(component2ActiveFile.hashString(), currentProcessingFileInformationActive2.getFileHash());
+        assertEquals(0, currentProcessingFileInformationActive2.getStartPosition());
+        assertEquals(component2ActiveFile.lastModified(), currentProcessingFileInformationActive2.getLastModifiedTime());
     }
 
     @Test

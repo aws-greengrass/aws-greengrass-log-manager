@@ -428,7 +428,7 @@ public class LogManagerService extends PluginService {
             // Do not load from component processing file config  if the last modified time of the file is
             // before the last component upload time. This change is needed to trim the config.tlog file
             // populated by the previous versions of LM (<=2.3.10)
-            if (lastComponentUploadedTime == null 
+            if (lastComponentUploadedTime == null
                     || Instant.ofEpochMilli(processingFileInformation.lastModifiedTime)
                             .isAfter(lastComponentUploadedTime)) {
                 processingFiles.putIfAbsent(processingFileInformation);
@@ -457,7 +457,7 @@ public class LogManagerService extends PluginService {
                     // Do not load from component processing file config  if the last modified time of the file is
                     // before the last component upload time. This change is needed to trim the config.tlog file
                     // populated by the previous versions of LM (<=2.3.10)
-                    if (lastComponentUploadedTime == null 
+                    if (lastComponentUploadedTime == null
                             || Instant.ofEpochMilli(processingFileInformation.lastModifiedTime)
                                     .isAfter(lastComponentUploadedTime)) {
                         processingFiles.putIfAbsent(processingFileInformation);
@@ -767,7 +767,7 @@ public class LogManagerService extends PluginService {
                     componentMetadata.add(logFileInfo);
 
                     List<LogFile> filesToDelete = new ArrayList<>();
-                    
+
                     logFileGroup.getLogFiles().forEach(file -> {
                         long startPosition = 0;
                         String fileHash = file.hashString();
@@ -794,6 +794,11 @@ public class LogManagerService extends PluginService {
                         } else if (startPosition == file.length() && !logFileGroup.isActiveFile(file)) {
                             updatelastComponentUploadedLogFile(lastComponentUploadedLogFileInstantMap,
                                     componentName, file);
+
+                            // NOTE: This handles the scenario where we are uploading the active file constantly and
+                            // upload all its contents and then rotates. We would pick it again on the next cycle, and
+                            // it will fall under this condition but since it was the active file on the previous
+                            // cycle it didn't get deleted
                             filesToDelete.add(file);
                         }
                     });

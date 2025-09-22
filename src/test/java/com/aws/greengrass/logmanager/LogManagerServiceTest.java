@@ -34,7 +34,6 @@ import org.hamcrest.core.IsNot;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.extension.ExtensionContext;
@@ -524,7 +523,7 @@ class LogManagerServiceTest {
         assertThat(logsUploaderService.processingFilesInformation.values(), IsEmptyCollection.empty());
     }
 
-    @Test @Disabled
+    @Test
     void GIVEN_cloud_watch_attempt_handler_WHEN_attempt_completes_THEN_successfully_updates_states_for_each_component()
             throws IOException, InvalidLogGroupException, InterruptedException {
         mockDefaultPersistedState();

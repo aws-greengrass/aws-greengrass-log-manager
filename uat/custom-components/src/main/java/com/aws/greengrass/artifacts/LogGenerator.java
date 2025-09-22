@@ -13,6 +13,7 @@ import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.rolling.RollingFileAppender;
 import ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy;
 import ch.qos.logback.core.util.FileSize;
+import org.slf4j.helpers.BasicMDCAdapter;
 import org.slf4j.helpers.NOPMDCAdapter;
 import software.amazon.awssdk.aws.greengrass.model.InvalidArgumentsError;
 
@@ -69,6 +70,7 @@ public class LogGenerator implements Consumer<String[]> {
     private Logger configureLogger() {
         LoggerContext loggerContext = new LoggerContext();
         // Must set an MDC adapter for 1.3.8+. https://github.com/qos-ch/logback/issues/709
+        loggerContext.setMDCAdapter(new BasicMDCAdapter());
 //        loggerContext.setMDCAdapter(new NOPMDCAdapter());
         Logger logger = loggerContext.getLogger("LogGenerator");
 

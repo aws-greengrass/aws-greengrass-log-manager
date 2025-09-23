@@ -609,14 +609,15 @@ class LogManagerTest extends BaseITCase {
         // Note we shouldn't be accessing methods like this. Refactor this tests later
         ProcessingFiles processingFiles = logManagerService.processingFilesInformation.get(componentName);
         assertNotNull(processingFiles);
-        assertEquals(numberOfFiles, processingFiles.size());
+        // Only active files are persisted as processing regardless of `deleteLogFileAfterCloudUpload` config
+        assertEquals(1, processingFiles.size());
 
         // Check runtime config gets cleared once the files have deleted
         Topics componentTopics =
                 logManagerService.getRuntimeConfig()
                         .lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION_V2,
                                 componentName);
-        assertEquals(numberOfFiles, componentTopics.size());
+        assertEquals(1, componentTopics.size());
     }
 
     @Test

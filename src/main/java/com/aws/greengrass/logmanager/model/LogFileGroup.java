@@ -227,17 +227,6 @@ public final class LogFileGroup {
     }
 
     /**
-     * Returns a boolean indicating if the total size in bytes of the files in the
-     * group exceed the maximum disk space configured when the LogGroup was created
-     * with the ComponentLogConfiguration.
-     */
-    public boolean hasExceededDiskUsage() {
-        return this.maxBytes
-                .map((val) -> this.totalSizeInBytes() > val)
-                .orElseGet(() -> false);
-    }
-
-    /**
      * Validate if the logFile is the active of one logFileGroup.
      *
      * @param file the target file.

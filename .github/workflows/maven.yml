@@ -56,13 +56,16 @@ jobs:
       - name: Convert Jacoco integ test report to Cobertura
         run: python3 .github/scripts/cover2cover.py target/jacoco-report/jacoco-it/jacoco.xml src/main/java > target/jacoco-report/cobertura-it.xml
       - name: Save PR number
-        env:
-          PR_NUMBER: ${{ github.event.number }}
-          PR_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           mkdir -p ./pr/jacoco-report
-          echo "$PR_NUMBER" | tr -cd '0-9' > ./pr/NR
-          echo "$PR_SHA" | tr -cd 'a-fA-F0-9' > ./pr/SHA
+
+          # Safely extract and sanitize PR number using GITHUB_EVENT_PATH
+          PR_NUMBER=$(jq -r '.number // empty' "$GITHUB_EVENT_PATH" | tr -cd '0-9')
+          echo "$PR_NUMBER" > ./pr/NR
+
+          # Safely extract and sanitize PR SHA using GITHUB_EVENT_PATH
+          PR_SHA=$(jq -r '.pull_request.head.sha // empty' "$GITHUB_EVENT_PATH" | tr -cd 'a-fA-F0-9')
+          echo "$PR_SHA" > ./pr/SHA
 
           cp target/jacoco-report/cobertura.xml ./pr/jacoco-report/cobertura.xml
           cp target/jacoco-report/cobertura-it.xml ./pr/jacoco-report/cobertura-it.xml

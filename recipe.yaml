@@ -1,0 +1,42 @@
+RecipeFormatVersion: "2020-01-25"
+ComponentName: gg-log-manager
+ComponentVersion: "{COMPONENT_VERSION}"
+ComponentType: aws.greengrass.generic
+ComponentDescription: Greengrass LogManager - Generic type component for log and EMF file upload to CloudWatch
+ComponentPublisher: Amazon
+ComponentConfiguration:
+  DefaultConfiguration:
+    periodicUploadIntervalSec: 300
+    componentLogsConfiguration: []
+    systemLogsConfiguration: []
+Manifests:
+  - Platform:
+      os: linux
+      architecture: amd64
+    Artifacts:
+      - URI: s3://gg-components/gg-log-manager-{COMPONENT_VERSION}-linux-amd64
+        Permission:
+          Execute: OWNER
+    Lifecycle:
+      install: chmod +x {artifacts:path}/gg-log-manager-{COMPONENT_VERSION}-linux-amd64
+      run: "{artifacts:path}/gg-log-manager-{COMPONENT_VERSION}-linux-amd64"
+      shutdown: SIGTERM
+  - Platform:
+      os: linux
+      architecture: arm64
+    Artifacts:
+      - URI: s3://gg-components/gg-log-manager-{COMPONENT_VERSION}-linux-arm64
+        Permission:
+          Execute: OWNER
+    Lifecycle:
+      install: chmod +x {artifacts:path}/gg-log-manager-{COMPONENT_VERSION}-linux-arm64
+      run: "{artifacts:path}/gg-log-manager-{COMPONENT_VERSION}-linux-arm64"
+      shutdown: SIGTERM
+  - Platform:
+      os: windows
+      architecture: amd64
+    Artifacts:
+      - URI: s3://gg-components/gg-log-manager-{COMPONENT_VERSION}-windows-amd64.exe
+    Lifecycle:
+      run: "{artifacts:path}/gg-log-manager-{COMPONENT_VERSION}-windows-amd64.exe"
+      # Windows uses process termination for shutdown (no SIGTERM equivalent)

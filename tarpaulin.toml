@@ -1,0 +1,7 @@
+[default]
+test-type = "Tests"
+run-types = ["Tests", "Doctests"]
+out = ["Html", "Json"]
+output-dir = "target/tarpaulin"
+exclude-files = ["tests/*"]
+fail-under = 95

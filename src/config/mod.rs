@@ -48,13 +48,10 @@ pub fn validate_config(config: &LogManagerConfig) -> Result<(), ConfigError> {
             tracing::debug!(component = %c.component_name, dir = %c.source.log_file_directory_path, "Validating component config");
             validate_log_source(&c.source)
         })?;
-    config
-        .system_logs_configuration
-        .iter()
-        .try_for_each(|s| {
-            tracing::debug!(dir = %s.source.log_file_directory_path, "Validating system log config");
-            validate_log_source(&s.source)
-        })?;
+    config.system_logs_configuration.iter().try_for_each(|s| {
+        tracing::debug!(dir = %s.source.log_file_directory_path, "Validating system log config");
+        validate_log_source(&s.source)
+    })?;
     tracing::info!("Configuration validation passed");
     Ok(())
 }
@@ -115,7 +112,10 @@ mod tests {
         let config = parse_config("{}").unwrap();
         assert!(config.component_logs_configuration.is_empty());
         assert!(config.system_logs_configuration.is_empty());
-        assert_eq!(config.periodic_upload_interval_sec, DEFAULT_UPLOAD_INTERVAL_SEC);
+        assert_eq!(
+            config.periodic_upload_interval_sec,
+            DEFAULT_UPLOAD_INTERVAL_SEC
+        );
     }
 
     #[test]

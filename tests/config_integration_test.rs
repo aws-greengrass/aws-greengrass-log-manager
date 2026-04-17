@@ -3,7 +3,9 @@
 
 //! Integration tests for config parsing with full LLD J.5 config
 
-use gg_log_manager::config::{parse_config, DiskSpaceLimitUnit, LogLevel, DEFAULT_UPLOAD_INTERVAL_SEC};
+use gg_log_manager::config::{
+    parse_config, DiskSpaceLimitUnit, LogLevel, DEFAULT_UPLOAD_INTERVAL_SEC,
+};
 use serial_test::serial;
 
 /// Full LLD J.5 config with 3 componentLogsConfiguration entries and 1 systemLogsConfiguration
@@ -63,7 +65,10 @@ fn test_lld_j5_config_parses_all_entries() {
 #[test]
 fn test_lld_j5_global_periodic_interval() {
     let config = parse_config(LLD_J5_CONFIG).unwrap();
-    assert_eq!(config.periodic_upload_interval_sec, DEFAULT_UPLOAD_INTERVAL_SEC);
+    assert_eq!(
+        config.periodic_upload_interval_sec,
+        DEFAULT_UPLOAD_INTERVAL_SEC
+    );
 }
 
 #[test]
@@ -81,7 +86,10 @@ fn test_lld_j5_system_health_component() {
         "system-health-.*\\.emf\\.json"
     );
     assert_eq!(system_health.source.disk_space_limit, "50");
-    assert_eq!(system_health.source.disk_space_limit_unit, DiskSpaceLimitUnit::MB);
+    assert_eq!(
+        system_health.source.disk_space_limit_unit,
+        DiskSpaceLimitUnit::MB
+    );
     assert!(system_health.source.delete_log_file_after_cloud_upload);
     assert_eq!(
         system_health.source.multi_line_start_pattern,
@@ -97,7 +105,10 @@ fn test_lld_j5_upload_interval_override() {
     let system_health = &config.component_logs_configuration[0];
 
     assert_eq!(system_health.source.upload_interval_sec, Some(60));
-    assert_eq!(config.periodic_upload_interval_sec, DEFAULT_UPLOAD_INTERVAL_SEC);
+    assert_eq!(
+        config.periodic_upload_interval_sec,
+        DEFAULT_UPLOAD_INTERVAL_SEC
+    );
 }
 
 #[test]
@@ -119,7 +130,10 @@ fn test_lld_j5_docker_health_component() {
         Some("/aws/greengrass/custom/docker-health".to_string())
     );
     assert_eq!(docker_health.source.disk_space_limit, "25");
-    assert_eq!(docker_health.source.disk_space_limit_unit, DiskSpaceLimitUnit::MB);
+    assert_eq!(
+        docker_health.source.disk_space_limit_unit,
+        DiskSpaceLimitUnit::MB
+    );
     assert!(!docker_health.source.delete_log_file_after_cloud_upload);
     assert_eq!(docker_health.source.minimum_log_level, LogLevel::Debug);
     assert!(docker_health.source.upload_interval_sec.is_none());
@@ -137,7 +151,10 @@ fn test_lld_j5_device_bridge_component_defaults() {
     );
     assert_eq!(device_bridge.source.log_file_regex, "bridge-.*\\.log");
     assert_eq!(device_bridge.source.disk_space_limit, "100");
-    assert_eq!(device_bridge.source.disk_space_limit_unit, DiskSpaceLimitUnit::MB);
+    assert_eq!(
+        device_bridge.source.disk_space_limit_unit,
+        DiskSpaceLimitUnit::MB
+    );
     assert!(!device_bridge.source.delete_log_file_after_cloud_upload);
     assert_eq!(device_bridge.source.minimum_log_level, LogLevel::Info);
     assert!(device_bridge.log_group_name.is_none());
@@ -157,7 +174,10 @@ fn test_lld_j5_insights_system_config() {
     assert_eq!(insights.source.log_file_regex, "insights-.*\\.json");
     assert_eq!(insights.log_group_name, "/aws/greengrass/system/insights");
     assert_eq!(insights.source.disk_space_limit, "200");
-    assert_eq!(insights.source.disk_space_limit_unit, DiskSpaceLimitUnit::MB);
+    assert_eq!(
+        insights.source.disk_space_limit_unit,
+        DiskSpaceLimitUnit::MB
+    );
     assert!(insights.source.delete_log_file_after_cloud_upload);
     assert_eq!(insights.source.minimum_log_level, LogLevel::Warn);
     assert_eq!(insights.source.upload_interval_sec, Some(120));
@@ -206,5 +226,8 @@ fn test_missing_optional_fields_get_defaults() {
     assert!(comp.source.multi_line_start_pattern.is_none());
     assert!(comp.source.upload_interval_sec.is_none());
 
-    assert_eq!(config.periodic_upload_interval_sec, DEFAULT_UPLOAD_INTERVAL_SEC);
+    assert_eq!(
+        config.periodic_upload_interval_sec,
+        DEFAULT_UPLOAD_INTERVAL_SEC
+    );
 }

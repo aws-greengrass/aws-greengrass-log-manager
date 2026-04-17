@@ -120,6 +120,7 @@ fn persist_checkpoints() {
 /// Subscribes to configuration updates via GG Component SDK IPC.
 /// Re-validates and applies new configuration without restart.
 #[cfg(target_os = "linux")]
+#[allow(dead_code, reason = "wired in when GG SDK IPC is integrated")]
 fn subscribe_to_config_updates() {
     // TODO: Wire up with gg_sdk::Sdk::subscribe_to_configuration_update()
 }

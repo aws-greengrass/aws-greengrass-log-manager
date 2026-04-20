@@ -3,14 +3,12 @@
 
 //! File reader with offset tracking and content hashing
 
+use super::MAX_EVENT_SIZE;
 use base64::{engine::general_purpose::STANDARD, Engine};
 use sha2::{Digest, Sha256};
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
-
-/// Maximum event size in bytes (CloudWatch Logs limit: 256KB - 8 timestamp - 26 overhead)
-const MAX_EVENT_SIZE: usize = 262_110;
 
 /// A parsed log event with timestamp and message
 #[derive(Debug, Clone, PartialEq)]

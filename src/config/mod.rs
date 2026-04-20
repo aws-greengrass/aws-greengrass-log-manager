@@ -28,7 +28,24 @@ pub fn load_config(config_arg: &str) -> Result<LogManagerConfig, ConfigError> {
 
 #[must_use = "config result must be handled"]
 pub fn parse_config(json: &str) -> Result<LogManagerConfig, ConfigError> {
-    serde_json::from_str(json).map_err(|e| ConfigError::Parse(format!("{e}")))
+    let mut config: LogManagerConfig =
+        serde_json::from_str(json).map_err(|e| ConfigError::Parse(format!("{e}")))?;
+    // Deduplicate by component name, last-wins.
+    let mut seen = std::collections::HashMap::new();
+    for (i, c) in config.component_logs_configuration.iter().enumerate().rev() {
+        seen.entry(c.component_name.clone()).or_insert(i);
+    }
+    if seen.len() < config.component_logs_configuration.len() {
+        let indices: std::collections::HashSet<usize> = seen.into_values().collect();
+        config.component_logs_configuration = config
+            .component_logs_configuration
+            .into_iter()
+            .enumerate()
+            .filter(|(i, _)| indices.contains(i))
+            .map(|(_, c)| c)
+            .collect();
+    }
+    Ok(config)
 }
 
 /// Validate a single log source's directory, regex, and disk limit.
@@ -248,5 +265,32 @@ mod tests {
         let result = load_config("/nonexistent/config.json");
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("IO error"));
+    }
+
+    #[test]
+    fn test_duplicate_component_name_last_wins() {
+        let json = r#"{
+            "componentLogsConfiguration": [
+                {
+                    "componentName": "MyApp",
+                    "logFileDirectoryPath": "/first/dir",
+                    "logFileRegex": ".*\\.log"
+                },
+                {
+                    "componentName": "MyApp",
+                    "logFileDirectoryPath": "/second/dir",
+                    "logFileRegex": ".*\\.log"
+                }
+            ]
+        }"#;
+        let config = parse_config(json).unwrap();
+        // Java's Map.put deduplicates by name, last wins
+        assert_eq!(config.component_logs_configuration.len(), 1);
+        assert_eq!(
+            config.component_logs_configuration[0]
+                .source
+                .log_file_directory_path,
+            "/second/dir"
+        );
     }
 }

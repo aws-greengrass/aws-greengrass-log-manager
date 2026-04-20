@@ -26,7 +26,7 @@ pub fn compute_content_hash(path: &Path) -> std::io::Result<String> {
     let mut buffer = [0u8; 1024];
     let bytes_read = file.read(&mut buffer)?;
     let data = &buffer[..bytes_read];
-    // Match Java: decode bytes as UTF-8 string, then hash the string bytes
+    // Decode bytes as UTF-8 string, then hash the string bytes
     let text = String::from_utf8_lossy(data);
     let hash_input = match text.find('\n') {
         Some(pos) => &text[..=pos],

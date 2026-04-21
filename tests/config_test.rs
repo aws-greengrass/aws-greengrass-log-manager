@@ -4,8 +4,8 @@
 //! Config parsing tests
 
 use gg_log_manager::config::{
-    derive_log_group_name, load_config, parse_config, parse_disk_space_limit,
-    validate_config, DiskSpaceLimitUnit, LogLevel, DEFAULT_UPLOAD_INTERVAL_SEC,
+    derive_log_group_name, load_config, parse_config, parse_disk_space_limit, validate_config,
+    DiskSpaceLimitUnit, LogLevel, DEFAULT_UPLOAD_INTERVAL_SEC,
 };
 use serial_test::serial;
 use std::io::Write;
@@ -94,7 +94,10 @@ fn test_defaults_applied() {
     assert_eq!(emf.source.minimum_log_level, LogLevel::Info);
     assert_eq!(emf.source.disk_space_limit_unit, DiskSpaceLimitUnit::MB);
     assert!(!emf.source.delete_log_file_after_cloud_upload);
-    assert_eq!(emf.source.multi_line_start_pattern, Some("^\\{".to_string()));
+    assert_eq!(
+        emf.source.multi_line_start_pattern,
+        Some("^\\{".to_string())
+    );
 }
 
 #[test]
@@ -128,7 +131,10 @@ fn test_derive_log_group_name() {
 #[test]
 fn test_default_periodic_interval() {
     let config = parse_config("{}").unwrap();
-    assert_eq!(config.periodic_upload_interval_sec, DEFAULT_UPLOAD_INTERVAL_SEC);
+    assert_eq!(
+        config.periodic_upload_interval_sec,
+        DEFAULT_UPLOAD_INTERVAL_SEC
+    );
     assert!(config.component_logs_configuration.is_empty());
     assert!(config.system_logs_configuration.is_empty());
 }

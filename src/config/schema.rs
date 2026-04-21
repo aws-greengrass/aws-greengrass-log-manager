@@ -42,32 +42,22 @@ impl From<std::io::Error> for ConfigError {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum LogLevel {
     Debug,
+    #[default]
     Info,
     Warn,
     Error,
 }
 
-impl Default for LogLevel {
-    fn default() -> Self {
-        Self::Info
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum DiskSpaceLimitUnit {
     KB,
+    #[default]
     MB,
     GB,
-}
-
-impl Default for DiskSpaceLimitUnit {
-    fn default() -> Self {
-        Self::MB
-    }
 }
 
 impl DiskSpaceLimitUnit {
@@ -141,7 +131,10 @@ mod tests {
     #[test]
     fn test_default_values() {
         let config: LogManagerConfig = serde_json::from_str("{}").unwrap();
-        assert_eq!(config.periodic_upload_interval_sec, DEFAULT_UPLOAD_INTERVAL_SEC);
+        assert_eq!(
+            config.periodic_upload_interval_sec,
+            DEFAULT_UPLOAD_INTERVAL_SEC
+        );
         assert!(config.component_logs_configuration.is_empty());
         assert!(config.system_logs_configuration.is_empty());
     }
@@ -207,7 +200,10 @@ mod tests {
         let json = r#""DEBUG""#;
         let level: LogLevel = serde_json::from_str(json).unwrap();
         assert_eq!(level, LogLevel::Debug);
-        assert_eq!(serde_json::to_string(&LogLevel::Error).unwrap(), r#""ERROR""#);
+        assert_eq!(
+            serde_json::to_string(&LogLevel::Error).unwrap(),
+            r#""ERROR""#
+        );
     }
 
     #[test]
@@ -243,10 +239,29 @@ mod tests {
             "periodicUploadIntervalSec": 120
         }"#;
         let config: LogManagerConfig = serde_json::from_str(java_json).unwrap();
-        assert_eq!(config.component_logs_configuration[0].component_name, "MyApp");
-        assert_eq!(config.component_logs_configuration[0].source.minimum_log_level, LogLevel::Warn);
-        assert_eq!(config.component_logs_configuration[0].source.disk_space_limit_unit, DiskSpaceLimitUnit::GB);
-        assert_eq!(config.system_logs_configuration[0].log_group_name, "/aws/greengrass/system");
-        assert_eq!(config.system_logs_configuration[0].source.minimum_log_level, LogLevel::Error);
+        assert_eq!(
+            config.component_logs_configuration[0].component_name,
+            "MyApp"
+        );
+        assert_eq!(
+            config.component_logs_configuration[0]
+                .source
+                .minimum_log_level,
+            LogLevel::Warn
+        );
+        assert_eq!(
+            config.component_logs_configuration[0]
+                .source
+                .disk_space_limit_unit,
+            DiskSpaceLimitUnit::GB
+        );
+        assert_eq!(
+            config.system_logs_configuration[0].log_group_name,
+            "/aws/greengrass/system"
+        );
+        assert_eq!(
+            config.system_logs_configuration[0].source.minimum_log_level,
+            LogLevel::Error
+        );
     }
 }

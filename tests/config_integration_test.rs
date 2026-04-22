@@ -85,7 +85,7 @@ fn test_lld_j5_system_health_component() {
         system_health.source.log_file_regex,
         "system-health-.*\\.emf\\.json"
     );
-    assert_eq!(system_health.source.disk_space_limit, "50");
+    assert_eq!(system_health.source.disk_space_limit, Some("50".into()));
     assert_eq!(
         system_health.source.disk_space_limit_unit,
         DiskSpaceLimitUnit::MB
@@ -129,7 +129,7 @@ fn test_lld_j5_docker_health_component() {
         docker_health.log_group_name,
         Some("/aws/greengrass/custom/docker-health".to_string())
     );
-    assert_eq!(docker_health.source.disk_space_limit, "25");
+    assert_eq!(docker_health.source.disk_space_limit, Some("25".into()));
     assert_eq!(
         docker_health.source.disk_space_limit_unit,
         DiskSpaceLimitUnit::MB
@@ -150,7 +150,7 @@ fn test_lld_j5_device_bridge_component_defaults() {
         "/greengrass/v2/logs/bridge"
     );
     assert_eq!(device_bridge.source.log_file_regex, "bridge-.*\\.log");
-    assert_eq!(device_bridge.source.disk_space_limit, "100");
+    assert_eq!(device_bridge.source.disk_space_limit, Some("100".into()));
     assert_eq!(
         device_bridge.source.disk_space_limit_unit,
         DiskSpaceLimitUnit::MB
@@ -173,7 +173,7 @@ fn test_lld_j5_insights_system_config() {
     );
     assert_eq!(insights.source.log_file_regex, "insights-.*\\.json");
     assert_eq!(insights.log_group_name, "/aws/greengrass/system/insights");
-    assert_eq!(insights.source.disk_space_limit, "200");
+    assert_eq!(insights.source.disk_space_limit, Some("200".into()));
     assert_eq!(
         insights.source.disk_space_limit_unit,
         DiskSpaceLimitUnit::MB
@@ -220,7 +220,7 @@ fn test_missing_optional_fields_get_defaults() {
     let comp = &config.component_logs_configuration[0];
 
     assert_eq!(comp.source.minimum_log_level, LogLevel::Info);
-    assert_eq!(comp.source.disk_space_limit_unit, DiskSpaceLimitUnit::MB);
+    assert_eq!(comp.source.disk_space_limit_unit, DiskSpaceLimitUnit::KB);
     assert!(!comp.source.delete_log_file_after_cloud_upload);
     assert!(comp.log_group_name.is_none());
     assert!(comp.source.multi_line_start_pattern.is_none());

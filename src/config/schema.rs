@@ -7,7 +7,6 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 
 pub const DEFAULT_UPLOAD_INTERVAL_SEC: u64 = 300;
-pub const DEFAULT_DISK_SPACE_LIMIT: u64 = 25;
 
 /// Custom error type for configuration operations.
 #[derive(Debug)]
@@ -54,8 +53,8 @@ pub enum LogLevel {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum DiskSpaceLimitUnit {
-    KB,
     #[default]
+    KB,
     MB,
     GB,
 }
@@ -78,18 +77,14 @@ pub struct LogSourceConfig {
     pub log_file_regex: String,
     #[serde(default)]
     pub minimum_log_level: LogLevel,
-    #[serde(default = "default_disk_limit")]
-    pub disk_space_limit: String,
+    #[serde(default)]
+    pub disk_space_limit: Option<String>,
     #[serde(default)]
     pub disk_space_limit_unit: DiskSpaceLimitUnit,
     #[serde(default)]
     pub delete_log_file_after_cloud_upload: bool,
     pub multi_line_start_pattern: Option<String>,
     pub upload_interval_sec: Option<u64>,
-}
-
-fn default_disk_limit() -> String {
-    DEFAULT_DISK_SPACE_LIMIT.to_string()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -143,8 +138,8 @@ mod tests {
     fn test_component_defaults() {
         let json = r#"{"componentName":"test","logFileDirectoryPath":"/tmp","logFileRegex":".*"}"#;
         let comp: ComponentLogConfig = serde_json::from_str(json).unwrap();
-        assert_eq!(comp.source.disk_space_limit, "25");
-        assert_eq!(comp.source.disk_space_limit_unit, DiskSpaceLimitUnit::MB);
+        assert_eq!(comp.source.disk_space_limit, None);
+        assert_eq!(comp.source.disk_space_limit_unit, DiskSpaceLimitUnit::KB);
         assert_eq!(comp.source.minimum_log_level, LogLevel::Info);
     }
 
@@ -158,7 +153,7 @@ mod tests {
                     log_file_directory_path: "/var/log".into(),
                     log_file_regex: ".*\\.log".into(),
                     minimum_log_level: LogLevel::Debug,
-                    disk_space_limit: "50".into(),
+                    disk_space_limit: Some("50".into()),
                     disk_space_limit_unit: DiskSpaceLimitUnit::GB,
                     delete_log_file_after_cloud_upload: true,
                     multi_line_start_pattern: Some("^\\d".into()),
@@ -174,7 +169,7 @@ mod tests {
         assert_eq!(parsed.component_logs_configuration.len(), 1);
         let comp = &parsed.component_logs_configuration[0];
         assert_eq!(comp.component_name, "test");
-        assert_eq!(comp.source.disk_space_limit, "50");
+        assert_eq!(comp.source.disk_space_limit, Some("50".into()));
         assert_eq!(comp.source.upload_interval_sec, Some(120));
     }
 

@@ -3,7 +3,7 @@
 
 //! Integration tests for EMF file tailing end-to-end
 
-use gg_log_manager::scanner::{read_file_from_offset, LogEvent};
+use gg_log_manager::scanner::read_file_from_offset;
 use std::fs::File;
 use std::io::Write;
 use tempfile::TempDir;

@@ -32,7 +32,14 @@ pub struct ScannedFile {
 /// TODO: Optimize to skip hashing files that haven't changed since last scan (cache by path+mtime)
 pub fn scan_directory(directory: &str, pattern: &Regex) -> std::io::Result<Vec<ScannedFile>> {
     tracing::info!(directory = %directory, "Starting directory scan");
-    let mut files: Vec<(PathBuf, SystemTime)> = fs::read_dir(directory)?
+    let dir_entries = match fs::read_dir(directory) {
+        Ok(entries) => entries,
+        Err(e) => {
+            tracing::debug!(directory = %directory, error = %e, "Unable to read the directory");
+            return Ok(vec![]);
+        }
+    };
+    let mut files: Vec<(PathBuf, SystemTime)> = dir_entries
         .filter_map(|entry| entry.ok())
         .filter_map(|entry| {
             let path = entry.path();
@@ -55,23 +62,29 @@ pub fn scan_directory(directory: &str, pattern: &Regex) -> std::io::Result<Vec<S
 
     files.sort_by_key(|(_, mtime)| *mtime);
 
-    let len = files.len();
-    let result: std::io::Result<Vec<ScannedFile>> = files
+    let mut result: Vec<ScannedFile> = files
         .into_iter()
-        .enumerate()
-        .map(|(i, (path, mtime))| {
-            let content_hash = compute_content_hash(&path)?;
-            Ok(ScannedFile {
+        .filter_map(|(path, mtime)| match compute_content_hash(&path) {
+            Ok(content_hash) => Some(ScannedFile {
                 path,
                 mtime,
                 content_hash,
-                is_active: i == len - 1,
-            })
+                is_active: false,
+            }),
+            Err(e) => {
+                tracing::debug!(file = %path.display(), error = %e, "Skipping file during scan");
+                None
+            }
         })
         .collect();
 
-    tracing::info!(file_count = len, "Directory scan complete");
-    result
+    // The last file by mtime (already sorted) is the active file
+    if let Some(last) = result.last_mut() {
+        last.is_active = true;
+    }
+
+    tracing::info!(file_count = result.len(), "Directory scan complete");
+    Ok(result)
 }
 
 #[cfg(test)]
@@ -157,5 +170,12 @@ mod tests {
         assert_eq!(result.len(), 1);
         assert!(!result[0].content_hash.is_empty());
         assert_eq!(result[0].content_hash.len(), 44); // Base64 of SHA-256 is 44 chars
+    }
+
+    #[test]
+    fn test_scan_directory_nonexistent_returns_empty() {
+        let pattern = Regex::new(r".*\.log$").unwrap();
+        let result = scan_directory("/nonexistent/path/12345", &pattern).unwrap();
+        assert!(result.is_empty());
     }
 }

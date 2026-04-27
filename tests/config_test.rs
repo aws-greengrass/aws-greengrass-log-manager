@@ -67,7 +67,7 @@ fn test_component_config_fields() {
     assert_eq!(comp.component_name, "com.example.MyApp");
     assert_eq!(comp.source.log_file_directory_path, "/tmp");
     assert_eq!(comp.source.log_file_regex, "app\\.log.*");
-    assert_eq!(comp.source.disk_space_limit, "25");
+    assert_eq!(comp.source.disk_space_limit, Some("25".into()));
     assert_eq!(comp.source.disk_space_limit_unit, DiskSpaceLimitUnit::MB);
     assert!(!comp.source.delete_log_file_after_cloud_upload);
     assert!(comp.log_group_name.is_none());
@@ -92,7 +92,7 @@ fn test_defaults_applied() {
     let emf = &config.component_logs_configuration[2];
 
     assert_eq!(emf.source.minimum_log_level, LogLevel::Info);
-    assert_eq!(emf.source.disk_space_limit_unit, DiskSpaceLimitUnit::MB);
+    assert_eq!(emf.source.disk_space_limit_unit, DiskSpaceLimitUnit::KB);
     assert!(!emf.source.delete_log_file_after_cloud_upload);
     assert_eq!(
         emf.source.multi_line_start_pattern,
@@ -106,7 +106,7 @@ fn test_system_config_fields() {
     let sys = &config.system_logs_configuration[0];
 
     assert_eq!(sys.log_group_name, "/aws/greengrass/system/syslog");
-    assert_eq!(sys.source.disk_space_limit, "50");
+    assert_eq!(sys.source.disk_space_limit, Some("50".into()));
     assert_eq!(sys.source.disk_space_limit_unit, DiskSpaceLimitUnit::GB);
 }
 
@@ -141,10 +141,11 @@ fn test_default_periodic_interval() {
 
 #[test]
 fn test_disk_space_limit_string_parsing() {
-    assert_eq!(parse_disk_space_limit("100").unwrap(), 100);
-    assert_eq!(parse_disk_space_limit("0").unwrap(), 0);
-    assert!(parse_disk_space_limit("abc").is_err());
-    assert!(parse_disk_space_limit("-5").is_err());
+    assert_eq!(parse_disk_space_limit(Some("100")).unwrap(), Some(100));
+    assert_eq!(parse_disk_space_limit(Some("0")).unwrap(), Some(0));
+    assert!(parse_disk_space_limit(Some("abc")).is_err());
+    assert!(parse_disk_space_limit(Some("-5")).is_err());
+    assert_eq!(parse_disk_space_limit(None).unwrap(), None);
 }
 
 #[test]

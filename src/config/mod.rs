@@ -7,7 +7,7 @@ mod schema;
 
 pub use schema::{
     ComponentLogConfig, ConfigError, DiskSpaceLimitUnit, LogLevel, LogManagerConfig,
-    LogSourceConfig, SystemLogConfig, DEFAULT_DISK_SPACE_LIMIT, DEFAULT_UPLOAD_INTERVAL_SEC,
+    LogSourceConfig, SystemLogConfig, DEFAULT_UPLOAD_INTERVAL_SEC,
 };
 
 use regex::Regex;
@@ -35,7 +35,9 @@ pub fn parse_config(json: &str) -> Result<LogManagerConfig, ConfigError> {
 fn validate_log_source(source: &LogSourceConfig) -> Result<(), ConfigError> {
     validate_directory(&source.log_file_directory_path)?;
     validate_regex(&source.log_file_regex)?;
-    validate_disk_limit(&source.disk_space_limit)?;
+    if let Some(ref limit) = source.disk_space_limit {
+        validate_disk_limit(limit)?;
+    }
     Ok(())
 }
 
@@ -87,12 +89,16 @@ fn validate_disk_limit(limit: &str) -> Result<(), ConfigError> {
     Ok(())
 }
 
-/// Parse diskSpaceLimit string to u64.
+/// Parse diskSpaceLimit string to u64. Returns None if limit is not configured.
 #[must_use = "parse result must be handled"]
-pub fn parse_disk_space_limit(limit: &str) -> Result<u64, ConfigError> {
-    limit
-        .parse()
-        .map_err(|_| ConfigError::Parse(format!("Invalid diskSpaceLimit: {limit}")))
+pub fn parse_disk_space_limit(limit: Option<&str>) -> Result<Option<u64>, ConfigError> {
+    match limit {
+        Some(l) => l
+            .parse()
+            .map(Some)
+            .map_err(|_| ConfigError::Parse(format!("Invalid diskSpaceLimit: {l}"))),
+        None => Ok(None),
+    }
 }
 
 /// Derive log group name: /aws/greengrass/{componentType}/{region}/{componentName}
@@ -217,9 +223,10 @@ mod tests {
 
     #[test]
     fn test_parse_disk_space_limit() {
-        assert_eq!(parse_disk_space_limit("100").unwrap(), 100);
-        assert_eq!(parse_disk_space_limit("0").unwrap(), 0);
-        assert!(parse_disk_space_limit("abc").is_err());
+        assert_eq!(parse_disk_space_limit(Some("100")).unwrap(), Some(100));
+        assert_eq!(parse_disk_space_limit(Some("0")).unwrap(), Some(0));
+        assert!(parse_disk_space_limit(Some("abc")).is_err());
+        assert_eq!(parse_disk_space_limit(None).unwrap(), None);
     }
 
     #[test]

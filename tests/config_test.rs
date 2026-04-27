@@ -142,10 +142,11 @@ fn test_default_periodic_interval() {
 #[test]
 fn test_disk_space_limit_string_parsing() {
     assert_eq!(parse_disk_space_limit(Some("100")).unwrap(), Some(100));
-    assert_eq!(parse_disk_space_limit(Some("0")).unwrap(), Some(0));
+    assert!(parse_disk_space_limit(Some("0")).is_err());
     assert!(parse_disk_space_limit(Some("abc")).is_err());
     assert!(parse_disk_space_limit(Some("-5")).is_err());
     assert_eq!(parse_disk_space_limit(None).unwrap(), None);
+    assert_eq!(parse_disk_space_limit(Some("")).unwrap(), None);
 }
 
 #[test]

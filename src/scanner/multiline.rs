@@ -9,6 +9,9 @@ use regex::Regex;
 use std::sync::LazyLock;
 use std::time::SystemTime;
 
+/// Sentinel value indicating no timestamp was parsed for a LogEvent.
+const NO_TIMESTAMP: i64 = 0;
+
 /// Default multiline start pattern matching Java LogManager behavior.
 /// Matches lines starting with a date (optionally in brackets/parens) or JSON object.
 static DEFAULT_MULTILINE_PATTERN: LazyLock<Regex> =
@@ -18,6 +21,21 @@ static DEFAULT_MULTILINE_PATTERN: LazyLock<Regex> =
 /// When start_pattern is None, the default pattern is applied (matching Java behavior).
 /// When start_pattern is Some, that pattern is used.
 /// Lines are buffered until a new match, then emitted concatenated (no separator, matching Java).
+///
+/// # Examples
+///
+/// ```
+/// use gg_log_manager::scanner::{assemble_multiline, LogEvent};
+/// use regex::Regex;
+///
+/// let lines = vec![
+///     LogEvent { timestamp: 1000, message: "2024-01-15 ERROR something".into() },
+///     LogEvent { timestamp: 0, message: "  stack trace".into() },
+/// ];
+/// let pattern = Regex::new(r"^\d{4}-\d{2}-\d{2}").unwrap();
+/// let events = assemble_multiline(lines, Some(&pattern));
+/// assert_eq!(events.len(), 1);
+/// ```
 #[must_use = "assembled events must be consumed"]
 pub fn assemble_multiline(lines: Vec<LogEvent>, start_pattern: Option<&Regex>) -> Vec<LogEvent> {
     let pattern = start_pattern.unwrap_or(&DEFAULT_MULTILINE_PATTERN);
@@ -48,13 +66,13 @@ pub fn assemble_multiline(lines: Vec<LogEvent>, start_pattern: Option<&Regex>) -
 fn emit_buffered(buffer: &[String], first_event_timestamp: Option<i64>) -> LogEvent {
     debug_assert!(!buffer.is_empty(), "emit_buffered called with empty buffer");
     let timestamp = first_event_timestamp
-        .and_then(|ts| if ts != 0 { Some(ts) } else { None })
+        .and_then(|ts| if ts != NO_TIMESTAMP { Some(ts) } else { None })
         .or_else(|| extract_timestamp(&buffer[0]))
         .unwrap_or_else(|| {
             SystemTime::now()
                 .duration_since(SystemTime::UNIX_EPOCH)
                 .map(|d| d.as_millis() as i64)
-                .unwrap_or(0)
+                .unwrap_or(NO_TIMESTAMP)
         });
     // Join without separator to match Java's StringBuilder.append(partialLogLine) behavior.
     let joined = buffer.join("");

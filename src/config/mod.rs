@@ -58,13 +58,13 @@ pub fn validate_config(config: &LogManagerConfig) -> Result<(), ConfigError> {
     Ok(())
 }
 
+// Returns Result for forward compatibility — may add permission checks later.
 fn validate_directory(path: impl AsRef<Path>) -> Result<(), ConfigError> {
     let p = path.as_ref();
     if !p.is_dir() {
-        return Err(ConfigError::Validation(format!(
-            "Directory does not exist: {}",
-            p.display()
-        )));
+        // Warn but don't reject — directory may not exist yet if LogManager starts
+        // before the component that creates it.
+        tracing::warn!(directory = %p.display(), "Configured log directory does not exist yet");
     }
     Ok(())
 }
@@ -90,15 +90,21 @@ fn validate_disk_limit(limit: &str) -> Result<(), ConfigError> {
 }
 
 /// Parse diskSpaceLimit string to u64. Returns None if limit is not configured.
+/// Rejects 0 (same as validate_disk_limit).
 #[must_use = "parse result must be handled"]
 pub fn parse_disk_space_limit(limit: Option<&str>) -> Result<Option<u64>, ConfigError> {
-    match limit {
-        Some(l) => l
-            .parse()
-            .map(Some)
-            .map_err(|_| ConfigError::Parse(format!("Invalid diskSpaceLimit: {l}"))),
-        None => Ok(None),
-    }
+    limit
+        .filter(|l| !l.is_empty())
+        .map(|l| {
+            let parsed: u64 = l
+                .parse()
+                .map_err(|_| ConfigError::Parse(format!("Invalid diskSpaceLimit: {l}")))?;
+            if parsed == 0 {
+                return Err(ConfigError::Parse("diskSpaceLimit must be positive".into()));
+            }
+            Ok(parsed)
+        })
+        .transpose()
 }
 
 /// Derive log group name: /aws/greengrass/{componentType}/{region}/{componentName}
@@ -131,10 +137,11 @@ mod tests {
     }
 
     #[test]
-    fn test_validate_directory_not_exists() {
+    fn test_validate_directory_not_exists_warns_but_succeeds() {
+        // Missing directory is accepted at config time.
+        // Directory existence is checked at scan time instead.
         let result = validate_directory("/nonexistent/path/12345");
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("does not exist"));
+        assert!(result.is_ok());
     }
 
     #[test]
@@ -224,9 +231,10 @@ mod tests {
     #[test]
     fn test_parse_disk_space_limit() {
         assert_eq!(parse_disk_space_limit(Some("100")).unwrap(), Some(100));
-        assert_eq!(parse_disk_space_limit(Some("0")).unwrap(), Some(0));
+        assert!(parse_disk_space_limit(Some("0")).is_err());
         assert!(parse_disk_space_limit(Some("abc")).is_err());
         assert_eq!(parse_disk_space_limit(None).unwrap(), None);
+        assert_eq!(parse_disk_space_limit(Some("")).unwrap(), None);
     }
 
     #[test]

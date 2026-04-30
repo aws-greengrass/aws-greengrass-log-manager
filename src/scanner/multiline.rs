@@ -12,15 +12,15 @@ use std::time::SystemTime;
 /// Sentinel value indicating no timestamp was parsed for a LogEvent.
 const NO_TIMESTAMP: i64 = 0;
 
-/// Default multiline start pattern matching Java LogManager behavior.
+/// Default multiline start pattern for log lines starting with a date or JSON.
 /// Matches lines starting with a date (optionally in brackets/parens) or JSON object.
 static DEFAULT_MULTILINE_PATTERN: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^[\[(]?\d{4}-\d\d-\d\d|^\{").unwrap());
 
 /// Assemble lines into LogEvents based on multi-line start pattern.
-/// When start_pattern is None, the default pattern is applied (matching Java behavior).
+/// When start_pattern is None, the default pattern is applied.
 /// When start_pattern is Some, that pattern is used.
-/// Lines are buffered until a new match, then emitted concatenated (no separator, matching Java).
+/// Lines are buffered until a new match, then emitted concatenated (no separator).
 ///
 /// # Examples
 ///

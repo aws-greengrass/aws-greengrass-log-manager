@@ -3,7 +3,6 @@
 
 //! File reader with offset tracking and content hashing
 
-use super::MAX_EVENT_SIZE;
 use base64::{engine::general_purpose::STANDARD, Engine};
 use sha2::{Digest, Sha256};
 use std::fs::File;
@@ -72,7 +71,7 @@ pub fn read_file_from_offset(
         .filter(|line| !line.trim().is_empty())
         .map(|line| {
             let timestamp = extract_timestamp(line).unwrap_or(default_timestamp);
-            let message = truncate_message(line);
+            let message = line.to_string();
             LogEvent { timestamp, message }
         })
         .collect();
@@ -155,18 +154,6 @@ fn days_since_epoch(year: i32, month: u32, day: u32) -> Option<i64> {
     Some(days)
 }
 
-fn truncate_message(s: &str) -> String {
-    if s.len() <= MAX_EVENT_SIZE {
-        s.to_string()
-    } else {
-        let mut end = MAX_EVENT_SIZE;
-        while !s.is_char_boundary(end) {
-            end -= 1;
-        }
-        s[..end].to_string()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -239,13 +226,14 @@ mod tests {
     }
 
     #[test]
-    fn test_event_size_truncation() {
+    fn test_oversized_event_passed_raw() {
         let mut file = NamedTempFile::new().unwrap();
         let large_msg = "x".repeat(300_000);
         writeln!(file, "{}", large_msg).unwrap();
 
         let (events, _) = read_file_from_offset(file.path(), 0, 1000).unwrap();
-        assert_eq!(events[0].message.len(), MAX_EVENT_SIZE);
+        // Reader no longer truncates — batcher handles chunking
+        assert_eq!(events[0].message.len(), 300_000);
     }
 
     #[test]
@@ -392,19 +380,16 @@ mod tests {
     }
 
     #[test]
-    fn test_truncate_message_multibyte_char_boundary() {
-        // Create a string with multibyte UTF-8 characters that would be split
-        // at a non-char-boundary if we just truncated at MAX_EVENT_SIZE
+    fn test_oversized_multibyte_passed_raw() {
+        // Oversized messages with multibyte chars are passed raw to the batcher
         let emoji = "🎉"; // 4 bytes
-        let base = "x".repeat(MAX_EVENT_SIZE - 2);
+        let base = "x".repeat(300_000);
         let large_msg = format!("{}{}", base, emoji);
 
         let mut file = NamedTempFile::new().unwrap();
         writeln!(file, "{}", large_msg).unwrap();
 
         let (events, _) = read_file_from_offset(file.path(), 0, 1000).unwrap();
-        // Should truncate at a valid char boundary
-        assert!(events[0].message.len() <= MAX_EVENT_SIZE);
-        assert!(events[0].message.is_char_boundary(events[0].message.len()));
+        assert_eq!(events[0].message.len(), large_msg.len());
     }
 }

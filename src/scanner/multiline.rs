@@ -4,7 +4,6 @@
 //! Multi-line log assembly
 
 use super::reader::{extract_timestamp, LogEvent};
-use super::MAX_EVENT_SIZE;
 use regex::Regex;
 use std::sync::LazyLock;
 use std::time::SystemTime;
@@ -75,23 +74,8 @@ fn emit_buffered(buffer: &[String], first_event_timestamp: Option<i64>) -> LogEv
                 .unwrap_or(NO_TIMESTAMP)
         });
     // Join without separator to match Java's StringBuilder.append(partialLogLine) behavior.
-    let joined = buffer.join("");
-    let message = if joined.len() <= MAX_EVENT_SIZE {
-        joined
-    } else {
-        let first_line = &buffer[0][..80.min(buffer[0].len())];
-        tracing::warn!(
-            original_size = joined.len(),
-            max_size = MAX_EVENT_SIZE,
-            first_line,
-            "Truncating oversized multiline event"
-        );
-        let mut end = MAX_EVENT_SIZE;
-        while !joined.is_char_boundary(end) {
-            end -= 1;
-        }
-        joined[..end].to_string()
-    };
+    // No truncation here — the batcher handles chunking oversized events.
+    let message = buffer.join("");
     LogEvent { timestamp, message }
 }
 
@@ -244,7 +228,7 @@ mod tests {
     }
 
     #[test]
-    fn test_oversized_multiline_truncation() {
+    fn test_oversized_multiline_passed_raw() {
         let pattern = Regex::new(r"^START").unwrap();
         let large_line = "x".repeat(200_000);
         let lines = vec![
@@ -254,7 +238,9 @@ mod tests {
         ];
         let events = assemble_multiline(lines, Some(&pattern));
         assert_eq!(events.len(), 1);
-        assert!(events[0].message.len() <= MAX_EVENT_SIZE);
+        // No truncation — batcher handles chunking
+        // assemble_multiline joins without separator: "START event" (11) + 200_000 + 200_000 = 400_011
+        assert_eq!(events[0].message.len(), 400_011);
     }
 
     #[test]

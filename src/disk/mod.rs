@@ -53,9 +53,13 @@ pub(crate) fn free_disk_space(
     let mut file_info: Vec<_> = processed_files
         .iter()
         .filter_map(|p| {
-            fs::metadata(p)
-                .ok()
-                .map(|m| (p.clone(), m.len(), m.modified().unwrap_or(SystemTime::UNIX_EPOCH)))
+            fs::metadata(p).ok().map(|m| {
+                (
+                    p.clone(),
+                    m.len(),
+                    m.modified().unwrap_or(SystemTime::UNIX_EPOCH),
+                )
+            })
         })
         .collect();
     file_info.sort_by_key(|(_, _, mtime)| *mtime); // oldest first
@@ -79,7 +83,11 @@ pub(crate) fn free_disk_space(
     }
 
     if !deleted.is_empty() {
-        tracing::info!(total_freed = actually_freed, files_deleted = deleted.len(), "Disk space freed");
+        tracing::info!(
+            total_freed = actually_freed,
+            files_deleted = deleted.len(),
+            "Disk space freed"
+        );
     }
 
     deleted
@@ -190,7 +198,12 @@ mod tests {
         set_mtime(&f3, 100);
 
         // total=1500, limit=100 → need 1400 freed → all 3 deleted
-        let deleted = free_disk_space(tmp.path(), &log_pattern(), 100, &[f1.clone(), f2.clone(), f3.clone()]);
+        let deleted = free_disk_space(
+            tmp.path(),
+            &log_pattern(),
+            100,
+            &[f1.clone(), f2.clone(), f3.clone()],
+        );
         assert_eq!(deleted.len(), 3);
         assert!(!f1.exists());
         assert!(!f2.exists());

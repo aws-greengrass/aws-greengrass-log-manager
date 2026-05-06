@@ -3,6 +3,7 @@
 
 //! Upload pipeline - batching, CloudWatch client, scheduling
 
+#[allow(dead_code, reason = "consumed by upload orchestrator")]
 mod batcher;
 #[cfg(feature = "aws-sdk")]
 mod cw_client;
@@ -20,9 +21,13 @@ pub(crate) struct SealedBatch {
 #[cfg(feature = "aws-sdk")]
 pub(crate) use cw_client::{CwLogsClient, CwUploadError};
 
+#[allow(unused_imports, reason = "consumed by upload orchestrator")]
+pub(crate) use batcher::{seal_batches, MAX_EVENT_BYTES};
+
 /// Format log stream name matching Java LogManager:
 /// `/{yyyy}/{MM}/{dd}/thing/{thingName}` (UTC)
 /// Replaces colons with `+` since CW log stream names cannot contain `:`.
+#[must_use]
 pub(crate) fn format_log_stream_name(thing_name: &str) -> String {
     let now = time::OffsetDateTime::now_utc();
     let safe_name = thing_name.replace(':', "+");
@@ -37,7 +42,8 @@ pub(crate) fn format_log_stream_name(thing_name: &str) -> String {
 
 /// Check if a timestamp (epoch millis) falls on a different UTC date.
 /// Used to detect when a new log stream should be created at midnight.
-#[allow(dead_code, reason = "used by upload orchestrator in follow-up PR")]
+#[allow(dead_code, reason = "used by upload orchestrator")]
+#[must_use]
 pub(crate) fn is_different_date(
     timestamp_ms: i64,
     stream_year: i32,

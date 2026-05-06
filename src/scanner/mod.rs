@@ -14,9 +14,6 @@ pub use checkpoint::{
 pub use multiline::assemble_multiline;
 pub use reader::{compute_content_hash, read_file_from_offset, LogEvent};
 
-/// Maximum event message size: 256KB (262,144) - 8 (timestamp) - 26 (CW overhead) = 262,110
-pub(crate) const MAX_EVENT_SIZE: usize = 262_110;
-
 use regex::Regex;
 use std::fs;
 use std::path::PathBuf;

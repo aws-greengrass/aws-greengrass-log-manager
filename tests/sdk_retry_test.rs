@@ -6,7 +6,9 @@
 //! Integration tests verifying AWS SDK retry behavior and our CwLogsClient error handling.
 //! Uses mock HTTP to prove retry/no-retry semantics without hitting real CloudWatch.
 
-use aws_sdk_cloudwatchlogs::{config::BehaviorVersion, config::Credentials, config::Region, Client};
+use aws_sdk_cloudwatchlogs::{
+    config::BehaviorVersion, config::Credentials, config::Region, Client,
+};
 use aws_smithy_http_client::test_util::{ReplayEvent, StaticReplayClient};
 use aws_smithy_types::body::SdkBody;
 
@@ -34,8 +36,8 @@ fn dummy_request() -> http::Request<SdkBody> {
 }
 
 fn make_client(replay_client: StaticReplayClient) -> Client {
-    let retry_config = aws_sdk_cloudwatchlogs::config::retry::RetryConfig::standard()
-        .with_max_attempts(5);
+    let retry_config =
+        aws_sdk_cloudwatchlogs::config::retry::RetryConfig::standard().with_max_attempts(5);
     Client::from_conf(
         aws_sdk_cloudwatchlogs::Config::builder()
             .behavior_version(BehaviorVersion::latest())
@@ -65,7 +67,10 @@ async fn sdk_retries_on_throttling() {
         .send()
         .await;
 
-    assert!(result.is_ok(), "Expected success after SDK retries, got: {result:?}");
+    assert!(
+        result.is_ok(),
+        "Expected success after SDK retries, got: {result:?}"
+    );
 
     let actual_requests: Vec<_> = replay_client.actual_requests().collect();
     assert_eq!(
@@ -79,17 +84,15 @@ async fn sdk_retries_on_throttling() {
 #[tokio::test]
 async fn sdk_does_not_retry_invalid_parameter() {
     // 400 InvalidParameterException — SDK should NOT retry client errors
-    let replay_client = StaticReplayClient::new(vec![
-        ReplayEvent::new(
-            dummy_request(),
-            http::Response::builder()
-                .status(400)
-                .body(SdkBody::from(
-                    r#"{"__type":"InvalidParameterException","message":"Invalid"}"#,
-                ))
-                .unwrap(),
-        ),
-    ]);
+    let replay_client = StaticReplayClient::new(vec![ReplayEvent::new(
+        dummy_request(),
+        http::Response::builder()
+            .status(400)
+            .body(SdkBody::from(
+                r#"{"__type":"InvalidParameterException","message":"Invalid"}"#,
+            ))
+            .unwrap(),
+    )]);
 
     let client = make_client(replay_client.clone());
 
@@ -100,7 +103,10 @@ async fn sdk_does_not_retry_invalid_parameter() {
         .send()
         .await;
 
-    assert!(result.is_err(), "Expected error for InvalidParameterException");
+    assert!(
+        result.is_err(),
+        "Expected error for InvalidParameterException"
+    );
 
     let actual_requests: Vec<_> = replay_client.actual_requests().collect();
     assert_eq!(
@@ -136,7 +142,10 @@ async fn data_already_accepted_is_success() {
         .await;
 
     // SDK returns this as a typed error — our CwLogsClient maps it to Ok(())
-    assert!(result.is_err(), "SDK surfaces DataAlreadyAcceptedException as error");
+    assert!(
+        result.is_err(),
+        "SDK surfaces DataAlreadyAcceptedException as error"
+    );
     let err = result.unwrap_err();
     let service_err = err.into_service_error();
     assert!(
@@ -151,17 +160,15 @@ async fn data_already_accepted_is_success() {
 #[tokio::test]
 async fn resource_not_found_is_retriable() {
     // ResourceNotFoundException — our cw_client.rs maps it to CwUploadError::Retriable
-    let replay_client = StaticReplayClient::new(vec![
-        ReplayEvent::new(
-            dummy_request(),
-            http::Response::builder()
-                .status(400)
-                .body(SdkBody::from(
-                    r#"{"__type":"ResourceNotFoundException","message":"log group not found"}"#,
-                ))
-                .unwrap(),
-        ),
-    ]);
+    let replay_client = StaticReplayClient::new(vec![ReplayEvent::new(
+        dummy_request(),
+        http::Response::builder()
+            .status(400)
+            .body(SdkBody::from(
+                r#"{"__type":"ResourceNotFoundException","message":"log group not found"}"#,
+            ))
+            .unwrap(),
+    )]);
 
     let client = make_client(replay_client.clone());
 
@@ -172,7 +179,10 @@ async fn resource_not_found_is_retriable() {
         .send()
         .await;
 
-    assert!(result.is_err(), "SDK surfaces ResourceNotFoundException as error");
+    assert!(
+        result.is_err(),
+        "SDK surfaces ResourceNotFoundException as error"
+    );
     let err = result.unwrap_err();
     let service_err = err.into_service_error();
     assert!(

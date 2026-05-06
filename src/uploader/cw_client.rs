@@ -28,8 +28,7 @@ pub(crate) struct CwLogsClient {
 
 impl CwLogsClient {
     pub async fn new() -> Self {
-        let retry_config = aws_config::retry::RetryConfig::standard()
-            .with_max_attempts(5);
+        let retry_config = aws_config::retry::RetryConfig::standard().with_max_attempts(5);
         let sdk_config = aws_config::defaults(aws_config::BehaviorVersion::latest())
             .retry_config(retry_config)
             .load()
@@ -91,9 +90,9 @@ impl CwLogsClient {
                 self.created_groups.insert(log_group.to_string());
                 Ok(())
             }
-            Err(SdkError::ServiceError(e)) if is_limit_exceeded_group(e.err()) => {
-                Err(CwUploadError::Retriable("LimitExceededException on create_log_group".to_string()))
-            }
+            Err(SdkError::ServiceError(e)) if is_limit_exceeded_group(e.err()) => Err(
+                CwUploadError::Retriable("LimitExceededException on create_log_group".to_string()),
+            ),
             Err(SdkError::ServiceError(e)) if is_auth_error(e.err()) => {
                 Err(CwUploadError::AuthError)
             }
@@ -127,9 +126,9 @@ impl CwLogsClient {
                 self.created_streams.insert(key);
                 Ok(())
             }
-            Err(SdkError::ServiceError(e)) if is_limit_exceeded_stream(e.err()) => {
-                Err(CwUploadError::Retriable("LimitExceededException on create_log_stream".to_string()))
-            }
+            Err(SdkError::ServiceError(e)) if is_limit_exceeded_stream(e.err()) => Err(
+                CwUploadError::Retriable("LimitExceededException on create_log_stream".to_string()),
+            ),
             Err(SdkError::ServiceError(e)) if is_auth_error(e.err()) => {
                 Err(CwUploadError::AuthError)
             }
@@ -148,7 +147,8 @@ impl CwLogsClient {
                     .build()
             })
             .collect();
-        let events = events.map_err(|e| CwUploadError::Other(format!("Failed to build log event: {e}")))?;
+        let events =
+            events.map_err(|e| CwUploadError::Other(format!("Failed to build log event: {e}")))?;
 
         // EMF metrics are auto-extracted by CloudWatch when log events contain the _aws key.
         // No sequence tokens needed — deprecated since late 2023, and we create new streams daily.
@@ -172,12 +172,10 @@ impl CwLogsClient {
                     tracing::debug!(log_group = %batch.log_group, "Data already accepted");
                     Ok(())
                 }
-                PutLogEventsError::UnrecognizedClientException(_) => {
-                    Err(CwUploadError::AuthError)
-                }
-                PutLogEventsError::ServiceUnavailableException(_) => {
-                    Err(CwUploadError::Other("ServiceUnavailable after SDK retries exhausted".to_string()))
-                }
+                PutLogEventsError::UnrecognizedClientException(_) => Err(CwUploadError::AuthError),
+                PutLogEventsError::ServiceUnavailableException(_) => Err(CwUploadError::Other(
+                    "ServiceUnavailable after SDK retries exhausted".to_string(),
+                )),
                 PutLogEventsError::ResourceNotFoundException(_) => {
                     // Clear cache so next retry re-creates the group/stream
                     self.created_groups.remove(&batch.log_group);
@@ -191,7 +189,9 @@ impl CwLogsClient {
                 other => {
                     use aws_sdk_cloudwatchlogs::error::ProvideErrorMetadata;
                     if other.code() == Some("ThrottlingException") {
-                        Err(CwUploadError::Other("Throttled after SDK retries exhausted".to_string()))
+                        Err(CwUploadError::Other(
+                            "Throttled after SDK retries exhausted".to_string(),
+                        ))
                     } else {
                         Err(CwUploadError::Other(other.to_string()))
                     }
@@ -324,7 +324,8 @@ mod tests {
 
     #[test]
     fn test_limit_exceeded_on_group_create() {
-        let err = CwUploadError::Retriable("LimitExceededException on create_log_group".to_string());
+        let err =
+            CwUploadError::Retriable("LimitExceededException on create_log_group".to_string());
         if let CwUploadError::Retriable(msg) = err {
             assert!(msg.contains("LimitExceededException"));
             assert!(msg.contains("create_log_group"));
@@ -335,7 +336,8 @@ mod tests {
 
     #[test]
     fn test_limit_exceeded_on_stream_create() {
-        let err = CwUploadError::Retriable("LimitExceededException on create_log_stream".to_string());
+        let err =
+            CwUploadError::Retriable("LimitExceededException on create_log_stream".to_string());
         if let CwUploadError::Retriable(msg) = err {
             assert!(msg.contains("LimitExceededException"));
             assert!(msg.contains("create_log_stream"));
@@ -396,8 +398,7 @@ mod tests {
             ))
             .region(aws_sdk_cloudwatchlogs::config::Region::new("us-east-1"))
             .retry_config(
-                aws_sdk_cloudwatchlogs::config::retry::RetryConfig::standard()
-                    .with_max_attempts(1),
+                aws_sdk_cloudwatchlogs::config::retry::RetryConfig::standard().with_max_attempts(1),
             )
             .http_client(replay_client)
             .build();

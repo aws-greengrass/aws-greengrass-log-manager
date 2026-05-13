@@ -43,10 +43,10 @@ fn test_scan_checkpoint_restart_resume() {
         .insert("test-group".to_string(), file_map);
 
     // Save checkpoint (simulating shutdown)
-    save_checkpoint(&checkpoint_path, &store).unwrap();
+    save_checkpoint(&checkpoint_path, &store, true).unwrap();
 
     // Load checkpoint (simulating restart)
-    let mut loaded = load_checkpoint(&checkpoint_path).unwrap();
+    let mut loaded = load_checkpoint(&checkpoint_path, true).unwrap();
 
     // Re-scan and recover offsets
     let files_after_restart = scan_directory(dir.path().to_str().unwrap(), &pattern).unwrap();
@@ -87,13 +87,13 @@ fn test_checkpoint_stale_entry_removed_after_file_deleted() {
     store
         .file_processing_info
         .insert("test-group".to_string(), file_map);
-    save_checkpoint(&checkpoint_path, &store).unwrap();
+    save_checkpoint(&checkpoint_path, &store, true).unwrap();
 
     // Delete one file
     std::fs::remove_file(dir.path().join("delete_me.log")).unwrap();
 
     // Re-scan (now only 1 file) and recover
-    let mut loaded = load_checkpoint(&checkpoint_path).unwrap();
+    let mut loaded = load_checkpoint(&checkpoint_path, true).unwrap();
     let files_after = scan_directory(dir.path().to_str().unwrap(), &pattern).unwrap();
     assert_eq!(files_after.len(), 1);
 
@@ -103,7 +103,8 @@ fn test_checkpoint_stale_entry_removed_after_file_deleted() {
     assert_eq!(offsets.len(), 1);
     assert_eq!(offsets[0].1, 100);
 
-    // Deleted file's checkpoint entry is evicted
+    // Deleted file's entry is preserved — eviction now happens in upload path (TTL-based)
+    // not during scan.
     let remaining = loaded.file_processing_info.get("test-group").unwrap();
-    assert_eq!(remaining.len(), 1);
+    assert_eq!(remaining.len(), 2);
 }

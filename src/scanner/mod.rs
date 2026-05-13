@@ -9,7 +9,7 @@ mod reader;
 
 pub use checkpoint::{
     load_checkpoint, recover_offsets, remove_component, save_checkpoint, trim_stale_on_load,
-    CheckpointStore, FileCheckpoint,
+    CheckpointStore, FileCheckpoint, LastFileProcessedTimestamp,
 };
 pub use multiline::assemble_multiline;
 pub use reader::{compute_content_hash, read_file_from_offset, LogEvent};

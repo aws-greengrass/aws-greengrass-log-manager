@@ -12,17 +12,15 @@ use std::io::Write;
 
 const TEST_CONFIG_JSON: &str = r#"{
     "periodicUploadIntervalSec": 300,
-    "componentLogsConfiguration": [
-        {
-            "componentName": "com.example.MyApp",
+    "componentLogsConfigurationMap": {
+        "com.example.MyApp": {
             "logFileDirectoryPath": "/tmp",
             "logFileRegex": "app\\.log.*",
             "diskSpaceLimit": "25",
             "diskSpaceLimitUnit": "MB",
-            "deleteLogFileAfterCloudUpload": false
+            "deleteLogFileAfterCloudUpload": "false"
         },
-        {
-            "componentName": "aws.greengrass.Nucleus",
+        "aws.greengrass.Nucleus": {
             "logFileDirectoryPath": "/tmp",
             "logFileRegex": "greengrass\\.log.*",
             "logGroupName": "/custom/nucleus/logs",
@@ -31,23 +29,22 @@ const TEST_CONFIG_JSON: &str = r#"{
             "diskSpaceLimitUnit": "MB",
             "uploadIntervalSec": 60
         },
-        {
-            "componentName": "com.example.EMFApp",
+        "com.example.EMFApp": {
             "logFileDirectoryPath": "/tmp",
             "logFileRegex": "emf-.*\\.json",
             "diskSpaceLimit": "10",
             "multiLineStartPattern": "^\\{"
         }
-    ],
-    "systemLogsConfiguration": [
-        {
-            "logFileDirectoryPath": "/tmp",
-            "logFileRegex": "syslog.*",
-            "logGroupName": "/aws/greengrass/system/syslog",
-            "diskSpaceLimit": "50",
-            "diskSpaceLimitUnit": "GB"
-        }
-    ]
+    },
+    "systemLogsConfiguration": {
+        "logFileDirectoryPath": "/tmp",
+        "logFileRegex": "syslog.*",
+        "logGroupName": "/aws/greengrass/system/syslog",
+        "diskSpaceLimit": "50",
+        "diskSpaceLimitUnit": "GB",
+        "minimumLogLevel": "WARN",
+        "uploadIntervalSec": 120
+    }
 }"#;
 
 #[test]
@@ -55,16 +52,28 @@ fn test_parse_config_fields() {
     let config = parse_config(TEST_CONFIG_JSON).expect("Should parse valid config");
 
     assert_eq!(config.periodic_upload_interval_sec, 300);
-    assert_eq!(config.component_logs_configuration.len(), 3);
-    assert_eq!(config.system_logs_configuration.len(), 1);
+    assert_eq!(
+        config
+            .logs_uploader_configuration
+            .component_logs_configuration_map
+            .len(),
+        3
+    );
+    assert!(config
+        .logs_uploader_configuration
+        .system_logs_configuration
+        .is_some());
 }
 
 #[test]
 fn test_component_config_fields() {
     let config = parse_config(TEST_CONFIG_JSON).unwrap();
-    let comp = &config.component_logs_configuration[0];
+    let comp = config
+        .logs_uploader_configuration
+        .component_logs_configuration_map
+        .get("com.example.MyApp")
+        .unwrap();
 
-    assert_eq!(comp.component_name, "com.example.MyApp");
     assert_eq!(comp.source.log_file_directory_path, "/tmp");
     assert_eq!(comp.source.log_file_regex, "app\\.log.*");
     assert_eq!(comp.source.disk_space_limit, Some("25".into()));
@@ -76,7 +85,11 @@ fn test_component_config_fields() {
 #[test]
 fn test_upload_interval_override() {
     let config = parse_config(TEST_CONFIG_JSON).unwrap();
-    let nucleus = &config.component_logs_configuration[1];
+    let nucleus = config
+        .logs_uploader_configuration
+        .component_logs_configuration_map
+        .get("aws.greengrass.Nucleus")
+        .unwrap();
 
     assert_eq!(nucleus.source.upload_interval_sec, Some(60));
     assert_eq!(
@@ -89,7 +102,11 @@ fn test_upload_interval_override() {
 #[test]
 fn test_defaults_applied() {
     let config = parse_config(TEST_CONFIG_JSON).unwrap();
-    let emf = &config.component_logs_configuration[2];
+    let emf = config
+        .logs_uploader_configuration
+        .component_logs_configuration_map
+        .get("com.example.EMFApp")
+        .unwrap();
 
     assert_eq!(emf.source.minimum_log_level, LogLevel::Info);
     assert_eq!(emf.source.disk_space_limit_unit, DiskSpaceLimitUnit::KB);
@@ -103,11 +120,20 @@ fn test_defaults_applied() {
 #[test]
 fn test_system_config_fields() {
     let config = parse_config(TEST_CONFIG_JSON).unwrap();
-    let sys = &config.system_logs_configuration[0];
+    let sys = config
+        .logs_uploader_configuration
+        .system_logs_configuration
+        .as_ref()
+        .unwrap();
 
-    assert_eq!(sys.log_group_name, "/aws/greengrass/system/syslog");
+    assert_eq!(
+        sys.log_group_name.as_deref(),
+        Some("/aws/greengrass/system/syslog")
+    );
     assert_eq!(sys.source.disk_space_limit, Some("50".into()));
     assert_eq!(sys.source.disk_space_limit_unit, DiskSpaceLimitUnit::GB);
+    assert_eq!(sys.source.minimum_log_level, LogLevel::Warn);
+    assert_eq!(sys.source.upload_interval_sec, Some(120));
 }
 
 #[test]
@@ -135,8 +161,14 @@ fn test_default_periodic_interval() {
         config.periodic_upload_interval_sec,
         DEFAULT_UPLOAD_INTERVAL_SEC
     );
-    assert!(config.component_logs_configuration.is_empty());
-    assert!(config.system_logs_configuration.is_empty());
+    assert!(config
+        .logs_uploader_configuration
+        .component_logs_configuration_map
+        .is_empty());
+    assert!(config
+        .logs_uploader_configuration
+        .system_logs_configuration
+        .is_none());
 }
 
 #[test]
@@ -178,12 +210,13 @@ fn test_load_config_file_not_found() {
 #[test]
 fn test_validate_config_invalid_disk_limit() {
     let json = r#"{
-        "componentLogsConfiguration": [{
-            "componentName": "test",
-            "logFileDirectoryPath": "/tmp",
-            "logFileRegex": ".*",
-            "diskSpaceLimit": "abc"
-        }]
+        "componentLogsConfigurationMap": {
+            "test": {
+                "logFileDirectoryPath": "/tmp",
+                "logFileRegex": ".*",
+                "diskSpaceLimit": "abc"
+            }
+        }
     }"#;
     let config = parse_config(json).unwrap();
     let result = validate_config(&config);
@@ -194,12 +227,13 @@ fn test_validate_config_invalid_disk_limit() {
 #[test]
 fn test_validate_config_invalid_regex() {
     let json = r#"{
-        "componentLogsConfiguration": [{
-            "componentName": "test",
-            "logFileDirectoryPath": "/tmp",
-            "logFileRegex": "[invalid",
-            "diskSpaceLimit": "100"
-        }]
+        "componentLogsConfigurationMap": {
+            "test": {
+                "logFileDirectoryPath": "/tmp",
+                "logFileRegex": "[invalid",
+                "diskSpaceLimit": "100"
+            }
+        }
     }"#;
     let config = parse_config(json).unwrap();
     let result = validate_config(&config);
@@ -210,15 +244,35 @@ fn test_validate_config_invalid_regex() {
 #[test]
 fn test_validate_config_zero_disk_limit() {
     let json = r#"{
-        "componentLogsConfiguration": [{
-            "componentName": "test",
-            "logFileDirectoryPath": "/tmp",
-            "logFileRegex": ".*",
-            "diskSpaceLimit": "0"
-        }]
+        "componentLogsConfigurationMap": {
+            "test": {
+                "logFileDirectoryPath": "/tmp",
+                "logFileRegex": ".*",
+                "diskSpaceLimit": "0"
+            }
+        }
     }"#;
     let config = parse_config(json).unwrap();
     let result = validate_config(&config);
     assert!(result.is_err());
     assert!(result.unwrap_err().to_string().contains("positive"));
+}
+
+/// Test backward compat: legacy list format still parses
+#[test]
+fn test_legacy_list_format() {
+    let json = r#"{
+        "componentLogsConfigurationMap": [
+            {
+                "componentName": "MyApp",
+                "logFileDirectoryPath": "/tmp",
+                "logFileRegex": ".*\\.log"
+            }
+        ]
+    }"#;
+    let config = parse_config(json).unwrap();
+    assert!(config
+        .logs_uploader_configuration
+        .component_logs_configuration_map
+        .contains_key("MyApp"));
 }

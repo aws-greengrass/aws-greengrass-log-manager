@@ -33,7 +33,7 @@ fn dir_size(dir: &Path, pattern: &Regex) -> u64 {
 /// (fully uploaded, not actively written to). This function trusts the list it receives.
 ///
 /// Returns paths of successfully deleted files.
-pub(crate) fn free_disk_space(
+pub fn free_disk_space(
     dir: &Path,
     pattern: &Regex,
     limit_bytes: u64,
@@ -161,7 +161,12 @@ mod tests {
         set_mtime(&processed, 100);
 
         // total=400, limit=250 → need 150 freed, but only processed is deletable
-        let deleted = free_disk_space(tmp.path(), &log_pattern(), 250, &[processed.clone()]);
+        let deleted = free_disk_space(
+            tmp.path(),
+            &log_pattern(),
+            250,
+            std::slice::from_ref(&processed),
+        );
         assert_eq!(deleted, vec![processed]);
         assert!(active.exists(), "active file must not be deleted");
     }
@@ -269,7 +274,12 @@ mod tests {
         set_mtime(&log_file, 100);
 
         // dir has 1100 bytes total, but only 100 bytes of .log files → under limit
-        let deleted = free_disk_space(tmp.path(), &log_pattern(), 200, &[log_file.clone()]);
+        let deleted = free_disk_space(
+            tmp.path(),
+            &log_pattern(),
+            200,
+            std::slice::from_ref(&log_file),
+        );
         assert!(deleted.is_empty());
         assert!(log_file.exists());
     }

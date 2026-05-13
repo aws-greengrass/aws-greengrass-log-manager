@@ -1,42 +1,66 @@
 RecipeFormatVersion: "2020-01-25"
-ComponentName: gg-log-manager
+ComponentName: aws.greengrass.LogManager
 ComponentVersion: "{COMPONENT_VERSION}"
 ComponentType: aws.greengrass.generic
 ComponentDescription: Greengrass LogManager - Generic type component for log and EMF file upload to CloudWatch
 ComponentPublisher: Amazon
+ComponentDependencies:
+  aws.greengrass.TokenExchangeService:
+    VersionRequirement: ">=0.0.0"
+    DependencyType: HARD
 ComponentConfiguration:
   DefaultConfiguration:
-    periodicUploadIntervalSec: 300
-    componentLogsConfiguration: []
-    systemLogsConfiguration: []
+    deprecatedVersionSupport: "true"
+    logsUploaderConfiguration:
+      systemLogsConfiguration:
+        uploadToCloudWatch: "false"
+        minimumLogLevel: "INFO"
+      componentLogsConfigurationMap: {}
+    periodicUploadIntervalSec: "300"
 Manifests:
   - Platform:
       os: linux
       architecture: amd64
+      runtime: "*"
     Artifacts:
       - URI: s3://gg-components/gg-log-manager-{COMPONENT_VERSION}-linux-amd64
         Permission:
           Execute: OWNER
     Lifecycle:
-      install: chmod +x {artifacts:path}/gg-log-manager-{COMPONENT_VERSION}-linux-amd64
-      run: "{artifacts:path}/gg-log-manager-{COMPONENT_VERSION}-linux-amd64"
-      shutdown: SIGTERM
+      Setenv:
+        GG_LOG_MANAGER_CONFIG: "{configuration:/}"
+      run: "{artifacts:path}/gg-log-manager-{COMPONENT_VERSION}-linux-amd64 --work-dir {work:path}"
   - Platform:
       os: linux
-      architecture: arm64
+      architecture: aarch64
+      runtime: "*"
     Artifacts:
-      - URI: s3://gg-components/gg-log-manager-{COMPONENT_VERSION}-linux-arm64
+      - URI: s3://gg-components/gg-log-manager-{COMPONENT_VERSION}-linux-aarch64
         Permission:
           Execute: OWNER
     Lifecycle:
-      install: chmod +x {artifacts:path}/gg-log-manager-{COMPONENT_VERSION}-linux-arm64
-      run: "{artifacts:path}/gg-log-manager-{COMPONENT_VERSION}-linux-arm64"
-      shutdown: SIGTERM
+      Setenv:
+        GG_LOG_MANAGER_CONFIG: "{configuration:/}"
+      run: "{artifacts:path}/gg-log-manager-{COMPONENT_VERSION}-linux-aarch64 --work-dir {work:path}"
+  - Platform:
+      os: linux
+      architecture: aarch64
+      architecture.detail: armv8l
+      runtime: "*"
+    Artifacts:
+      - URI: s3://gg-components/gg-log-manager-{COMPONENT_VERSION}-linux-aarch64
+        Permission:
+          Execute: OWNER
+    Lifecycle:
+      Setenv:
+        GG_LOG_MANAGER_CONFIG: "{configuration:/}"
+      run: "{artifacts:path}/gg-log-manager-{COMPONENT_VERSION}-linux-aarch64 --work-dir {work:path}"
   - Platform:
       os: windows
       architecture: amd64
     Artifacts:
       - URI: s3://gg-components/gg-log-manager-{COMPONENT_VERSION}-windows-amd64.exe
     Lifecycle:
-      run: "{artifacts:path}/gg-log-manager-{COMPONENT_VERSION}-windows-amd64.exe"
-      # Windows uses process termination for shutdown (no SIGTERM equivalent)
+      Setenv:
+        GG_LOG_MANAGER_CONFIG: "{configuration:/}"
+      run: "{artifacts:path}/gg-log-manager-{COMPONENT_VERSION}-windows-amd64.exe --work-dir {work:path}"

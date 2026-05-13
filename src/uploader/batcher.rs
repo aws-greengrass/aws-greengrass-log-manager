@@ -17,7 +17,7 @@
 //! **Dropped events don't advance checkpoint.** Java returns consumed byte count for
 //! dropped events (14-day filter) so the caller advances the file offset past them.
 //! This batcher silently drops them. The orchestrator must filter old events before
-//! batching, or accept re-reading them each cycle. Tracked under Asana 1.8.
+//! batching, or accept re-reading them each cycle.
 //!
 //! **Log level filtering matches Java behavior.** JSON-structured `GreengrassLogMessage`
 //! lines are deserialized to extract the `level` field. Text-format lines pass through
@@ -34,7 +34,7 @@ const TIMESTAMP_BYTES: usize = 8;
 /// CW PutLogEvents max payload: 1 MB.
 const MAX_BATCH_SIZE: usize = 1_048_576;
 /// CW max message bytes per event: 256KB - 8 - 26 = 262,110.
-pub(crate) const MAX_EVENT_BYTES: usize = 256 * 1024 - TIMESTAMP_BYTES - EVENT_STORAGE_OVERHEAD;
+pub const MAX_EVENT_BYTES: usize = 256 * 1024 - TIMESTAMP_BYTES - EVENT_STORAGE_OVERHEAD;
 /// CW max events per PutLogEvents call.
 const MAX_NUM_OF_LOG_EVENTS: usize = 10_000;
 /// Max time span between earliest and latest event in a batch (23 hours in ms).
@@ -54,7 +54,7 @@ fn event_wire_size(message_bytes: usize) -> usize {
 /// Events are sorted by timestamp, filtered by age and log level,
 /// oversized events are chunked, and batches are sealed at CW API limits.
 #[must_use]
-pub(crate) fn seal_batches(
+pub fn seal_batches(
     mut events: Vec<LogEvent>,
     log_group: &str,
     log_stream: &str,
@@ -181,7 +181,7 @@ fn chunk_message(message: &str, timestamp: i64) -> Vec<LogEvent> {
         }];
     }
 
-    let num_chunks = (bytes.len() + MAX_EVENT_BYTES - 1) / MAX_EVENT_BYTES;
+    let num_chunks = bytes.len().div_ceil(MAX_EVENT_BYTES);
     tracing::debug!(
         size = bytes.len(),
         chunks = num_chunks,

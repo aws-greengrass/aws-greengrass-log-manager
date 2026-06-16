@@ -37,9 +37,17 @@ async fn main() {
     }
 
     info!(
-        "Loaded {} component configs, {} system configs",
-        config.component_logs_configuration.len(),
-        config.system_logs_configuration.len()
+        components = ?config
+            .logs_uploader_configuration
+            .component_logs_configuration_map
+            .keys()
+            .collect::<Vec<_>>(),
+        system_logs = config
+            .logs_uploader_configuration
+            .system_logs_configuration
+            .is_some(),
+        interval_sec = config.periodic_upload_interval_sec,
+        "Configuration loaded"
     );
 
     let shutdown_notify = Arc::new(Notify::new());

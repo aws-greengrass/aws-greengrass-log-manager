@@ -33,7 +33,7 @@ fn dir_size(dir: &Path, pattern: &Regex) -> u64 {
 /// (fully uploaded, not actively written to). This function trusts the list it receives.
 ///
 /// Returns paths of successfully deleted files.
-pub(crate) fn free_disk_space(
+pub fn free_disk_space(
     dir: &Path,
     pattern: &Regex,
     limit_bytes: u64,
@@ -93,7 +93,9 @@ pub(crate) fn free_disk_space(
     deleted
 }
 
+// Single-arg &[x.clone()] kept per review; allow for clippy 1.94.1.
 #[cfg(test)]
+#[allow(clippy::cloned_ref_to_slice_refs)]
 mod tests {
     use super::*;
     use std::fs::File;

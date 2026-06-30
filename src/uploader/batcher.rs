@@ -17,7 +17,7 @@
 //! **Dropped events don't advance checkpoint.** Java returns consumed byte count for
 //! dropped events (14-day filter) so the caller advances the file offset past them.
 //! This batcher silently drops them. The orchestrator must filter old events before
-//! batching, or accept re-reading them each cycle. Tracked under Asana 1.8.
+//! batching, or accept re-reading them each cycle.
 //!
 //! **Log level filtering matches Java behavior.** JSON-structured `GreengrassLogMessage`
 //! lines are deserialized to extract the `level` field. Text-format lines pass through
@@ -181,7 +181,7 @@ fn chunk_message(message: &str, timestamp: i64) -> Vec<LogEvent> {
         }];
     }
 
-    let num_chunks = (bytes.len() + MAX_EVENT_BYTES - 1) / MAX_EVENT_BYTES;
+    let num_chunks = bytes.len().div_ceil(MAX_EVENT_BYTES);
     tracing::debug!(
         size = bytes.len(),
         chunks = num_chunks,
@@ -518,8 +518,6 @@ mod tests {
         ));
         assert!(!should_filter_by_level("short", LogLevel::Error));
     }
-
-    // --- Boundary tests (exact-at-limit) ---
 
     #[test]
     fn test_14_day_boundary_exact_kept() {

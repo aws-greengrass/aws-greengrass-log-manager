@@ -502,6 +502,7 @@ mod tests {
         assert!(!f(r#""yes""#));
         assert!(!f(r#""1""#));
         assert!(!f(r#""""#)); // empty → false
+
         // Unexpected types → false (with warn)
         assert!(!f("1"));
         assert!(!f("null"));

@@ -6,8 +6,8 @@
 mod schema;
 
 pub use schema::{
-    ComponentLogConfig, ConfigError, DiskSpaceLimitUnit, LogLevel, LogManagerConfig,
-    LogSourceConfig, SystemLogConfig, DEFAULT_UPLOAD_INTERVAL_SEC,
+    ComponentSourceConfig, ConfigError, DiskSpaceLimitUnit, LogLevel, LogManagerConfig,
+    LogSourceConfig, LogsUploaderConfig, SystemLogSourceConfig, DEFAULT_UPLOAD_INTERVAL_SEC,
 };
 
 use regex::Regex;
@@ -26,25 +26,19 @@ pub fn load_config(config_arg: &str) -> Result<LogManagerConfig, ConfigError> {
     Ok(config)
 }
 
+/// Parse the LogManager configuration from a JSON string.
+///
+/// Two backward-compatibility behaviors are intentional and handled by the schema's
+/// custom deserializers:
+/// - Config values may arrive as JSON strings rather than native types. The Greengrass
+///   Nucleus passes deployment/recipe config values as strings, so numeric and boolean
+///   fields accept both string (`"60"`, `"true"`) and native (`60`, `true`) forms.
+/// - The component configuration is accepted as a map (current format) or as the legacy
+///   list under `componentLogsConfiguration`, so configs written for earlier component
+///   versions continue to parse after an in-place upgrade.
 #[must_use = "config result must be handled"]
 pub fn parse_config(json: &str) -> Result<LogManagerConfig, ConfigError> {
-    let mut config: LogManagerConfig =
-        serde_json::from_str(json).map_err(|e| ConfigError::Parse(format!("{e}")))?;
-    // Deduplicate by component name, last-wins.
-    let mut seen = std::collections::HashMap::new();
-    for (i, c) in config.component_logs_configuration.iter().enumerate().rev() {
-        seen.entry(c.component_name.clone()).or_insert(i);
-    }
-    if seen.len() < config.component_logs_configuration.len() {
-        let indices: std::collections::HashSet<usize> = seen.into_values().collect();
-        config.component_logs_configuration = config
-            .component_logs_configuration
-            .into_iter()
-            .enumerate()
-            .filter(|(i, _)| indices.contains(i))
-            .map(|(_, c)| c)
-            .collect();
-    }
+    let config: LogManagerConfig = serde_json::from_str(json)?;
     Ok(config)
 }
 
@@ -58,19 +52,33 @@ fn validate_log_source(source: &LogSourceConfig) -> Result<(), ConfigError> {
     Ok(())
 }
 
+/// Warn when a per-source `uploadIntervalSec` override is set. The override is parsed
+/// but not yet honored — every source uploads on the global `periodicUploadIntervalSec`
+/// cadence. See the `TODO` at the field definition in `schema.rs`.
+fn warn_if_upload_interval_unwired(source: &LogSourceConfig, source_name: &str) {
+    if source.upload_interval_sec.is_some() {
+        tracing::warn!(
+            source = %source_name,
+            "uploadIntervalSec is set but not yet wired; this source uploads on the global periodicUploadIntervalSec cadence"
+        );
+    }
+}
+
 #[must_use = "validation result must be handled"]
 pub fn validate_config(config: &LogManagerConfig) -> Result<(), ConfigError> {
-    config
-        .component_logs_configuration
-        .iter()
-        .try_for_each(|c| {
-            tracing::debug!(component = %c.component_name, dir = %c.source.log_file_directory_path, "Validating component config");
-            validate_log_source(&c.source)
-        })?;
-    config.system_logs_configuration.iter().try_for_each(|s| {
-        tracing::debug!(dir = %s.source.log_file_directory_path, "Validating system log config");
-        validate_log_source(&s.source)
-    })?;
+    for (name, comp) in &config
+        .logs_uploader_configuration
+        .component_logs_configuration_map
+    {
+        tracing::debug!(component = %name, dir = %comp.source.log_file_directory_path, "Validating component config");
+        warn_if_upload_interval_unwired(&comp.source, name);
+        validate_log_source(&comp.source)?;
+    }
+    if let Some(ref sys) = config.logs_uploader_configuration.system_logs_configuration {
+        tracing::debug!(dir = %sys.source.log_file_directory_path, "Validating system log config");
+        warn_if_upload_interval_unwired(&sys.source, "systemLogsConfiguration");
+        validate_log_source(&sys.source)?;
+    }
     tracing::info!("Configuration validation passed");
     Ok(())
 }
@@ -139,8 +147,14 @@ mod tests {
     #[test]
     fn test_parse_config_empty() {
         let config = parse_config("{}").unwrap();
-        assert!(config.component_logs_configuration.is_empty());
-        assert!(config.system_logs_configuration.is_empty());
+        assert!(config
+            .logs_uploader_configuration
+            .component_logs_configuration_map
+            .is_empty());
+        assert!(config
+            .logs_uploader_configuration
+            .system_logs_configuration
+            .is_none());
         assert_eq!(
             config.periodic_upload_interval_sec,
             DEFAULT_UPLOAD_INTERVAL_SEC
@@ -155,8 +169,6 @@ mod tests {
 
     #[test]
     fn test_validate_directory_not_exists_warns_but_succeeds() {
-        // Missing directory is accepted at config time.
-        // Directory existence is checked at scan time instead.
         let result = validate_directory("/nonexistent/path/12345");
         assert!(result.is_ok());
     }
@@ -196,11 +208,12 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let json = format!(
             r#"{{
-                "componentLogsConfiguration": [{{
-                    "componentName": "test",
-                    "logFileDirectoryPath": "{}",
-                    "logFileRegex": ".*\\.log$"
-                }}]
+                "componentLogsConfigurationMap": {{
+                    "test": {{
+                        "logFileDirectoryPath": "{}",
+                        "logFileRegex": ".*\\.log$"
+                    }}
+                }}
             }}"#,
             dir.path().to_str().unwrap()
         );
@@ -213,11 +226,11 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let json = format!(
             r#"{{
-                "systemLogsConfiguration": [{{
+                "systemLogsConfiguration": {{
                     "logFileDirectoryPath": "{}",
                     "logFileRegex": ".*\\.log$",
                     "logGroupName": "/aws/greengrass/system"
-                }}]
+                }}
             }}"#,
             dir.path().to_str().unwrap()
         );
@@ -257,7 +270,10 @@ mod tests {
     #[test]
     fn test_load_config_inline_json() {
         let config = load_config("{}").unwrap();
-        assert!(config.component_logs_configuration.is_empty());
+        assert!(config
+            .logs_uploader_configuration
+            .component_logs_configuration_map
+            .is_empty());
     }
 
     #[test]
@@ -268,9 +284,9 @@ mod tests {
     }
 
     #[test]
-    fn test_duplicate_component_name_last_wins() {
+    fn test_duplicate_component_name_in_legacy_list() {
         let json = r#"{
-            "componentLogsConfiguration": [
+            "componentLogsConfigurationMap": [
                 {
                     "componentName": "MyApp",
                     "logFileDirectoryPath": "/first/dir",
@@ -284,10 +300,20 @@ mod tests {
             ]
         }"#;
         let config = parse_config(json).unwrap();
-        // Java's Map.put deduplicates by name, last wins
-        assert_eq!(config.component_logs_configuration.len(), 1);
+        // Last wins in the legacy list format (HashMap insert overwrites by key).
         assert_eq!(
-            config.component_logs_configuration[0]
+            config
+                .logs_uploader_configuration
+                .component_logs_configuration_map
+                .len(),
+            1
+        );
+        assert_eq!(
+            config
+                .logs_uploader_configuration
+                .component_logs_configuration_map
+                .get("MyApp")
+                .unwrap()
                 .source
                 .log_file_directory_path,
             "/second/dir"

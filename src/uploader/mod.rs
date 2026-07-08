@@ -3,18 +3,14 @@
 
 //! Upload pipeline - batching, CloudWatch client, retry, scheduling, checkpoint advancement
 
-// The batcher exists solely to prepare events for CloudWatch upload, so it is only
-// compiled with the `aws-sdk` feature (its sole consumer is `upload_source_events`).
-#[cfg(feature = "aws-sdk")]
 mod batcher;
-#[cfg(feature = "aws-sdk")]
 mod cw_client;
 
-#[cfg(feature = "aws-sdk")]
 use crate::config::LogLevel;
 use crate::scanner::{
     CheckpointStore, FileCheckpoint, LastFileProcessedTimestamp, LogEvent, ScannedFile,
 };
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -26,12 +22,9 @@ pub struct SealedBatch {
     pub events: Vec<LogEvent>,
 }
 
-#[cfg(feature = "aws-sdk")]
 pub(crate) use cw_client::UploadOutcome;
-#[cfg(feature = "aws-sdk")]
 pub use cw_client::{CwLogsClient, CwUploadError};
 
-#[cfg(feature = "aws-sdk")]
 pub(crate) use batcher::seal_batches;
 
 /// 24 hours in milliseconds — default TTL for checkpoint entries.
@@ -79,7 +72,6 @@ pub struct UploadResult {
 // next cycle. Finer per-file/per-stream success tracking (advance only the files whose
 // batches succeeded) would cut duplicates on partial failure, but requires carrying a
 // file identity through batching; deferred as a behavior change.
-#[cfg(feature = "aws-sdk")]
 pub async fn upload_source_events(
     client: &mut CwLogsClient,
     log_group: &str,
@@ -135,7 +127,6 @@ pub async fn upload_source_events(
     }
 }
 
-#[cfg(feature = "aws-sdk")]
 fn now_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -159,6 +150,31 @@ fn is_file_fully_uploaded(is_active: bool, file_len: u64, bytes_read: u64) -> bo
     !is_active && file_len == bytes_read && file_len > 0
 }
 
+/// Complete a fully-uploaded file: remove its checkpoint entry and advance the component's
+/// `lastFileProcessedTimeStamp` monotonically. Shared by the upload-path checkpoint
+/// advancement and the rotation edge case so the two completion sites cannot drift. The
+/// caller owns the completion trigger and any file deletion.
+// TODO: the checkpoint is keyed by `content_hash`, so two files that share a `content_hash`
+// still collide on the checkpoint key (one file's entry overwrites/removes the other's).
+// Unique per-file checkpoint identity is deferred.
+pub fn complete_file(
+    file_map: &mut HashMap<String, FileCheckpoint>,
+    ts_map: &mut HashMap<String, LastFileProcessedTimestamp>,
+    log_group_key: &str,
+    content_hash: &str,
+    mtime_ms: u64,
+) {
+    file_map.remove(content_hash);
+    let ts_entry = ts_map
+        .entry(log_group_key.to_string())
+        .or_insert(LastFileProcessedTimestamp {
+            last_file_processed_time_stamp: 0,
+        });
+    if mtime_ms > ts_entry.last_file_processed_time_stamp {
+        ts_entry.last_file_processed_time_stamp = mtime_ms;
+    }
+}
+
 /// Advance checkpoints after a successful upload. Returns paths of completed files.
 ///
 /// A completed file (`!is_active && file_length == new_offset && len > 0`) is removed
@@ -171,7 +187,6 @@ pub fn advance_checkpoints(
     scanned_files: &[ScannedFile],
     now: u64,
 ) -> Vec<PathBuf> {
-    use std::collections::HashMap;
     let mut completed = Vec::new();
 
     // Pre-build a path-keyed lookup so per-file resolution is O(1) instead of a linear scan
@@ -196,25 +211,16 @@ pub fn advance_checkpoints(
         let is_active = scanned.is_some_and(|f| f.is_active);
         let file_len = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
 
-        // TODO: The checkpoint is keyed by `content_hash`, so two files that share a
-        // `content_hash` still collide on the checkpoint key (one file's checkpoint
-        // overwrites/removes the other's). Unique per-file checkpoint identity is deferred.
         if is_file_fully_uploaded(is_active, file_len, *new_offset) {
-            file_map.remove(content_hash);
-            completed.push(path.clone());
-
-            // Advance the component's last-processed timestamp monotonically.
             let file_mtime_ms = scanned.map(|f| mtime_to_ms(f.mtime)).unwrap_or(0);
-            let ts_entry = store
-                .last_processed_timestamps
-                .entry(log_group_key.to_string())
-                .or_insert(LastFileProcessedTimestamp {
-                    last_file_processed_time_stamp: 0,
-                });
-            if file_mtime_ms > ts_entry.last_file_processed_time_stamp {
-                ts_entry.last_file_processed_time_stamp = file_mtime_ms;
-            }
-
+            complete_file(
+                file_map,
+                &mut store.last_processed_timestamps,
+                log_group_key,
+                content_hash,
+                file_mtime_ms,
+            );
+            completed.push(path.clone());
             tracing::info!(path = %path.display(), "File completed, removed from checkpoint");
         } else {
             file_map.insert(
@@ -270,25 +276,6 @@ pub fn format_log_stream_name(thing_name: &str) -> String {
     )
 }
 
-/// Check if a timestamp (epoch millis) falls on a different UTC date.
-/// Used to detect when a new log stream should be created at midnight.
-#[must_use]
-pub fn is_different_date(
-    timestamp_ms: i64,
-    stream_year: i32,
-    stream_month: u32,
-    stream_day: u32,
-) -> bool {
-    match time::OffsetDateTime::from_unix_timestamp(timestamp_ms / 1000) {
-        Ok(dt) => {
-            dt.year() != stream_year
-                || dt.month() as u32 != stream_month
-                || dt.day() as u32 != stream_day
-        }
-        Err(_) => true,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -333,37 +320,6 @@ mod tests {
     }
 
     #[test]
-    fn test_is_different_date_same() {
-        let now = time::OffsetDateTime::now_utc();
-        let (y, m, d) = (now.year(), now.month() as u32, now.day() as u32);
-        let now_ms = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_millis() as i64;
-        assert!(!is_different_date(now_ms, y, m, d));
-    }
-
-    #[test]
-    fn test_is_different_date_different() {
-        assert!(is_different_date(1704067200000, 2023, 12, 31));
-        assert!(!is_different_date(1704067200000, 2024, 1, 1));
-    }
-
-    #[test]
-    fn test_is_different_date_negative_timestamp() {
-        assert!(is_different_date(-1, 2024, 1, 1));
-        assert!(is_different_date(-1000000, 2024, 1, 1));
-    }
-
-    #[test]
-    fn test_is_different_date_midnight_boundary() {
-        assert!(!is_different_date(1704067199999, 2023, 12, 31));
-        assert!(!is_different_date(1704067200000, 2024, 1, 1));
-        assert!(is_different_date(1704067199999, 2024, 1, 1));
-        assert!(is_different_date(1704067200000, 2023, 12, 31));
-    }
-
-    #[test]
     fn test_effective_interval_with_override() {
         let interval = effective_interval_secs(Some(60), 300);
         assert!((60..=65).contains(&interval));
@@ -391,6 +347,53 @@ mod tests {
         assert!(!is_file_fully_uploaded(false, 100, 50));
         // Empty file → not complete.
         assert!(!is_file_fully_uploaded(false, 0, 0));
+    }
+
+    #[test]
+    fn test_complete_file_advances_ts_when_group_absent() {
+        // Regression guard for the shared completion core: complete_file must remove the
+        // checkpoint entry AND advance the component timestamp even when the timestamp map
+        // has no entry for the group yet (first cycle). A get-guarded variant would skip
+        // the advance and cause completed files to be re-read/re-uploaded.
+        let mut file_map: HashMap<String, FileCheckpoint> = HashMap::new();
+        file_map.insert(
+            "h".to_string(),
+            FileCheckpoint {
+                file_hash: "h".to_string(),
+                start_position: 42,
+                last_modified_time: 9000,
+                last_accessed: 0,
+            },
+        );
+        let mut ts_map: HashMap<String, LastFileProcessedTimestamp> = HashMap::new();
+
+        complete_file(&mut file_map, &mut ts_map, "grp", "h", 9000);
+
+        assert!(!file_map.contains_key("h"));
+        assert_eq!(
+            ts_map.get("grp").unwrap().last_file_processed_time_stamp,
+            9000
+        );
+    }
+
+    #[test]
+    fn test_complete_file_ts_advance_is_monotonic() {
+        // A stale (older) mtime must not move the component timestamp backwards.
+        let mut file_map: HashMap<String, FileCheckpoint> = HashMap::new();
+        let mut ts_map: HashMap<String, LastFileProcessedTimestamp> = HashMap::new();
+        ts_map.insert(
+            "grp".to_string(),
+            LastFileProcessedTimestamp {
+                last_file_processed_time_stamp: 5000,
+            },
+        );
+
+        complete_file(&mut file_map, &mut ts_map, "grp", "h", 3000);
+
+        assert_eq!(
+            ts_map.get("grp").unwrap().last_file_processed_time_stamp,
+            5000
+        );
     }
 
     #[test]

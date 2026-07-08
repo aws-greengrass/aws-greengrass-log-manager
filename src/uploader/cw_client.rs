@@ -47,10 +47,6 @@ pub(crate) enum UploadOutcome {
 
 pub struct CwLogsClient {
     client: Client,
-    // Only read by `recreate_client` (the credential-refresh hook), which has no
-    // production caller in this crate yet — exercised by unit tests.
-    #[allow(dead_code)]
-    config: aws_sdk_cloudwatchlogs::Config,
     created_groups: HashSet<String>,
     created_streams: HashSet<String>,
 }
@@ -63,33 +59,21 @@ impl CwLogsClient {
             .load()
             .await;
         let config = aws_sdk_cloudwatchlogs::Config::new(&sdk_config);
-        let client = Client::from_conf(config.clone());
+        let client = Client::from_conf(config);
         Self {
             client,
-            config,
             created_groups: HashSet::new(),
             created_streams: HashSet::new(),
         }
     }
 
     #[cfg(test)]
-    fn new_with_client(client: Client, config: aws_sdk_cloudwatchlogs::Config) -> Self {
+    fn new_with_client(client: Client) -> Self {
         Self {
             client,
-            config,
             created_groups: HashSet::new(),
             created_streams: HashSet::new(),
         }
-    }
-
-    /// Recreate the SDK client (e.g., after persistent network errors).
-    /// Caches are preserved — if a resource was deleted externally, the next
-    /// put_log_events will get ResourceNotFoundException which clears the cache.
-    // No production caller yet; exercised by unit tests. Retained as the client's
-    // credential-refresh hook for the upload orchestration.
-    #[allow(dead_code)]
-    pub(crate) fn recreate_client(&mut self) {
-        self.client = Client::from_conf(self.config.clone());
     }
 
     pub(crate) async fn upload_batch(&mut self, batch: &SealedBatch) -> Result<(), CwUploadError> {
@@ -324,8 +308,8 @@ mod tests {
         let config = aws_sdk_cloudwatchlogs::Config::builder()
             .behavior_version(aws_sdk_cloudwatchlogs::config::BehaviorVersion::latest())
             .build();
-        let client = Client::from_conf(config.clone());
-        CwLogsClient::new_with_client(client, config)
+        let client = Client::from_conf(config);
+        CwLogsClient::new_with_client(client)
     }
 
     fn batch_with_event() -> SealedBatch {
@@ -399,16 +383,6 @@ mod tests {
         assert_eq!(cw.created_streams().len(), 1);
     }
 
-    #[test]
-    fn test_client_can_be_recreated() {
-        let mut cw = make_test_client();
-        cw.mark_group_created("test-group");
-        cw.mark_stream_created("test-group", "test-stream");
-        cw.recreate_client();
-        assert!(cw.created_groups().contains("test-group"));
-        assert!(cw.created_streams().contains("test-group:test-stream"));
-    }
-
     fn ok_response() -> http::Response<aws_smithy_types::body::SdkBody> {
         http::Response::builder()
             .status(200)
@@ -463,8 +437,8 @@ mod tests {
             )
             .http_client(replay.clone())
             .build();
-        let client = Client::from_conf(config.clone());
-        (CwLogsClient::new_with_client(client, config), replay)
+        let client = Client::from_conf(config);
+        (CwLogsClient::new_with_client(client), replay)
     }
 
     #[tokio::test]

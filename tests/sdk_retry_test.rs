@@ -159,7 +159,7 @@ async fn data_already_accepted_is_success() {
 
 #[tokio::test]
 async fn resource_not_found_is_retriable() {
-    // ResourceNotFoundException — our cw_client.rs maps it to CwUploadError::Retriable
+    // ResourceNotFoundException — our cw_client.rs maps it to CwUploadError::Retryable
     let replay_client = StaticReplayClient::new(vec![ReplayEvent::new(
         dummy_request(),
         http::Response::builder()

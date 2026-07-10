@@ -102,6 +102,9 @@ pub struct LogsUploaderConfig {
 pub struct LogManagerConfig {
     pub logs_uploader_configuration: LogsUploaderConfig,
     pub periodic_upload_interval_sec: u64,
+    /// Write the deprecated flat checkpoint format alongside the current nested one, and read
+    /// it on load, for compatibility with older LogManager versions. Defaults to `true`.
+    pub deprecated_version_support: bool,
 }
 
 impl<'de> Deserialize<'de> for LogManagerConfig {
@@ -133,6 +136,21 @@ impl<'de> Deserialize<'de> for LogManagerConfig {
             },
         };
 
+        // Absent → default true (keep writing the deprecated format for downgrade safety).
+        // Accept a JSON bool or a string ("true"/"false"), like the other bool fields, since
+        // the Nucleus passes config values as strings; anything unparseable falls back to true.
+        let deprecated_version_support = match obj.get("deprecatedVersionSupport") {
+            None => true,
+            Some(v) => v
+                .as_bool()
+                .or_else(|| match v.as_str().map(str::trim) {
+                    Some(s) if s.eq_ignore_ascii_case("true") => Some(true),
+                    Some(s) if s.eq_ignore_ascii_case("false") => Some(false),
+                    _ => None,
+                })
+                .unwrap_or(true),
+        };
+
         // Accept the nested `logsUploaderConfiguration` wrapper (official schema) or a
         // flat top-level object (recipe interpolation flattens the subtree).
         let inner = value
@@ -146,6 +164,7 @@ impl<'de> Deserialize<'de> for LogManagerConfig {
         Ok(LogManagerConfig {
             logs_uploader_configuration: uploader_config,
             periodic_upload_interval_sec: periodic,
+            deprecated_version_support,
         })
     }
 }
@@ -316,6 +335,7 @@ mod tests {
         );
         let config = LogManagerConfig {
             periodic_upload_interval_sec: 600,
+            deprecated_version_support: true,
             logs_uploader_configuration: LogsUploaderConfig {
                 component_logs_configuration_map: map,
                 system_logs_configuration: None,
@@ -473,6 +493,40 @@ mod tests {
     #[test]
     fn test_default_log_level_is_info() {
         assert_eq!(LogLevel::default(), LogLevel::Info);
+    }
+
+    #[test]
+    fn test_deprecated_version_support_defaults_true() {
+        let config: LogManagerConfig = serde_json::from_str("{}").unwrap();
+        assert!(config.deprecated_version_support);
+    }
+
+    #[test]
+    fn test_deprecated_version_support_present_false() {
+        let config: LogManagerConfig =
+            serde_json::from_str(r#"{"deprecatedVersionSupport": false}"#).unwrap();
+        assert!(!config.deprecated_version_support);
+    }
+
+    #[test]
+    fn test_deprecated_version_support_string_false() {
+        let config: LogManagerConfig =
+            serde_json::from_str(r#"{"deprecatedVersionSupport": "false"}"#).unwrap();
+        assert!(!config.deprecated_version_support);
+    }
+
+    #[test]
+    fn test_deprecated_version_support_string_true() {
+        let config: LogManagerConfig =
+            serde_json::from_str(r#"{"deprecatedVersionSupport": "true"}"#).unwrap();
+        assert!(config.deprecated_version_support);
+    }
+
+    #[test]
+    fn test_deprecated_version_support_unparseable_defaults_true() {
+        let config: LogManagerConfig =
+            serde_json::from_str(r#"{"deprecatedVersionSupport": "maybe"}"#).unwrap();
+        assert!(config.deprecated_version_support);
     }
 
     #[test]

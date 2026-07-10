@@ -46,6 +46,27 @@ pub struct LastFileProcessedTimestamp {
     pub last_file_processed_time_stamp: u64,
 }
 
+/// Deprecated flat checkpoint leaf: one entry per component (not nested by hash), used by
+/// LogManager versions before 2.3.1. Read and written only when `deprecated_version_support`
+/// is enabled; ignored otherwise.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub(crate) struct DeprecatedFileCheckpoint {
+    #[serde(
+        rename = "currentProcessingFileName",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub file_name: Option<String>,
+    #[serde(rename = "currentProcessingFileHash")]
+    pub file_hash: String,
+    #[serde(rename = "currentProcessingFileStartPosition")]
+    pub start_position: u64,
+    #[serde(rename = "currentProcessingFileLastModified")]
+    pub last_modified_time: u64,
+    #[serde(rename = "lastAccessed", default)]
+    pub last_accessed: u64,
+}
+
 /// Checkpoint store for all components.
 ///
 /// # Write semantics (for batcher implementer)
@@ -53,22 +74,47 @@ pub struct LastFileProcessedTimestamp {
 /// - Upload path: use `put` — overwrite with new startPosition + trigger TTL eviction
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 pub struct CheckpointStore {
+    /// Current nested format (2.3.1+): `component -> hash -> FileCheckpoint`.
     #[serde(rename = "currentComponentFileProcessingInformationV2", default)]
     pub file_processing_info: HashMap<String, HashMap<String, FileCheckpoint>>,
+    /// Deprecated flat format (≤2.3.0): `component -> single FileCheckpoint`. Merged into the
+    /// current map on load and regenerated on save when `deprecated_version_support` is on;
+    /// omitted from the serialized file when empty.
+    #[serde(
+        rename = "currentComponentFileProcessingInformation",
+        default,
+        skip_serializing_if = "HashMap::is_empty"
+    )]
+    pub(crate) deprecated_file_processing_info: HashMap<String, DeprecatedFileCheckpoint>,
     #[serde(rename = "componentLastFileProcessedTimeStamp", default)]
     pub last_processed_timestamps: HashMap<String, LastFileProcessedTimestamp>,
 }
 
 /// Save checkpoint atomically: write to temp file, then rename.
 ///
+/// When `deprecated_version_support` is true, the deprecated flat format is regenerated from
+/// the current map (one entry per component, the most-recently-accessed) and written alongside
+/// it for backward compatibility; when false, the deprecated format is omitted.
+///
 /// # Errors
 /// Returns `io::Error` if the file cannot be created, written, synced, or renamed.
-pub fn save_checkpoint(path: &Path, store: &CheckpointStore) -> io::Result<()> {
+pub fn save_checkpoint(
+    path: &Path,
+    store: &CheckpointStore,
+    deprecated_version_support: bool,
+) -> io::Result<()> {
+    let mut store_to_write = store.clone();
+    if deprecated_version_support {
+        populate_deprecated_from_current(&mut store_to_write);
+    } else {
+        store_to_write.deprecated_file_processing_info.clear();
+    }
+
     let tmp_path = path.with_extension("tmp");
     let result = (|| -> io::Result<()> {
         let file = fs::File::create(&tmp_path)
             .map_err(|e| io::Error::new(e.kind(), format!("create {}: {e}", tmp_path.display())))?;
-        serde_json::to_writer_pretty(&file, store)
+        serde_json::to_writer_pretty(&file, &store_to_write)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
         file.sync_all()
             .map_err(|e| io::Error::new(e.kind(), format!("sync {}: {e}", tmp_path.display())))?;
@@ -88,14 +134,46 @@ pub fn save_checkpoint(path: &Path, store: &CheckpointStore) -> io::Result<()> {
     Ok(())
 }
 
+/// Regenerate the deprecated flat map from the current map: for each component, pick the
+/// entry with the highest `last_accessed` as the single deprecated entry.
+fn populate_deprecated_from_current(store: &mut CheckpointStore) {
+    store.deprecated_file_processing_info.clear();
+    for (component, files) in &store.file_processing_info {
+        if let Some(most_recent) = files.values().max_by_key(|cp| cp.last_accessed) {
+            store.deprecated_file_processing_info.insert(
+                component.clone(),
+                DeprecatedFileCheckpoint {
+                    file_name: None,
+                    file_hash: most_recent.file_hash.clone(),
+                    start_position: most_recent.start_position,
+                    last_modified_time: most_recent.last_modified_time,
+                    last_accessed: most_recent.last_accessed,
+                },
+            );
+        }
+    }
+}
+
 /// Load checkpoint from disk. Returns empty store if file missing or corrupt.
+///
+/// When `deprecated_version_support` is true, entries from the deprecated flat format are
+/// merged into the current map with put-if-absent semantics (a current entry for the same
+/// hash wins); when false, the deprecated format is discarded.
 ///
 /// # Errors
 /// Returns `io::Error` on read failures other than `NotFound`.
-pub fn load_checkpoint(path: &Path) -> io::Result<CheckpointStore> {
+pub fn load_checkpoint(
+    path: &Path,
+    deprecated_version_support: bool,
+) -> io::Result<CheckpointStore> {
     match fs::read_to_string(path) {
         Ok(content) => match serde_json::from_str::<CheckpointStore>(&content) {
-            Ok(store) => {
+            Ok(mut store) => {
+                if deprecated_version_support {
+                    merge_deprecated_entries(&mut store);
+                } else {
+                    store.deprecated_file_processing_info.clear();
+                }
                 let entry_count: usize = store.file_processing_info.values().map(|m| m.len()).sum();
                 tracing::debug!(path = %path.display(), entry_count = entry_count, "Checkpoint loaded");
                 Ok(store)
@@ -111,6 +189,27 @@ pub fn load_checkpoint(path: &Path) -> io::Result<CheckpointStore> {
             format!("read {}: {e}", path.display()),
         )),
     }
+}
+
+/// Merge deprecated flat entries into the current map with put-if-absent semantics (a current
+/// entry for the same component + hash is preserved), then clear the deprecated map so no stale
+/// state lingers in memory; `save_checkpoint` regenerates it from the current map on every write.
+fn merge_deprecated_entries(store: &mut CheckpointStore) {
+    for (component, deprecated_entry) in &store.deprecated_file_processing_info {
+        let component_map = store
+            .file_processing_info
+            .entry(component.clone())
+            .or_default();
+        component_map
+            .entry(deprecated_entry.file_hash.clone())
+            .or_insert_with(|| FileCheckpoint {
+                file_hash: deprecated_entry.file_hash.clone(),
+                start_position: deprecated_entry.start_position,
+                last_modified_time: deprecated_entry.last_modified_time,
+                last_accessed: deprecated_entry.last_accessed,
+            });
+    }
+    store.deprecated_file_processing_info.clear();
 }
 
 fn now_ms() -> u64 {
@@ -245,8 +344,8 @@ mod tests {
             },
         );
 
-        save_checkpoint(&path, &store).unwrap();
-        let loaded = load_checkpoint(&path).unwrap();
+        save_checkpoint(&path, &store, true).unwrap();
+        let loaded = load_checkpoint(&path, true).unwrap();
         assert_eq!(store, loaded);
     }
 
@@ -271,7 +370,7 @@ mod tests {
             .file_processing_info
             .insert("test-group".to_string(), files);
 
-        save_checkpoint(&path, &store).unwrap();
+        save_checkpoint(&path, &store, true).unwrap();
         let content = fs::read_to_string(&path).unwrap();
 
         // Verify Java-compatible field names
@@ -280,6 +379,12 @@ mod tests {
         assert!(content.contains("currentProcessingFileStartPosition"));
         assert!(content.contains("currentProcessingFileLastModified"));
         assert!(content.contains("lastAccessed"));
+        // Dual-write also emits the deprecated flat top-level key (exact-key check, since the
+        // V2 key name contains this string as a prefix).
+        let saved: serde_json::Value = serde_json::from_str(&content).unwrap();
+        assert!(saved
+            .get("currentComponentFileProcessingInformation")
+            .is_some());
     }
 
     #[test]
@@ -306,7 +411,7 @@ mod tests {
         }"#;
         fs::write(&path, java_checkpoint).unwrap();
 
-        let store = load_checkpoint(&path).unwrap();
+        let store = load_checkpoint(&path, true).unwrap();
         let files = store.file_processing_info.get("system-health").unwrap();
         let entry = files.get("abc123hash").unwrap();
         assert_eq!(entry.file_hash, "abc123hash");
@@ -322,7 +427,7 @@ mod tests {
         let tmp_path = path.with_extension("tmp");
 
         let store = CheckpointStore::default();
-        save_checkpoint(&path, &store).unwrap();
+        save_checkpoint(&path, &store, true).unwrap();
 
         assert!(!tmp_path.exists());
         assert!(path.exists());
@@ -332,7 +437,7 @@ mod tests {
     fn test_missing_file_returns_empty() {
         let dir = tempdir().unwrap();
         let path = dir.path().join("nonexistent.json");
-        let store = load_checkpoint(&path).unwrap();
+        let store = load_checkpoint(&path, true).unwrap();
         assert!(store.file_processing_info.is_empty());
         assert!(store.last_processed_timestamps.is_empty());
     }
@@ -342,7 +447,7 @@ mod tests {
         let dir = tempdir().unwrap();
         let path = dir.path().join("corrupt.json");
         fs::write(&path, "{ invalid json }").unwrap();
-        let result = load_checkpoint(&path).unwrap();
+        let result = load_checkpoint(&path, true).unwrap();
         assert!(result.file_processing_info.is_empty());
         assert!(result.last_processed_timestamps.is_empty());
     }
@@ -598,8 +703,160 @@ mod tests {
         let path = Path::new("/nonexistent/dir/checkpoint.json");
         let tmp_path = path.with_extension("tmp");
         let store = CheckpointStore::default();
-        let result = save_checkpoint(path, &store);
+        let result = save_checkpoint(path, &store, true);
         assert!(result.is_err());
         assert!(!tmp_path.exists());
+    }
+
+    #[test]
+    fn test_load_deprecated_checkpoint() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("checkpoint.json");
+        // Deprecated flat format: component -> single entry with the hash as a leaf field.
+        let v1_json = r#"{
+            "currentComponentFileProcessingInformation": {
+                "my-component": {
+                    "currentProcessingFileName": "/var/log/app.log",
+                    "currentProcessingFileHash": "v1hash123",
+                    "currentProcessingFileStartPosition": 4096,
+                    "currentProcessingFileLastModified": 1700000000000,
+                    "lastAccessed": 1700000001000
+                }
+            }
+        }"#;
+        fs::write(&path, v1_json).unwrap();
+
+        let store = load_checkpoint(&path, true).unwrap();
+        // Deprecated entry is merged into the current map.
+        let files = store.file_processing_info.get("my-component").unwrap();
+        let entry = files.get("v1hash123").unwrap();
+        assert_eq!(entry.file_hash, "v1hash123");
+        assert_eq!(entry.start_position, 4096);
+        assert_eq!(entry.last_modified_time, 1700000000000);
+        assert_eq!(entry.last_accessed, 1700000001000);
+    }
+
+    #[test]
+    fn test_load_deprecated_does_not_overwrite_current() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("checkpoint.json");
+        // Both formats present for the same component + hash — the current entry wins.
+        let json = r#"{
+            "currentComponentFileProcessingInformationV2": {
+                "my-component": {
+                    "v1hash123": {
+                        "currentProcessingFileHash": "v1hash123",
+                        "currentProcessingFileStartPosition": 8192,
+                        "currentProcessingFileLastModified": 1700000002000,
+                        "lastAccessed": 1700000003000
+                    }
+                }
+            },
+            "currentComponentFileProcessingInformation": {
+                "my-component": {
+                    "currentProcessingFileHash": "v1hash123",
+                    "currentProcessingFileStartPosition": 4096,
+                    "currentProcessingFileLastModified": 1700000000000,
+                    "lastAccessed": 1700000001000
+                }
+            }
+        }"#;
+        fs::write(&path, json).unwrap();
+
+        let store = load_checkpoint(&path, true).unwrap();
+        let files = store.file_processing_info.get("my-component").unwrap();
+        let entry = files.get("v1hash123").unwrap();
+        // put-if-absent: the current value is preserved.
+        assert_eq!(entry.start_position, 8192);
+    }
+
+    #[test]
+    fn test_save_writes_both_deprecated_and_current() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("checkpoint.json");
+
+        let mut store = CheckpointStore::default();
+        let mut files = HashMap::new();
+        files.insert(
+            "hashA".to_string(),
+            FileCheckpoint {
+                file_hash: "hashA".to_string(),
+                start_position: 100,
+                last_modified_time: 1000,
+                last_accessed: 5000, // most recently accessed
+            },
+        );
+        files.insert(
+            "hashB".to_string(),
+            FileCheckpoint {
+                file_hash: "hashB".to_string(),
+                start_position: 200,
+                last_modified_time: 2000,
+                last_accessed: 3000,
+            },
+        );
+        store.file_processing_info.insert("comp".to_string(), files);
+
+        save_checkpoint(&path, &store, true).unwrap();
+        let content = fs::read_to_string(&path).unwrap();
+
+        let saved: serde_json::Value = serde_json::from_str(&content).unwrap();
+        assert!(saved
+            .get("currentComponentFileProcessingInformationV2")
+            .is_some());
+        // Deprecated format holds the single most-recently-accessed entry (hashA).
+        let deprecated = &saved["currentComponentFileProcessingInformation"]["comp"];
+        assert_eq!(deprecated["currentProcessingFileHash"], "hashA");
+        assert_eq!(deprecated["currentProcessingFileStartPosition"], 100);
+    }
+
+    #[test]
+    fn test_load_deprecated_skipped_when_deprecated_support_false() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("checkpoint.json");
+        let v1_json = r#"{
+            "currentComponentFileProcessingInformation": {
+                "my-component": {
+                    "currentProcessingFileName": "/var/log/app.log",
+                    "currentProcessingFileHash": "v1hash123",
+                    "currentProcessingFileStartPosition": 4096,
+                    "currentProcessingFileLastModified": 1700000000000,
+                    "lastAccessed": 1700000001000
+                }
+            }
+        }"#;
+        fs::write(&path, v1_json).unwrap();
+
+        let store = load_checkpoint(&path, false).unwrap();
+        // Deprecated data is neither merged nor retained.
+        assert!(store.file_processing_info.is_empty());
+        assert!(store.deprecated_file_processing_info.is_empty());
+    }
+
+    #[test]
+    fn test_save_skips_deprecated_when_deprecated_support_false() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("checkpoint.json");
+
+        let mut store = CheckpointStore::default();
+        let mut files = HashMap::new();
+        files.insert(
+            "hashA".to_string(),
+            FileCheckpoint {
+                file_hash: "hashA".to_string(),
+                start_position: 100,
+                last_modified_time: 1000,
+                last_accessed: 5000,
+            },
+        );
+        store.file_processing_info.insert("comp".to_string(), files);
+
+        save_checkpoint(&path, &store, false).unwrap();
+        let content = fs::read_to_string(&path).unwrap();
+
+        // Current format present, deprecated format absent (the trailing quote distinguishes
+        // it from the V2 key, which shares this prefix).
+        assert!(content.contains("currentComponentFileProcessingInformationV2"));
+        assert!(!content.contains("currentComponentFileProcessingInformation\""));
     }
 }

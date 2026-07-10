@@ -154,9 +154,6 @@ fn is_file_fully_uploaded(is_active: bool, file_len: u64, bytes_read: u64) -> bo
 /// `lastFileProcessedTimeStamp` monotonically. Shared by the upload-path checkpoint
 /// advancement and the rotation edge case so the two completion sites cannot drift. The
 /// caller owns the completion trigger and any file deletion.
-// TODO: the checkpoint is keyed by `content_hash`, so two files that share a `content_hash`
-// still collide on the checkpoint key (one file's entry overwrites/removes the other's).
-// Unique per-file checkpoint identity is deferred.
 pub fn complete_file(
     file_map: &mut HashMap<String, FileCheckpoint>,
     ts_map: &mut HashMap<String, LastFileProcessedTimestamp>,

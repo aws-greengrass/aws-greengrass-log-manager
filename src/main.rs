@@ -11,6 +11,8 @@ use gg_log_manager::config::{
     LogSourceConfig,
 };
 use gg_log_manager::credentials::resolve_thing_name;
+#[cfg(feature = "gg-ipc")]
+use gg_log_manager::ipc_config::{connect_ipc, read_config};
 use gg_log_manager::scanner::{
     assemble_multiline, load_checkpoint, read_file_from_offset, recover_offsets, save_checkpoint,
     scan_directory, trim_stale_on_load, CheckpointStore, LogEvent, ScannedFile,
@@ -23,7 +25,7 @@ use gg_log_manager::uploader::{
 use regex::Regex;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use std::time::Instant;
 use tokio::sync::Notify;
 use tokio::time::Duration;
@@ -48,7 +50,21 @@ async fn main() {
     tracing_subscriber::fmt::init();
 
     let args: Vec<String> = std::env::args().collect();
-    let raw_config = resolve_raw_config(&args);
+
+    // Establish the single IPC connection (gg-ipc build) up front and read the startup config
+    // from it. The same handle is reused for the configuration-update subscription below, so
+    // `Sdk::init()` runs at most once per process.
+    #[cfg(feature = "gg-ipc")]
+    let ipc_sdk = connect_ipc();
+    #[cfg(feature = "gg-ipc")]
+    let ipc_value = match ipc_sdk {
+        Some(sdk) => read_config(sdk),
+        None => None,
+    };
+    #[cfg(not(feature = "gg-ipc"))]
+    let ipc_value: Option<String> = None;
+
+    let raw_config = resolve_raw_config(&args, ipc_value);
     let work_dir = parse_arg(&args, "--work-dir").unwrap_or_else(|| ".".to_string());
 
     let config = match load_config(&raw_config) {
@@ -115,8 +131,43 @@ async fn main() {
 
     // TODO: a LogManager struct owning client/store/thing_name/checkpoint_path would let the
     // process_* helpers carry less state; kept as free functions for now.
+
+    // Live config cell: the loop reads a fresh snapshot at the top of each cycle, and the
+    // configuration-update subscription (gg-ipc) swaps in a new value between cycles, so config
+    // changes are consumed without restarting the component.
+    let shared_config: Arc<RwLock<Arc<LogManagerConfig>>> = Arc::new(RwLock::new(Arc::new(config)));
+
+    // Woken when the runtime notifies a configuration update. The subscription callback runs on
+    // the SDK's IPC receive thread, which must NOT make IPC calls, so it only signals here; the
+    // loop thread (which owns the SDK handle) does the actual re-read. Never fired on the default
+    // build (no subscription), where the cell keeps the startup config for the process lifetime.
+    let config_changed = Arc::new(Notify::new());
+
+    // Subscribe to the component's own configuration updates and hold the subscription for the
+    // process lifetime (its Drop unsubscribes). The callback is leaked to give it a 'static
+    // lifetime; it only wakes the loop.
+    #[cfg(feature = "gg-ipc")]
+    let _config_sub = ipc_sdk.and_then(|sdk| {
+        let notify_cb = config_changed.clone();
+        let cb: &'static _ = Box::leak(Box::new(move |_component: &str, _key: &[&str]| {
+            // A panic unwinding across the extern "C" trampoline would abort the process, so the
+            // callback body is guarded even though notifying cannot realistically panic.
+            let _ =
+                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| notify_cb.notify_one()));
+        }));
+        match sdk.subscribe_to_configuration_update(None, &[], cb) {
+            Ok(sub) => {
+                info!("Subscribed to configuration updates");
+                Some(sub)
+            }
+            Err(e) => {
+                warn!(error = %e, "Failed to subscribe to configuration updates; config changes will not apply until restart");
+                None
+            }
+        }
+    });
+
     let mut last_persist = Instant::now();
-    let persist_interval = Duration::from_secs(config.periodic_upload_interval_sec);
 
     // Fixed-delay loop: process every source, then sleep the upload interval (so a slow cycle
     // never overlaps the next). The wait is a tokio::select! over the sleep and the shutdown
@@ -125,6 +176,16 @@ async fn main() {
         if SHUTDOWN_REQUESTED.load(Ordering::SeqCst) {
             break;
         }
+
+        // Snapshot the current config for this cycle (cheap Arc clone; lock released immediately).
+        // A live update swaps the cell between cycles, so the next pass picks it up.
+        let config = shared_config
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
+        // Recomputed each cycle (the only config-derived value cached across cycles) so a live
+        // change to periodicUploadIntervalSec takes effect on reload.
+        let persist_interval = Duration::from_secs(config.periodic_upload_interval_sec);
 
         // One timestamp shared across this cycle's checkpoint advancement and stale eviction.
         let now = std::time::SystemTime::now()
@@ -155,30 +216,51 @@ async fn main() {
         tokio::select! {
             _ = tokio::time::sleep(Duration::from_secs(sleep_secs)) => {}
             _ = shutdown_notify.notified() => { break; }
+            _ = config_changed.notified() => {
+                // Config-update notification: re-read on THIS (loop) thread — the callback thread
+                // may not make IPC calls — then swap the new config in for the next cycle.
+                #[cfg(feature = "gg-ipc")]
+                let updated = ipc_sdk.and_then(read_config);
+                #[cfg(not(feature = "gg-ipc"))]
+                let updated: Option<String> = None;
+                if let Some(json) = updated {
+                    apply_config_update(&shared_config, &json);
+                }
+            }
         }
     }
 
     // Persist the checkpoint unconditionally on the way out so progress is not lost.
     info!("Shutting down — persisting final checkpoint");
-    if let Err(e) = save_checkpoint(&checkpoint_path, &store, config.deprecated_version_support) {
+    // Read the current (possibly hot-reloaded) config from the cell, not the startup value, so
+    // the final flush honors the latest deprecatedVersionSupport. Poison-tolerant, matching the loop.
+    let deprecated_support = shared_config
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .deprecated_version_support;
+    if let Err(e) = save_checkpoint(&checkpoint_path, &store, deprecated_support) {
         error!("Failed to persist checkpoint on shutdown: {e}");
     }
     info!("Shutdown complete");
 }
 
 /// Resolve the raw config from ordered sources (first non-empty wins):
-/// (1) CLI `--config <inline-json-or-path>`, (2) env `GG_LOG_MANAGER_CONFIG`, (3) `{}` default.
-// TODO: prepend a higher-priority runtime config source ahead of CLI/env once that
-// integration lands; parsing stays agnostic to where the raw config originates.
-fn resolve_raw_config(args: &[String]) -> String {
-    for source in [config_from_cli(args), config_from_env()] {
+/// (1) CLI `--config <inline-json-or-path>`, (2) env `GG_LOG_MANAGER_CONFIG`,
+/// (3) IPC (the component's own configuration read from the Greengrass runtime at startup),
+/// (4) `{}` default. Parsing stays agnostic to where the raw config originates.
+fn resolve_raw_config(args: &[String], ipc_value: Option<String>) -> String {
+    for source in [
+        config_from_cli(args),
+        config_from_env(),
+        config_from_ipc(ipc_value),
+    ] {
         match source {
             Ok(Some(raw)) => return raw,
             Ok(None) => {}
             Err(e) => error!("Config source error: {e}; trying next source"),
         }
     }
-    // (3) DEFAULT: empty object — start with no sources configured.
+    // (4) DEFAULT: empty object — start with no sources configured.
     "{}".to_string()
 }
 
@@ -193,6 +275,46 @@ fn config_from_env() -> Result<Option<String>, ConfigError> {
     Ok(std::env::var("GG_LOG_MANAGER_CONFIG")
         .ok()
         .filter(|s| !s.is_empty()))
+}
+
+/// (3) IPC source: the startup configuration read from the Greengrass runtime, if any. The
+/// value is read once in `main` (single `Sdk::init()`); `None` off-device or when the `gg-ipc`
+/// feature is disabled, so on-device deployments that carry no `--config`/env config still
+/// resolve one.
+fn config_from_ipc(ipc_value: Option<String>) -> Result<Option<String>, ConfigError> {
+    Ok(ipc_value.filter(|s| !s.is_empty()))
+}
+
+/// Parse and validate a config JSON delivered by a live configuration update and, on success,
+/// swap it into the shared cell so the loop picks it up next cycle. Returns `true` when the cell
+/// was updated; on a parse or validation failure it logs and keeps the previous config
+/// (`false`). This is the testable seam for the live-reload path — the loop supplies the JSON it
+/// read on its own thread.
+fn apply_config_update(shared: &Arc<RwLock<Arc<LogManagerConfig>>>, json: &str) -> bool {
+    match load_config(json) {
+        Ok(new_config) => match validate_config(&new_config) {
+            Ok(()) => {
+                // TODO: when a component is dropped from the config on reload, its checkpoint
+                // entries (file_processing_info / last_processed_timestamps for that log group)
+                // are left in place. This is pre-existing (such entries already persist across a
+                // restart via checkpoint.json) and metadata-only: a removed component is no longer
+                // scanned, so nothing re-uploads and no log-file disk space grows. The stale entry
+                // is bounded by the process lifetime. Pruning entries for log groups absent from
+                // the new config is deferred.
+                *shared.write().unwrap_or_else(|e| e.into_inner()) = Arc::new(new_config);
+                info!("Configuration reloaded from update");
+                true
+            }
+            Err(e) => {
+                warn!(error = %e, "Invalid configuration update ignored; keeping previous config");
+                false
+            }
+        },
+        Err(e) => {
+            warn!(error = %e, "Failed to parse configuration update; keeping previous config");
+            false
+        }
+    }
 }
 
 /// Process all configured log sources (component + system) sequentially in one cycle.
@@ -622,7 +744,7 @@ mod tests {
     fn test_resolve_raw_config_cli_wins_over_env() {
         std::env::set_var("GG_LOG_MANAGER_CONFIG", "ENV");
         let args = vec!["bin".to_string(), "--config".to_string(), "CLI".to_string()];
-        assert_eq!(resolve_raw_config(&args), "CLI");
+        assert_eq!(resolve_raw_config(&args, None), "CLI");
         std::env::remove_var("GG_LOG_MANAGER_CONFIG");
     }
 
@@ -631,7 +753,7 @@ mod tests {
     fn test_resolve_raw_config_env_used_without_cli() {
         std::env::set_var("GG_LOG_MANAGER_CONFIG", "ENV");
         let args = vec!["bin".to_string()];
-        assert_eq!(resolve_raw_config(&args), "ENV");
+        assert_eq!(resolve_raw_config(&args, None), "ENV");
         std::env::remove_var("GG_LOG_MANAGER_CONFIG");
     }
 
@@ -640,7 +762,76 @@ mod tests {
     fn test_resolve_raw_config_default_when_no_source() {
         std::env::remove_var("GG_LOG_MANAGER_CONFIG");
         let args = vec!["bin".to_string()];
-        assert_eq!(resolve_raw_config(&args), "{}");
+        assert_eq!(resolve_raw_config(&args, None), "{}");
+    }
+
+    // Default build (no `gg-ipc`): the startup IPC value is `None`, so the IPC source never
+    // contributes and the chain behaves as CLI → env → default.
+    #[cfg(not(feature = "gg-ipc"))]
+    #[test]
+    fn test_config_from_ipc_none_without_feature() {
+        assert_eq!(config_from_ipc(None).unwrap(), None);
+    }
+
+    // A non-empty env value wins over the (last) IPC source even when an IPC value is present.
+    #[test]
+    #[serial]
+    fn test_resolve_raw_config_env_wins_over_ipc_fallback() {
+        std::env::set_var("GG_LOG_MANAGER_CONFIG", "ENV");
+        let args = vec!["bin".to_string()];
+        assert_eq!(resolve_raw_config(&args, Some("IPC".to_string())), "ENV");
+        std::env::remove_var("GG_LOG_MANAGER_CONFIG");
+    }
+
+    // The empty-string env filter routes past env to the IPC source: CLI absent, env empty, and
+    // no IPC value → resolution falls through to the "{}" default.
+    #[test]
+    #[serial]
+    fn test_resolve_raw_config_empty_env_falls_through_to_ipc_fallback() {
+        std::env::set_var("GG_LOG_MANAGER_CONFIG", "");
+        let args = vec!["bin".to_string()];
+        assert_eq!(resolve_raw_config(&args, None), "{}");
+        std::env::remove_var("GG_LOG_MANAGER_CONFIG");
+    }
+
+    // With CLI and env absent, the startup IPC value is used as the last source before default.
+    #[test]
+    #[serial]
+    fn test_resolve_raw_config_uses_ipc_value_when_cli_env_absent() {
+        std::env::remove_var("GG_LOG_MANAGER_CONFIG");
+        let args = vec!["bin".to_string()];
+        assert_eq!(
+            resolve_raw_config(
+                &args,
+                Some(r#"{"periodicUploadIntervalSec":9}"#.to_string())
+            ),
+            r#"{"periodicUploadIntervalSec":9}"#
+        );
+    }
+
+    // apply_config_update swaps the cell on a valid update and keeps the previous config on a bad
+    // one. The live subscribe path (the callback firing, the SDK rejecting a get_config on the
+    // callback thread, and the end-to-end deploy→swap) is device-only and not unit-testable here.
+    #[test]
+    fn test_apply_config_update_good_json_swaps_cell() {
+        let shared = Arc::new(RwLock::new(Arc::new(load_config("{}").unwrap())));
+        let before = shared.read().unwrap().periodic_upload_interval_sec;
+        assert!(apply_config_update(
+            &shared,
+            r#"{"periodicUploadIntervalSec":42}"#
+        ));
+        let after = shared.read().unwrap().periodic_upload_interval_sec;
+        assert_eq!(after, 42);
+        assert_ne!(before, after);
+    }
+
+    #[test]
+    fn test_apply_config_update_bad_json_keeps_previous() {
+        let shared = Arc::new(RwLock::new(Arc::new(
+            load_config(r#"{"periodicUploadIntervalSec":7}"#).unwrap(),
+        )));
+        assert!(!apply_config_update(&shared, "not valid json {{{"));
+        assert_eq!(shared.read().unwrap().periodic_upload_interval_sec, 7);
     }
 
     #[test]

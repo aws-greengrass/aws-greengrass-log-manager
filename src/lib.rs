@@ -6,5 +6,6 @@
 pub mod config;
 pub mod credentials;
 pub mod disk;
+pub mod ipc_config;
 pub mod scanner;
 pub mod uploader;

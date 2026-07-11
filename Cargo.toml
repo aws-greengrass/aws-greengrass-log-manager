@@ -23,6 +23,13 @@ time = "0.3"
 thiserror = "1"
 aws-sdk-cloudwatchlogs = "=1.20.0"
 aws-config = "=1.1.10"
+gg_sdk = { version = "=1.0.4", optional = true, package = "aws-greengrass-component-sdk" }
+
+[features]
+# Opt-in only: the gg_sdk build depends on libclang/cc, so it is kept out of the
+# default build to keep `cargo build/test/clippy` portable. Enable with
+# `--features gg-ipc` to compile the IPC config source.
+gg-ipc = ["dep:gg_sdk"]
 
 [dev-dependencies]
 tempfile = "3"

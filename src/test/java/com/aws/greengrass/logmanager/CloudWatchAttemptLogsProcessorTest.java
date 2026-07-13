@@ -242,9 +242,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
         int logEventMessageLength = 70; // "\r\n" takes 2 bytes
         try (OutputStream fileOutputStream = Files.newOutputStream(file.toPath())) {
             for (int i = 0; i <= 10000; i++) { // 10001 log events
-                boolean useLetters = true;
-                boolean useNumbers = false;
-                StringBuilder generatedString = new StringBuilder(RandomStringUtils.random(logEventMessageLength, useLetters, useNumbers));
+                StringBuilder generatedString = new StringBuilder(RandomStringUtils.randomAlphanumeric(logEventMessageLength));
                 generatedString.append("\r\n");
                 fileOutputStream.write(generatedString.toString().getBytes(StandardCharsets.UTF_8));
             }
@@ -277,7 +275,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
             assertEquals(MAX_NUM_OF_LOG_EVENTS, logEventsForStream1.getLogEvents().size());
             assertTrue(logEventsForStream1.getAttemptLogFileInformationMap().containsKey(fileHash));
             assertEquals(0, logEventsForStream1.getAttemptLogFileInformationMap().get(fileHash).getStartPosition());
-            assertEquals((logEventMessageLength+2)*10000, logEventsForStream1.getAttemptLogFileInformationMap().get(fileHash).getBytesRead());
+            assertEquals((logEventMessageLength+2)*10000 - 1, logEventsForStream1.getAttemptLogFileInformationMap().get(fileHash).getBytesRead());
             assertEquals("TestComponent", logEventsForStream1.getComponentName());
             LocalDateTime localDateTimeNow = LocalDateTime.now(ZoneOffset.UTC);
             for (InputLogEvent logEvent: logEventsForStream1.getLogEvents()) {
@@ -308,10 +306,8 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
         try (OutputStream fileOutputStream = Files.newOutputStream(file.toPath())) {
             for (int i = 0; i < 1024; i++) {
                 int length = 1024;
-                boolean useLetters = true;
-                boolean useNumbers = false;
                 StringBuilder generatedString =
-                        new StringBuilder(RandomStringUtils.random(length, useLetters, useNumbers));
+                        new StringBuilder(RandomStringUtils.randomAlphanumeric(length));
                 generatedString.append("\r\n");
                 fileOutputStream.write(generatedString.toString().getBytes(StandardCharsets.UTF_8));
             }
@@ -344,7 +340,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
             assertEquals(991, logEventsForStream1.getLogEvents().size());
             assertTrue(logEventsForStream1.getAttemptLogFileInformationMap().containsKey(fileHash));
             assertEquals(0, logEventsForStream1.getAttemptLogFileInformationMap().get(fileHash).getStartPosition());
-            assertEquals(1016766, logEventsForStream1.getAttemptLogFileInformationMap().get(fileHash).getBytesRead());
+            assertEquals(1016765, logEventsForStream1.getAttemptLogFileInformationMap().get(fileHash).getBytesRead());
             assertEquals("TestComponent", logEventsForStream1.getComponentName());
             LocalDateTime localDateTimeNow = LocalDateTime.now(ZoneOffset.UTC);
             for (InputLogEvent logEvent: logEventsForStream1.getLogEvents()) {

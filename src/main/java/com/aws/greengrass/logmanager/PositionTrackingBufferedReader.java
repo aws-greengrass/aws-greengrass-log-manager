@@ -7,6 +7,7 @@ package com.aws.greengrass.logmanager;
 
 import java.io.IOException;
 import java.io.Reader;
+import java.nio.charset.StandardCharsets;
 
 /**
  * An implementation of BufferedReader which adds a position() method to get an accurate reading of the number of bytes
@@ -129,18 +130,24 @@ public class PositionTrackingBufferedReader extends Reader {
                 /* Skip a leftover '\n', if necessary */
                 if (omitLF && (cb[nextChar] == '\n')) {
                     nextChar++;
+                    position++; // count the skipped '\n' byte
                 }
                 skipLF = false;
                 omitLF = false;
 
                 for (i = nextChar; i < nChars; i++) {
                     c = cb[i];
-                    // Greengrass-added position tracking
-                    position++;
                     if ((c == '\n') || (c == '\r')) {
                         eol = true;
                         break;
                     }
+                }
+
+                // Greengrass-added position tracking — count UTF-8 bytes for the segment
+                position += new String(cb, nextChar, i - nextChar).getBytes(StandardCharsets.UTF_8).length;
+                if (eol) {
+                    // Count the line terminator byte as well
+                    position++;
                 }
 
                 startChar = nextChar;
@@ -157,8 +164,6 @@ public class PositionTrackingBufferedReader extends Reader {
                     nextChar++;
                     if (c == '\r') {
                         skipLF = true;
-                        // Greengrass-added position tracking
-                        position++;
                     }
                     return str;
                 }

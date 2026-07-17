@@ -1,8 +1,6 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-#![cfg(feature = "aws-sdk")]
-
 //! Integration tests verifying AWS SDK retry behavior and our CwLogsClient error handling.
 //! Uses mock HTTP to prove retry/no-retry semantics without hitting real CloudWatch.
 

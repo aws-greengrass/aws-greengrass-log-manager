@@ -85,10 +85,11 @@ async fn main() {
     });
 
     let checkpoint_path = Path::new(&work_dir).join("checkpoint.json");
-    let mut store = load_checkpoint(&checkpoint_path).unwrap_or_else(|e| {
-        error!("Failed to load checkpoint: {e}, starting fresh");
-        CheckpointStore::default()
-    });
+    let mut store = load_checkpoint(&checkpoint_path, config.deprecated_version_support)
+        .unwrap_or_else(|e| {
+            error!("Failed to load checkpoint: {e}, starting fresh");
+            CheckpointStore::default()
+        });
     trim_stale_on_load(&mut store);
 
     let mut client = CwLogsClient::new().await;
@@ -140,7 +141,9 @@ async fn main() {
 
         // Persist the checkpoint at most once per upload interval.
         if last_persist.elapsed() >= persist_interval {
-            if let Err(e) = save_checkpoint(&checkpoint_path, &store) {
+            if let Err(e) =
+                save_checkpoint(&checkpoint_path, &store, config.deprecated_version_support)
+            {
                 error!("Failed to persist checkpoint: {e}");
             }
             last_persist = Instant::now();
@@ -157,7 +160,7 @@ async fn main() {
 
     // Persist the checkpoint unconditionally on the way out so progress is not lost.
     info!("Shutting down — persisting final checkpoint");
-    if let Err(e) = save_checkpoint(&checkpoint_path, &store) {
+    if let Err(e) = save_checkpoint(&checkpoint_path, &store, config.deprecated_version_support) {
         error!("Failed to persist checkpoint on shutdown: {e}");
     }
     info!("Shutdown complete");

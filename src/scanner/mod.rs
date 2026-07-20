@@ -15,6 +15,7 @@ pub use multiline::assemble_multiline;
 pub use reader::{compute_content_hash, read_file_from_offset, LogEvent};
 
 use regex::Regex;
+use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use std::time::SystemTime;
@@ -78,6 +79,37 @@ pub fn scan_directory(directory: &str, pattern: &Regex) -> std::io::Result<Vec<S
             }
         })
         .collect();
+
+    // Collapse files that share a content hash (e.g. an identical first line — see the reader's
+    // hashing), keeping the newest. The vec is mtime-ascending, so the last occurrence of each
+    // hash is the newest. This is order-preserving (a plain HashMap collect would lose the
+    // mtime order that the active-file selection below relies on): we keep each hash's last
+    // index and drop earlier duplicates, so exactly one file per hash survives and the overall
+    // last element stays the global newest.
+    let newest_index: HashMap<String, usize> = result
+        .iter()
+        .enumerate()
+        .map(|(i, f)| (f.content_hash.clone(), i))
+        .collect();
+    if newest_index.len() != result.len() {
+        let survivor_paths: HashMap<String, PathBuf> = newest_index
+            .iter()
+            .map(|(hash, &i)| (hash.clone(), result[i].path.clone()))
+            .collect();
+        let mut deduped = Vec::with_capacity(newest_index.len());
+        for (i, file) in result.into_iter().enumerate() {
+            if newest_index.get(&file.content_hash) == Some(&i) {
+                deduped.push(file);
+            } else if let Some(kept) = survivor_paths.get(&file.content_hash) {
+                tracing::warn!(
+                    dropped = %file.path.display(),
+                    kept = %kept.display(),
+                    "file shares content hash with a newer file; skipping"
+                );
+            }
+        }
+        result = deduped;
+    }
 
     // The last file by mtime (already sorted) is the active file
     if let Some(last) = result.last_mut() {
@@ -178,5 +210,30 @@ mod tests {
         let pattern = Regex::new(r".*\.log$").unwrap();
         let result = scan_directory("/nonexistent/path/12345", &pattern).unwrap();
         assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_scan_directory_dedups_shared_content_hash_keeps_newest() {
+        let dir = tempfile::tempdir().unwrap();
+        // Same first line → same content hash; distinct trailing content and mtimes.
+        create_test_file(
+            dir.path(),
+            "old.log",
+            b"shared header line\nold unique tail",
+        );
+        sleep(Duration::from_millis(50));
+        create_test_file(
+            dir.path(),
+            "new.log",
+            b"shared header line\nnew unique tail",
+        );
+
+        let pattern = Regex::new(r".*\.log$").unwrap();
+        let result = scan_directory(dir.path().to_str().unwrap(), &pattern).unwrap();
+
+        // Only the newest of the two colliding files survives, and it is the active file.
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].path.file_name().unwrap(), "new.log");
+        assert!(result[0].is_active);
     }
 }

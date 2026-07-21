@@ -7,15 +7,16 @@
 //! Tails log files and EMF JSON files, uploads to CloudWatch Logs.
 
 use gg_log_manager::config::{
-    derive_log_group_name, load_config, validate_config, ConfigError, LogLevel, LogManagerConfig,
-    LogSourceConfig,
+    derive_log_group_name, effective_disk_limit_bytes, load_config, validate_config, ConfigError,
+    LogLevel, LogManagerConfig, LogSourceConfig, LogsUploaderConfig,
 };
 use gg_log_manager::credentials::resolve_thing_name;
 #[cfg(feature = "gg-ipc")]
 use gg_log_manager::ipc_config::{connect_ipc, read_config};
 use gg_log_manager::scanner::{
     assemble_multiline, load_checkpoint, read_file_from_offset, recover_offsets, save_checkpoint,
-    scan_directory, trim_stale_on_load, CheckpointStore, LogEvent, ScannedFile,
+    scan_directory, trim_stale_on_load, CheckpointStore, LogEvent, ScanDirectoryResult,
+    ScannedFile,
 };
 use gg_log_manager::uploader::{
     advance_checkpoints, complete_file, effective_interval_secs, evict_stale_entries,
@@ -23,6 +24,7 @@ use gg_log_manager::uploader::{
     TTL_24H_MS,
 };
 use regex::Regex;
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
@@ -373,7 +375,17 @@ async fn process_all_sources(
                 continue;
             }
         };
-        if process_source(source, &log_group, &pattern, client, store, thing_name, now).await
+        if process_source(
+            source,
+            &config.logs_uploader_configuration,
+            &log_group,
+            &pattern,
+            client,
+            store,
+            thing_name,
+            now,
+        )
+        .await
             == CycleOutcome::StopForAuth
         {
             // Auth failure — stop the cycle so credentials can refresh before the next pass.
@@ -383,11 +395,14 @@ async fn process_all_sources(
     CycleOutcome::Continue
 }
 
-/// Process a single log source: scan → read → batch → upload → checkpoint → disk.
+/// Process a single log source: scan → read → batch → upload → checkpoint, then enforce the
+/// disk limit for the source every cycle.
 // Uses blocking std::fs; safe only on the current_thread runtime (switch to tokio::fs if that changes).
 #[cfg(not(tarpaulin_include))]
+#[allow(clippy::too_many_arguments)]
 async fn process_source(
     source: &LogSourceConfig,
+    uploader_config: &LogsUploaderConfig,
     log_group: &str,
     pattern: &Regex,
     client: &mut CwLogsClient,
@@ -395,40 +410,88 @@ async fn process_source(
     thing_name: &str,
     now: u64,
 ) -> CycleOutcome {
-    let scanned_files = match scan_and_filter_files(source, log_group, pattern, store) {
-        Some(files) => files,
-        None => return CycleOutcome::Continue,
+    // A scan error yields no classification data for this cycle: we cannot tell which on-disk
+    // files were dedup-dropped (and thus un-uploaded), so enforcing the disk limit could delete
+    // never-uploaded data. Skip enforcement entirely this cycle; it resumes on the next good
+    // scan. A successful scan always yields a `ScanOutcome` (possibly with an empty `filtered`
+    // set on an idle/all-completed cycle), so enforcement still runs against the directory it
+    // enumerates itself.
+    let scan_outcome = match scan_and_filter_files(source, log_group, pattern, store) {
+        Some(o) => o,
+        None => {
+            warn!(
+                log_group,
+                "Scan failed — skipping disk enforcement this cycle (no classification data)"
+            );
+            return CycleOutcome::Continue;
+        }
     };
+    let scanned_files = scan_outcome.filtered;
+    let dedup_dropped = scan_outcome.dedup_dropped;
 
-    let file_events = read_file_events(source, log_group, &scanned_files, store);
-    if file_events.is_empty() {
-        return CycleOutcome::Continue;
+    let mut outcome = CycleOutcome::Continue;
+    if !scanned_files.is_empty() {
+        let file_events = read_file_events(source, log_group, &scanned_files, store);
+        if !file_events.is_empty() {
+            // Capture the cycle outcome (e.g. StopForAuth) — it is returned after enforcement,
+            // so a systemic auth failure still halts the rest of the cycle.
+            outcome = upload_and_advance_checkpoints(
+                source,
+                log_group,
+                client,
+                store,
+                thing_name,
+                &scanned_files,
+                file_events,
+                now,
+            )
+            .await;
+        }
     }
 
-    upload_and_advance_checkpoints(
+    // Enforce the disk limit last, every cycle — see `enforce_source_disk_limit` for the
+    // classification/ordering rationale (it runs on the StopForAuth path and idle cycles too).
+    let _ = enforce_source_disk_limit(
         source,
+        uploader_config,
         log_group,
         pattern,
-        client,
         store,
-        thing_name,
         &scanned_files,
-        file_events,
-        now,
-    )
-    .await
+        &dedup_dropped,
+    );
+
+    outcome
+}
+
+/// Result of scanning + filtering a source's directory for one cycle. Returned on every
+/// successful scan (a scan error yields `None`), so the `dedup_dropped` list survives even when
+/// `filtered` is empty — the all-completed/idle cycle (path-3) is exactly when disk enforcement
+/// still runs and must know which files were skipped as hash-duplicates.
+struct ScanOutcome {
+    /// Files to read/upload this cycle (new or mid-upload; already-completed files removed).
+    filtered: Vec<ScannedFile>,
+    /// Paths dropped by content-hash dedup (older files sharing a newer file's first-line hash).
+    /// These are never read or uploaded, so disk enforcement treats them as un-uploaded.
+    dedup_dropped: Vec<PathBuf>,
 }
 
 /// Scan the log directory for matching files, dropping already-completed files (older than the
-/// last uploaded file and not mid-upload).
+/// last uploaded file and not mid-upload). Returns `None` only on a scan error (no classification
+/// data — the caller skips enforcement); every successful scan returns a `ScanOutcome`, even when
+/// the directory is empty or every file is already completed, so the dedup-dropped list is never
+/// lost on the very cycles where enforcement runs.
 fn scan_and_filter_files(
     source: &LogSourceConfig,
     log_group: &str,
     pattern: &Regex,
     store: &CheckpointStore,
-) -> Option<Vec<ScannedFile>> {
-    let scanned_files = match scan_directory(&source.log_file_directory_path, pattern) {
-        Ok(files) => files,
+) -> Option<ScanOutcome> {
+    let ScanDirectoryResult {
+        files: scanned_files,
+        dedup_dropped,
+    } = match scan_directory(&source.log_file_directory_path, pattern) {
+        Ok(res) => res,
         Err(e) => {
             error!(directory = source.log_file_directory_path, error = %e, "Failed to scan directory");
             return None;
@@ -436,7 +499,12 @@ fn scan_and_filter_files(
     };
 
     if scanned_files.is_empty() {
-        return None;
+        // Empty directory (or all files unhashable): a valid, idle cycle. `dedup_dropped` is
+        // empty here but returned uniformly so enforcement still runs.
+        return Some(ScanOutcome {
+            filtered: Vec::new(),
+            dedup_dropped,
+        });
     }
 
     let last_ts = store
@@ -444,7 +512,7 @@ fn scan_and_filter_files(
         .get(log_group)
         .map(|t| t.last_file_processed_time_stamp)
         .unwrap_or(0);
-    let scanned_files: Vec<_> = scanned_files
+    let filtered: Vec<_> = scanned_files
         .into_iter()
         .filter(|f| {
             mtime_to_ms(f.mtime) > last_ts
@@ -455,11 +523,12 @@ fn scan_and_filter_files(
         })
         .collect();
 
-    if scanned_files.is_empty() {
-        return None;
-    }
-
-    Some(scanned_files)
+    // Path-3 (all files filtered out as completed): `filtered` is empty but `dedup_dropped` may
+    // be populated — return it so enforcement can protect the dropped files this cycle.
+    Some(ScanOutcome {
+        filtered,
+        dedup_dropped,
+    })
 }
 
 /// Read new content from each scanned file at its checkpointed offset; assemble multi-line entries.
@@ -549,14 +618,14 @@ fn read_file_events(
     file_events
 }
 
-/// Upload batched events, advance checkpoints for fully-uploaded files, delete completed
-/// files when configured, and enforce the disk-space limit.
+/// Upload batched events, advance checkpoints for fully-uploaded files, and delete completed
+/// files when configured. Disk-space enforcement is handled unconditionally by the caller
+/// (`process_source`) every cycle, so it is not done here.
 #[cfg(not(tarpaulin_include))]
 #[allow(clippy::too_many_arguments)]
 async fn upload_and_advance_checkpoints(
     source: &LogSourceConfig,
     log_group: &str,
-    pattern: &Regex,
     client: &mut CwLogsClient,
     store: &mut CheckpointStore,
     thing_name: &str,
@@ -599,41 +668,6 @@ async fn upload_and_advance_checkpoints(
                 }
             }
         }
-
-        // Disk enforcement runs only after a successful upload and only deletes fully-uploaded files.
-        // TODO: if over the disk limit but the upload did not complete, nothing is freed this
-        // cycle (only uploaded files are deletable); revisiting this trade-off is future work.
-        if let Some(limit_str) = source.disk_space_limit.as_deref() {
-            if let Ok(limit_val) = limit_str.parse::<u64>() {
-                let limit_bytes = source.disk_space_limit_unit.to_bytes(limit_val);
-                let last_ts = store
-                    .last_processed_timestamps
-                    .get(log_group)
-                    .map(|t| t.last_file_processed_time_stamp)
-                    .unwrap_or(0);
-                let all_eligible: Vec<PathBuf> = scanned_files
-                    .iter()
-                    .filter(|f| !f.is_active)
-                    .filter(|f| mtime_to_ms(f.mtime) <= last_ts)
-                    .map(|f| f.path.clone())
-                    .collect();
-                let deleted = gg_log_manager::disk::free_disk_space(
-                    Path::new(&source.log_file_directory_path),
-                    pattern,
-                    limit_bytes,
-                    &all_eligible,
-                );
-                if !deleted.is_empty() {
-                    if let Some(file_map) = store.file_processing_info.get_mut(log_group) {
-                        for del_path in &deleted {
-                            if let Some(sf) = scanned_files.iter().find(|f| f.path == *del_path) {
-                                file_map.remove(&sf.content_hash);
-                            }
-                        }
-                    }
-                }
-            }
-        }
     }
 
     // Evict stale checkpoint entries each cycle so the checkpoint doesn't grow unbounded as files rotate.
@@ -648,6 +682,79 @@ async fn upload_and_advance_checkpoints(
     }
 
     CycleOutcome::Continue
+}
+
+/// Enforce the source's disk limit and drop checkpoint entries for any deleted files. Single
+/// home for the disk-enforcement rationale; call sites point here instead of repeating it.
+///
+/// Runs unconditionally at the end of every `process_source` cycle — idle cycles, upload
+/// outages, and the `StopForAuth` path included (local filesystem op, no credentials) — and
+/// must run LAST so it observes the freshly advanced `last_processed_timestamps`. The limit
+/// and flag are resolved per cycle (live config changes apply next cycle); `None` means the
+/// source is unbounded by explicit customer choice and enforcement is skipped. Dedup-dropped
+/// files are classified un-uploaded (protected by default), never silently reclaimed by mtime.
+fn enforce_source_disk_limit(
+    source: &LogSourceConfig,
+    uploader_config: &LogsUploaderConfig,
+    log_group: &str,
+    pattern: &Regex,
+    store: &mut CheckpointStore,
+    scanned_files: &[ScannedFile],
+    dedup_dropped: &[PathBuf],
+) -> gg_log_manager::disk::EnforceOutcome {
+    let Some(limit_bytes) = effective_disk_limit_bytes(source, uploader_config) else {
+        // Unbounded — neither the source nor the component-level default set a limit. This is an
+        // explicit customer choice, so do no enforcement (and emit no WARN).
+        return gg_log_manager::disk::EnforceOutcome::default();
+    };
+    let last_ts = store
+        .last_processed_timestamps
+        .get(log_group)
+        .map(|t| t.last_file_processed_time_stamp)
+        .unwrap_or(0);
+
+    // Paths still tracked (mid-upload) for this group, matched by content hashes already in the
+    // checkpoint — no re-hashing.
+    let tracked_paths: HashSet<PathBuf> = store
+        .file_processing_info
+        .get(log_group)
+        .map(|m| {
+            scanned_files
+                .iter()
+                .filter(|f| m.contains_key(&f.content_hash))
+                .map(|f| f.path.clone())
+                .collect()
+        })
+        .unwrap_or_default();
+
+    // Dedup-skipped files were never read or uploaded — fold them into the `is_tracked` guard so
+    // they classify as un-uploaded (protected by default, sheddable under the opt-in flag). Both
+    // sides derive paths from `entry.path()` on the same directory, so membership checks line up.
+    let dropped_paths: HashSet<PathBuf> = dedup_dropped.iter().cloned().collect();
+
+    let outcome = gg_log_manager::disk::enforce_disk_limit(
+        Path::new(&source.log_file_directory_path),
+        pattern,
+        limit_bytes,
+        last_ts,
+        |p| tracked_paths.contains(p) || dropped_paths.contains(p),
+        source.delete_unuploaded_files_on_disk_pressure,
+    );
+
+    // Drop checkpoint entries for every deleted file (uploaded-safe and un-uploaded).
+    if let Some(file_map) = store.file_processing_info.get_mut(log_group) {
+        for del_path in outcome
+            .uploaded_deleted
+            .iter()
+            .chain(&outcome.unuploaded_deleted)
+        {
+            if let Some(sf) = scanned_files.iter().find(|f| f.path == *del_path) {
+                file_map.remove(&sf.content_hash);
+            }
+        }
+    }
+
+    outcome
 }
 
 fn parse_arg(args: &[String], flag: &str) -> Option<String> {
@@ -868,6 +975,7 @@ mod tests {
             disk_space_limit: None,
             disk_space_limit_unit: DiskSpaceLimitUnit::KB,
             delete_log_file_after_cloud_upload: false,
+            delete_unuploaded_files_on_disk_pressure: false,
             multi_line_start_pattern: None,
             upload_interval_sec: None,
         }
@@ -1124,17 +1232,20 @@ mod tests {
     }
 
     #[test]
-    fn test_scan_and_filter_empty_dir_returns_none() {
+    fn test_scan_and_filter_empty_dir_returns_empty_outcome() {
         let dir = tempfile::tempdir().unwrap();
         let store = CheckpointStore::default();
         let pattern = Regex::new(r".*\.log$").unwrap();
         let result =
             scan_and_filter_files(&mk_source(dir.path(), r".*\.log$"), "grp", &pattern, &store);
-        assert!(result.is_none());
+        // Empty dir is a valid (idle) scan: Some with nothing to upload and nothing dropped.
+        let outcome = result.expect("empty dir is a successful scan, not an error");
+        assert!(outcome.filtered.is_empty());
+        assert!(outcome.dedup_dropped.is_empty());
     }
 
     #[test]
-    fn test_scan_and_filter_all_old_returns_none() {
+    fn test_scan_and_filter_all_old_returns_empty_filtered() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("old.log");
         std::fs::write(&path, "old data\n").unwrap();
@@ -1152,7 +1263,10 @@ mod tests {
         let pattern = Regex::new(r".*\.log$").unwrap();
         let result =
             scan_and_filter_files(&mk_source(dir.path(), r".*\.log$"), "grp", &pattern, &store);
-        assert!(result.is_none());
+        // All files filtered out as completed → Some with empty filtered (path-3), no collisions.
+        let outcome = result.expect("all-completed is a successful scan, not an error");
+        assert!(outcome.filtered.is_empty());
+        assert!(outcome.dedup_dropped.is_empty());
     }
 
     #[test]
@@ -1167,7 +1281,7 @@ mod tests {
         let pattern = Regex::new(r".*\.log$").unwrap();
         let result =
             scan_and_filter_files(&mk_source(dir.path(), r".*\.log$"), "grp", &pattern, &store);
-        let files = result.expect("new file should be kept");
+        let files = result.expect("new file should be kept").filtered;
         assert_eq!(files.len(), 1);
         assert_eq!(files[0].path, path);
     }
@@ -1204,8 +1318,482 @@ mod tests {
         let pattern = Regex::new(r".*\.log$").unwrap();
         let result =
             scan_and_filter_files(&mk_source(dir.path(), r".*\.log$"), "grp", &pattern, &store);
-        let files = result.expect("checkpointed old file should be kept");
+        let files = result
+            .expect("checkpointed old file should be kept")
+            .filtered;
         assert_eq!(files.len(), 1);
         assert_eq!(files[0].content_hash, hash);
+    }
+
+    // ---- enforce_source_disk_limit (synchronous, client-free) ----
+
+    // Idle cycle: scanned_files is empty (the scan returned None), yet a directory over its
+    // configured limit is still reclaimed. Older files at/below last_ts are uploaded-safe and
+    // deleted by the default pass; the newest (active) file is preserved. This is the headline
+    // behavior — enforcement no longer depends on a successful upload having happened.
+    #[test]
+    fn test_enforce_source_disk_limit_reclaims_on_idle_cycle() {
+        let dir = tempfile::tempdir().unwrap();
+        let old1 = dir.path().join("old1.log");
+        let old2 = dir.path().join("old2.log");
+        let active = dir.path().join("active.log");
+        std::fs::write(&old1, vec![b'a'; 1000]).unwrap();
+        std::fs::write(&old2, vec![b'b'; 1000]).unwrap();
+        std::fs::write(&active, vec![b'c'; 1000]).unwrap();
+        set_file_mtime_ms(&old1, 1_000);
+        set_file_mtime_ms(&old2, 2_000);
+        set_file_mtime_ms(&active, 9_000);
+
+        let mut source = mk_source(dir.path(), r".*\.log$");
+        source.disk_space_limit = Some("1".to_string()); // 1 KB = 1024 bytes; total is 3000
+
+        // last_ts is after both old files' mtimes → they are uploaded-safe (and untracked).
+        let mut store = CheckpointStore::default();
+        store.last_processed_timestamps.insert(
+            "grp".to_string(),
+            LastFileProcessedTimestamp {
+                last_file_processed_time_stamp: 5_000,
+            },
+        );
+
+        let pattern = Regex::new(r".*\.log$").unwrap();
+        let _ = enforce_source_disk_limit(
+            &source,
+            &LogsUploaderConfig::default(),
+            "grp",
+            &pattern,
+            &mut store,
+            &[],
+            &[],
+        );
+
+        assert!(!old1.exists(), "oldest uploaded-safe file reclaimed");
+        assert!(!old2.exists(), "second uploaded-safe file reclaimed");
+        assert!(active.exists(), "active (newest) file must be preserved");
+    }
+
+    // A source with no own diskSpaceLimit is bounded by the component-level defaultDiskSpaceLimit
+    // when one is set: older uploaded-safe files are reclaimed at the customer's default bound.
+    #[test]
+    fn test_enforce_source_disk_limit_component_default_applies_when_source_unset() {
+        let dir = tempfile::tempdir().unwrap();
+        let old1 = dir.path().join("old1.log");
+        let old2 = dir.path().join("old2.log");
+        let active = dir.path().join("active.log");
+        std::fs::write(&old1, vec![b'a'; 1000]).unwrap();
+        std::fs::write(&old2, vec![b'b'; 1000]).unwrap();
+        std::fs::write(&active, vec![b'c'; 1000]).unwrap();
+        set_file_mtime_ms(&old1, 1_000);
+        set_file_mtime_ms(&old2, 2_000);
+        set_file_mtime_ms(&active, 9_000);
+
+        // Source sets no limit; the component-level default (1 KB) bounds it. Total is 3000.
+        let source = mk_source(dir.path(), r".*\.log$");
+        let uploader = LogsUploaderConfig {
+            default_disk_space_limit: Some("1".to_string()),
+            default_disk_space_limit_unit: DiskSpaceLimitUnit::KB,
+            ..Default::default()
+        };
+
+        // last_ts after the old files' mtimes → they are uploaded-safe.
+        let mut store = CheckpointStore::default();
+        store.last_processed_timestamps.insert(
+            "grp".to_string(),
+            LastFileProcessedTimestamp {
+                last_file_processed_time_stamp: 5_000,
+            },
+        );
+
+        let pattern = Regex::new(r".*\.log$").unwrap();
+        let _ =
+            enforce_source_disk_limit(&source, &uploader, "grp", &pattern, &mut store, &[], &[]);
+
+        assert!(
+            !old1.exists() && !old2.exists(),
+            "component default bounds the unconfigured source"
+        );
+        assert!(active.exists(), "active (newest) file must be preserved");
+    }
+
+    // When neither the source nor the component sets a limit, the source is unbounded: no
+    // enforcement runs and nothing is deleted, even far over any hypothetical limit.
+    #[test]
+    fn test_enforce_source_disk_limit_unbounded_when_neither_set() {
+        let dir = tempfile::tempdir().unwrap();
+        let a = dir.path().join("a.log");
+        let b = dir.path().join("b.log");
+        std::fs::write(&a, vec![b'a'; 10_000]).unwrap();
+        std::fs::write(&b, vec![b'b'; 10_000]).unwrap();
+        set_file_mtime_ms(&a, 1_000);
+        set_file_mtime_ms(&b, 2_000);
+
+        let source = mk_source(dir.path(), r".*\.log$"); // no diskSpaceLimit
+        let uploader = LogsUploaderConfig::default(); // no defaultDiskSpaceLimit
+
+        let mut store = CheckpointStore::default();
+        store.last_processed_timestamps.insert(
+            "grp".to_string(),
+            LastFileProcessedTimestamp {
+                last_file_processed_time_stamp: 5_000,
+            },
+        );
+
+        let pattern = Regex::new(r".*\.log$").unwrap();
+        let outcome =
+            enforce_source_disk_limit(&source, &uploader, "grp", &pattern, &mut store, &[], &[]);
+
+        assert_eq!(
+            outcome,
+            gg_log_manager::disk::EnforceOutcome::default(),
+            "unbounded source: enforcement is skipped"
+        );
+        assert!(
+            a.exists() && b.exists(),
+            "nothing deleted when neither limit is set"
+        );
+    }
+
+    // A source's own diskSpaceLimit takes precedence over the component default: with a generous
+    // source limit (not exceeded) nothing is deleted, even though the tiny component default would
+    // have triggered a reclaim.
+    #[test]
+    fn test_enforce_source_disk_limit_source_limit_overrides_component_default() {
+        let dir = tempfile::tempdir().unwrap();
+        let a = dir.path().join("a.log");
+        let b = dir.path().join("b.log");
+        let active = dir.path().join("active.log");
+        std::fs::write(&a, vec![b'a'; 1000]).unwrap();
+        std::fs::write(&b, vec![b'b'; 1000]).unwrap();
+        std::fs::write(&active, vec![b'c'; 1000]).unwrap();
+        set_file_mtime_ms(&a, 1_000);
+        set_file_mtime_ms(&b, 2_000);
+        set_file_mtime_ms(&active, 9_000);
+
+        // Source limit is 1 MB (> 3000 total → not exceeded); the component default is 1 KB
+        // (would delete were it applied). Source limit wins → no deletion.
+        let mut source = mk_source(dir.path(), r".*\.log$");
+        source.disk_space_limit = Some("1".to_string());
+        source.disk_space_limit_unit = DiskSpaceLimitUnit::MB;
+        let uploader = LogsUploaderConfig {
+            default_disk_space_limit: Some("1".to_string()),
+            default_disk_space_limit_unit: DiskSpaceLimitUnit::KB,
+            ..Default::default()
+        };
+
+        let mut store = CheckpointStore::default();
+        store.last_processed_timestamps.insert(
+            "grp".to_string(),
+            LastFileProcessedTimestamp {
+                last_file_processed_time_stamp: 5_000,
+            },
+        );
+
+        let pattern = Regex::new(r".*\.log$").unwrap();
+        let outcome =
+            enforce_source_disk_limit(&source, &uploader, "grp", &pattern, &mut store, &[], &[]);
+
+        assert_eq!(
+            outcome,
+            gg_log_manager::disk::EnforceOutcome::default(),
+            "source limit not exceeded → nothing deleted (source limit overrides the default)"
+        );
+        assert!(a.exists() && b.exists() && active.exists());
+    }
+
+    // Scoping guard: a dedup-dropped file whose mtime is at/below last_ts would classify as
+    // uploaded-safe by mtime alone, but because it is in the dropped set it is routed to the
+    // un-uploaded bucket — preserved by default, and shed only under the opt-in flag. This pins
+    // that the dropped-set term (not just mtime) drives the classification.
+    #[test]
+    fn test_enforce_source_disk_limit_dedup_dropped_protected_by_default() {
+        let dir = tempfile::tempdir().unwrap();
+        let dropped = dir.path().join("dropped.log");
+        let active = dir.path().join("active.log");
+        std::fs::write(&dropped, vec![b'a'; 1000]).unwrap();
+        std::fs::write(&active, vec![b'b'; 1000]).unwrap();
+        set_file_mtime_ms(&dropped, 1_000); // older
+        set_file_mtime_ms(&active, 9_000); // newest → active
+
+        let mut source = mk_source(dir.path(), r".*\.log$");
+        source.disk_space_limit = Some("1".to_string()); // 1 KB; total is 2000 → over limit
+
+        let mut store = CheckpointStore::default();
+        // last_ts is after the dropped file's mtime → it WOULD be uploaded-safe absent the fix.
+        store.last_processed_timestamps.insert(
+            "grp".to_string(),
+            LastFileProcessedTimestamp {
+                last_file_processed_time_stamp: 5_000,
+            },
+        );
+
+        let pattern = Regex::new(r".*\.log$").unwrap();
+        // scanned_files empty (the dropped file was deduped away, so it never reaches the scan
+        // set); the dropped path is supplied via the dedup_dropped list.
+        let _ = enforce_source_disk_limit(
+            &source,
+            &LogsUploaderConfig::default(),
+            "grp",
+            &pattern,
+            &mut store,
+            &[],
+            std::slice::from_ref(&dropped),
+        );
+
+        assert!(
+            dropped.exists(),
+            "dedup-dropped file must be preserved by default despite mtime <= last_ts"
+        );
+        assert!(active.exists(), "active (newest) file is always preserved");
+
+        // With the opt-in flag it is shed as un-uploaded (phase 2), not uploaded-safe.
+        source.delete_unuploaded_files_on_disk_pressure = true;
+        let _ = enforce_source_disk_limit(
+            &source,
+            &LogsUploaderConfig::default(),
+            "grp",
+            &pattern,
+            &mut store,
+            &[],
+            std::slice::from_ref(&dropped),
+        );
+        assert!(
+            !dropped.exists(),
+            "dedup-dropped file is sheddable under the opt-in flag"
+        );
+        assert!(active.exists(), "active (newest) file is still preserved");
+    }
+
+    // Create a colliding log file: identical first line (so all share one content hash) plus a
+    // distinct-length filler after the newline (distinct sizes, still hash-equal).
+    fn write_collision_file(
+        dir: &Path,
+        name: &str,
+        filler: u8,
+        filler_len: usize,
+        mtime_ms: u64,
+    ) -> PathBuf {
+        let path = dir.join(name);
+        let mut content = b"shared first line\n".to_vec();
+        content.extend(std::iter::repeat_n(filler, filler_len));
+        std::fs::write(&path, &content).unwrap();
+        set_file_mtime_ms(&path, mtime_ms);
+        path
+    }
+
+    // T-A: five files sharing a first line (→ one content hash), so scan dedup keeps the newest
+    // (active) and drops the other four. Driven end-to-end through scan_and_filter_files (which
+    // produces the real dedup-dropped list) → enforce_source_disk_limit. In DEFAULT mode the four
+    // dropped files are classified un-uploaded and preserved across every cycle even though their
+    // mtimes are <= last_ts (they would be uploaded-safe by mtime alone); the directory stays
+    // over its limit (the documented, WARNed boundedness exception).
+    #[test]
+    fn collision_workload_default_mode_preserves_unuploaded() {
+        let dir = tempfile::tempdir().unwrap();
+        let d1 = write_collision_file(dir.path(), "d1.log", b'a', 982, 1_000); // 1000 bytes
+        let d2 = write_collision_file(dir.path(), "d2.log", b'b', 1082, 2_000); // 1100
+        let d3 = write_collision_file(dir.path(), "d3.log", b'c', 1182, 3_000); // 1200
+        let d4 = write_collision_file(dir.path(), "d4.log", b'd', 1282, 4_000); // 1300
+        let active = write_collision_file(dir.path(), "active.log", b'e', 1382, 9_000); // 1400
+        let dropped_paths = [&d1, &d2, &d3, &d4];
+
+        let mut source = mk_source(dir.path(), r".*\.log$");
+        source.disk_space_limit = Some("3".to_string()); // 3 KiB = 3072; total is 6000 → over limit
+
+        let mut store = CheckpointStore::default();
+        // last_ts after the four dropped files' mtimes → without the dedup-dropped protection they
+        // would classify uploaded-safe and be reclaimed.
+        store.last_processed_timestamps.insert(
+            "grp".to_string(),
+            LastFileProcessedTimestamp {
+                last_file_processed_time_stamp: 5_000,
+            },
+        );
+
+        let pattern = Regex::new(r".*\.log$").unwrap();
+        for cycle in 0..3 {
+            let outcome = scan_and_filter_files(&source, "grp", &pattern, &store)
+                .expect("successful scan yields a ScanOutcome");
+            // Real plumbing: dedup dropped the four older colliding files.
+            assert_eq!(
+                outcome.dedup_dropped.len(),
+                4,
+                "cycle {cycle}: four older colliding files are dedup-dropped"
+            );
+            let enforce_outcome = enforce_source_disk_limit(
+                &source,
+                &LogsUploaderConfig::default(),
+                "grp",
+                &pattern,
+                &mut store,
+                &outcome.filtered,
+                &outcome.dedup_dropped,
+            );
+            assert!(
+                enforce_outcome.uploaded_deleted.is_empty()
+                    && enforce_outcome.unuploaded_deleted.is_empty(),
+                "cycle {cycle}: default mode deletes nothing (dropped files are un-uploaded)"
+            );
+            for p in dropped_paths {
+                assert!(
+                    p.exists(),
+                    "cycle {cycle}: dropped file {p:?} must be preserved"
+                );
+            }
+            assert!(active.exists(), "cycle {cycle}: active file preserved");
+        }
+    }
+
+    // T-B: same fixture with deleteUnuploadedFilesOnDiskPressure = true. The dedup-dropped files
+    // are shed as UN-UPLOADED (phase 2 — reported in unuploaded_deleted, never uploaded_deleted),
+    // oldest-first only until under the limit, and the active (newest) file survives.
+    #[test]
+    fn collision_workload_flag_on_sheds_oldest_and_bounds_disk() {
+        let dir = tempfile::tempdir().unwrap();
+        let d1 = write_collision_file(dir.path(), "d1.log", b'a', 982, 1_000); // 1000
+        let d2 = write_collision_file(dir.path(), "d2.log", b'b', 1082, 2_000); // 1100
+        let d3 = write_collision_file(dir.path(), "d3.log", b'c', 1182, 3_000); // 1200
+        let d4 = write_collision_file(dir.path(), "d4.log", b'd', 1282, 4_000); // 1300
+        let active = write_collision_file(dir.path(), "active.log", b'e', 1382, 9_000); // 1400
+
+        let mut source = mk_source(dir.path(), r".*\.log$");
+        source.disk_space_limit = Some("3".to_string()); // 3072; total 6000
+        source.delete_unuploaded_files_on_disk_pressure = true;
+
+        let mut store = CheckpointStore::default();
+        store.last_processed_timestamps.insert(
+            "grp".to_string(),
+            LastFileProcessedTimestamp {
+                last_file_processed_time_stamp: 5_000,
+            },
+        );
+
+        let pattern = Regex::new(r".*\.log$").unwrap();
+        let outcome = scan_and_filter_files(&source, "grp", &pattern, &store)
+            .expect("successful scan yields a ScanOutcome");
+        assert_eq!(outcome.dedup_dropped.len(), 4);
+        let enforce_outcome = enforce_source_disk_limit(
+            &source,
+            &LogsUploaderConfig::default(),
+            "grp",
+            &pattern,
+            &mut store,
+            &outcome.filtered,
+            &outcome.dedup_dropped,
+        );
+
+        // Shed as un-uploaded, oldest-first, only until under 3072: 6000 - (1000+1100+1200) = 2700.
+        assert_eq!(
+            enforce_outcome.unuploaded_deleted,
+            vec![d1.clone(), d2.clone(), d3.clone()],
+            "oldest un-uploaded dropped files shed first"
+        );
+        assert!(
+            enforce_outcome.uploaded_deleted.is_empty(),
+            "dropped files are shed via the un-uploaded path, never uploaded-safe"
+        );
+        assert!(!d1.exists() && !d2.exists() && !d3.exists());
+        assert!(d4.exists(), "only enough shed to get under the limit");
+        assert!(active.exists(), "active (newest) file is never deleted");
+    }
+
+    // Path-3 (§8.7.1.4): a collision where the SURVIVING (newest) file is itself already
+    // completed — its mtime <= last_ts and it has no in-flight checkpoint entry — so
+    // scan_and_filter_files returns `filtered` EMPTY while `dedup_dropped` is NON-EMPTY. This is
+    // the exact cycle a future re-coupling of enforcement to a non-empty `filtered` set would
+    // break: enforcement must still run and must still protect the dropped file. Driven
+    // end-to-end (scan_and_filter_files → enforce_source_disk_limit), flag=false.
+    #[test]
+    fn path3_empty_filtered_with_dropped_preserves_dropped_by_default() {
+        let dir = tempfile::tempdir().unwrap();
+        // Two colliding files (shared first line → one content hash); older is dedup-dropped,
+        // newer survives as active. Sizes total over the limit so enforcement attempts a reclaim.
+        let older = write_collision_file(dir.path(), "older.log", b'a', 982, 1_000); // 1000 bytes
+        let newer = write_collision_file(dir.path(), "newer.log", b'b', 1082, 2_000); // 1100 bytes
+
+        let mut source = mk_source(dir.path(), r".*\.log$");
+        source.disk_space_limit = Some("1".to_string()); // 1 KiB = 1024; total 2100 → over limit
+
+        let mut store = CheckpointStore::default();
+        // last_ts is after BOTH files' mtimes (and there is no file_processing_info entry), so the
+        // surviving newer file is filtered out as completed → `filtered` is empty (path-3).
+        store.last_processed_timestamps.insert(
+            "grp".to_string(),
+            LastFileProcessedTimestamp {
+                last_file_processed_time_stamp: 5_000,
+            },
+        );
+
+        let pattern = Regex::new(r".*\.log$").unwrap();
+        let outcome = scan_and_filter_files(&source, "grp", &pattern, &store)
+            .expect("a successful scan yields Some(ScanOutcome), even when everything is filtered");
+        assert!(
+            outcome.filtered.is_empty(),
+            "surviving file is already completed → filtered is empty (path-3)"
+        );
+        assert_eq!(
+            outcome.dedup_dropped,
+            vec![older.clone()],
+            "the older colliding file is dedup-dropped (non-empty) on this same cycle"
+        );
+
+        // Enforcement still runs on path-3 and, in default mode, must protect the dropped file
+        // even though its mtime <= last_ts would otherwise class it uploaded-safe.
+        let enforce_outcome = enforce_source_disk_limit(
+            &source,
+            &LogsUploaderConfig::default(),
+            "grp",
+            &pattern,
+            &mut store,
+            &outcome.filtered,
+            &outcome.dedup_dropped,
+        );
+        assert!(
+            enforce_outcome.uploaded_deleted.is_empty()
+                && enforce_outcome.unuploaded_deleted.is_empty(),
+            "default mode deletes nothing: the dropped file is un-uploaded, not uploaded-safe"
+        );
+        assert!(
+            older.exists(),
+            "dedup-dropped file preserved by default on the path-3 cycle"
+        );
+        assert!(newer.exists(), "active (newest) file is always preserved");
+    }
+
+    // Scan-error cycle: an unreadable directory makes scan_directory return Err, so
+    // scan_and_filter_files returns None — the signal on which process_source SKIPS enforcement
+    // entirely (no classification data ⇒ no deletions). Verifies the skip trigger fires.
+    #[cfg(unix)]
+    #[test]
+    fn test_scan_and_filter_scan_error_returns_none_to_skip_enforcement() {
+        use std::os::unix::fs::PermissionsExt;
+
+        // root ignores permission bits — skip.
+        if std::process::Command::new("id")
+            .arg("-u")
+            .output()
+            .map(|o| o.stdout.starts_with(b"0"))
+            .unwrap_or(false)
+        {
+            return;
+        }
+
+        let dir = tempfile::tempdir().unwrap();
+        // A file exists, so a *successful* scan would find something to act on.
+        std::fs::write(dir.path().join("app.log"), vec![b'a'; 5000]).unwrap();
+        // Make the directory unreadable so read_dir fails with a non-NotFound error.
+        std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o000)).unwrap();
+
+        let source = mk_source(dir.path(), r".*\.log$");
+        let store = CheckpointStore::default();
+        let pattern = Regex::new(r".*\.log$").unwrap();
+        let result = scan_and_filter_files(&source, "grp", &pattern, &store);
+
+        // Restore permissions so the TempDir can be cleaned up.
+        std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        assert!(
+            result.is_none(),
+            "a scan error yields None so process_source skips disk enforcement this cycle"
+        );
     }
 }

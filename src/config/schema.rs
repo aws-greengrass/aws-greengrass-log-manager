@@ -69,6 +69,11 @@ pub struct LogSourceConfig {
     pub disk_space_limit_unit: DiskSpaceLimitUnit,
     #[serde(default, deserialize_with = "deserialize_bool_or_string")]
     pub delete_log_file_after_cloud_upload: bool,
+    /// Opt-in: when still over `diskSpaceLimit` after reclaiming fully-uploaded files, also
+    /// delete the oldest un-uploaded (non-active) files. Default false, so the default
+    /// behavior only ever reclaims already-uploaded files.
+    #[serde(default, deserialize_with = "deserialize_bool_or_string")]
+    pub delete_unuploaded_files_on_disk_pressure: bool,
     pub multi_line_start_pattern: Option<String>,
     /// Per-source upload interval override. Not yet honored — every source currently
     /// uploads on the global `periodicUploadIntervalSec` cadence.
@@ -91,6 +96,13 @@ pub struct LogsUploaderConfig {
     pub component_logs_configuration_map: HashMap<String, ComponentSourceConfig>,
     #[serde(default)]
     pub system_logs_configuration: Option<SystemLogSourceConfig>,
+    /// Optional fallback applied to any source that does not set its own `diskSpaceLimit`.
+    /// When neither is set, the source is not bounded. Uses the same string-or-number form
+    /// and unit field as the per-source `diskSpaceLimit`/`diskSpaceLimitUnit`.
+    #[serde(default, deserialize_with = "deserialize_optional_string_or_number")]
+    pub default_disk_space_limit: Option<String>,
+    #[serde(default)]
+    pub default_disk_space_limit_unit: DiskSpaceLimitUnit,
 }
 
 /// Top-level config struct deserialized from the full recipe configuration tree.
@@ -315,6 +327,19 @@ mod tests {
     }
 
     #[test]
+    fn test_delete_unuploaded_flag_default_and_string() {
+        // Defaults to false when omitted.
+        let json = r#"{"logFileDirectoryPath":"/tmp","logFileRegex":".*"}"#;
+        let comp: ComponentSourceConfig = serde_json::from_str(json).unwrap();
+        assert!(!comp.source.delete_unuploaded_files_on_disk_pressure);
+
+        // Accepts the Greengrass string form "true" (config values arrive as strings).
+        let json = r#"{"logFileDirectoryPath":"/tmp","logFileRegex":".*","deleteUnuploadedFilesOnDiskPressure":"true"}"#;
+        let comp: ComponentSourceConfig = serde_json::from_str(json).unwrap();
+        assert!(comp.source.delete_unuploaded_files_on_disk_pressure);
+    }
+
+    #[test]
     fn test_serde_roundtrip() {
         let mut map = HashMap::new();
         map.insert(
@@ -327,6 +352,7 @@ mod tests {
                     disk_space_limit: Some("50".into()),
                     disk_space_limit_unit: DiskSpaceLimitUnit::GB,
                     delete_log_file_after_cloud_upload: true,
+                    delete_unuploaded_files_on_disk_pressure: false,
                     multi_line_start_pattern: Some("^\\d".into()),
                     upload_interval_sec: Some(120),
                 },
@@ -339,6 +365,8 @@ mod tests {
             logs_uploader_configuration: LogsUploaderConfig {
                 component_logs_configuration_map: map,
                 system_logs_configuration: None,
+                default_disk_space_limit: Some("128".into()),
+                default_disk_space_limit_unit: DiskSpaceLimitUnit::MB,
             },
         };
         let json = serde_json::to_string(&config).unwrap();
@@ -358,6 +386,16 @@ mod tests {
             .unwrap();
         assert_eq!(comp.source.disk_space_limit, Some("50".into()));
         assert_eq!(comp.source.upload_interval_sec, Some(120));
+        assert_eq!(
+            parsed.logs_uploader_configuration.default_disk_space_limit,
+            Some("128".into())
+        );
+        assert_eq!(
+            parsed
+                .logs_uploader_configuration
+                .default_disk_space_limit_unit,
+            DiskSpaceLimitUnit::MB
+        );
     }
 
     #[test]
@@ -493,6 +531,53 @@ mod tests {
     #[test]
     fn test_default_log_level_is_info() {
         assert_eq!(LogLevel::default(), LogLevel::Info);
+    }
+
+    #[test]
+    fn test_default_disk_space_limit_keys_parse() {
+        // Component-level default (nested form) parses like the per-source keys.
+        let json = r#"{
+            "logsUploaderConfiguration": {
+                "defaultDiskSpaceLimit": "512",
+                "defaultDiskSpaceLimitUnit": "MB"
+            }
+        }"#;
+        let config: LogManagerConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(
+            config.logs_uploader_configuration.default_disk_space_limit,
+            Some("512".into())
+        );
+        assert_eq!(
+            config
+                .logs_uploader_configuration
+                .default_disk_space_limit_unit,
+            DiskSpaceLimitUnit::MB
+        );
+
+        // JSON number form is accepted too (config values may arrive as numbers).
+        let json = r#"{
+            "logsUploaderConfiguration": {
+                "defaultDiskSpaceLimit": 512
+            }
+        }"#;
+        let config: LogManagerConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(
+            config.logs_uploader_configuration.default_disk_space_limit,
+            Some("512".into())
+        );
+
+        // Omitted → None (unbounded) with the default unit.
+        let config: LogManagerConfig = serde_json::from_str("{}").unwrap();
+        assert_eq!(
+            config.logs_uploader_configuration.default_disk_space_limit,
+            None
+        );
+        assert_eq!(
+            config
+                .logs_uploader_configuration
+                .default_disk_space_limit_unit,
+            DiskSpaceLimitUnit::KB
+        );
     }
 
     #[test]

@@ -24,7 +24,9 @@ fn test_scan_checkpoint_restart_resume() {
 
     // First scan
     let pattern = Regex::new(r".*\.log$").unwrap();
-    let files = scan_directory(dir.path().to_str().unwrap(), &pattern).unwrap();
+    let files = scan_directory(dir.path().to_str().unwrap(), &pattern)
+        .unwrap()
+        .files;
     assert_eq!(files.len(), 3);
 
     // Simulate partial upload: checkpoint 2 files with offsets
@@ -49,7 +51,9 @@ fn test_scan_checkpoint_restart_resume() {
     let mut loaded = load_checkpoint(&checkpoint_path, true).unwrap();
 
     // Re-scan and recover offsets
-    let files_after_restart = scan_directory(dir.path().to_str().unwrap(), &pattern).unwrap();
+    let files_after_restart = scan_directory(dir.path().to_str().unwrap(), &pattern)
+        .unwrap()
+        .files;
     let offsets = recover_offsets(&mut loaded, "test-group", &files_after_restart);
 
     // Assert: 2 files resume from checkpointed offsets, 1 starts at 0
@@ -73,7 +77,9 @@ fn test_checkpoint_stale_entry_removed_after_file_deleted() {
 
     // Scan and checkpoint both
     let pattern = Regex::new(r".*\.log$").unwrap();
-    let files = scan_directory(dir.path().to_str().unwrap(), &pattern).unwrap();
+    let files = scan_directory(dir.path().to_str().unwrap(), &pattern)
+        .unwrap()
+        .files;
     assert_eq!(files.len(), 2);
 
     let mut store = CheckpointStore::default();
@@ -94,7 +100,9 @@ fn test_checkpoint_stale_entry_removed_after_file_deleted() {
 
     // Re-scan (now only 1 file) and recover
     let mut loaded = load_checkpoint(&checkpoint_path, true).unwrap();
-    let files_after = scan_directory(dir.path().to_str().unwrap(), &pattern).unwrap();
+    let files_after = scan_directory(dir.path().to_str().unwrap(), &pattern)
+        .unwrap()
+        .files;
     assert_eq!(files_after.len(), 1);
 
     let offsets = recover_offsets(&mut loaded, "test-group", &files_after);

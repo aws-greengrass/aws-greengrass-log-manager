@@ -35,6 +35,21 @@ cargo test --target aarch64-unknown-linux-musl
 | `credentials/` | AWS credential retrieval via GG TES |
 | `disk/` | Disk space management and log cleanup |
 
+## Disk space management
+
+Each configured log source is bounded by its `diskSpaceLimit`, enforced on **every scan cycle**
+(not only after a successful upload), so already-uploaded files are reclaimed even during an
+upload outage. In the default mode only fully-uploaded files are reclaimed, so a source that
+cannot upload may still exceed its limit unless `deleteUnuploadedFilesOnDiskPressure` is set. A
+source without its own `diskSpaceLimit` uses the component-level `defaultDiskSpaceLimit` if set;
+when neither is set the source is not bounded.
+
+By default only fully-uploaded files are reclaimed. Setting `deleteUnuploadedFilesOnDiskPressure`
+to `true` on a source additionally sheds its oldest un-uploaded files when it is still over the
+limit after reclaiming uploaded ones. The active (newest) file is never deleted. Files skipped as
+hash-duplicates of a newer file (which may not have been uploaded) are likewise preserved in the
+default mode and only reclaimed under pressure when `deleteUnuploadedFilesOnDiskPressure` is set.
+
 ## Security
 
 See [CONTRIBUTING](CONTRIBUTING.md#security-issue-notifications) for more information.

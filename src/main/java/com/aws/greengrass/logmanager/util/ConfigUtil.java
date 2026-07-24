@@ -74,7 +74,7 @@ public final class ConfigUtil {
             try {
                 if (existingChild == null || existingChild instanceof Topic) {
                     Topic node = t.createLeafChild(key.toString());
-                    if (!Objects.equals(node.getOnce(), value)) {
+                    if (!valuesEqual(node.getOnce(), value)) {
                         node.withValueChecked(childMergeBehavior.getTimestampToUse(), value);
                     }
                 } else {
@@ -86,5 +86,20 @@ public final class ConfigUtil {
                 logger.error("Should never fail in updateChild", e);
             }
         }
+    }
+
+    /**
+     * Compares two values for equality, normalizing integral numeric types to long before comparison.
+     * This prevents false negatives from Integer/Long type mismatch when the config store
+     * deserializes numbers as Integer (Jackson default) but the caller provides Long (Java autoboxing of long).
+     * Floating-point numbers fall through to Objects.equals to avoid truncation.
+     */
+    private static boolean valuesEqual(Object existing, Object incoming) {
+        if (existing instanceof Number && incoming instanceof Number
+                && !(existing instanceof Double || existing instanceof Float
+                || incoming instanceof Double || incoming instanceof Float)) {
+            return ((Number) existing).longValue() == ((Number) incoming).longValue();
+        }
+        return Objects.equals(existing, incoming);
     }
 }

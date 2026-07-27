@@ -1,101 +1,198 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-//! Disk space management — per-component log directory size limits.
-//! Deletes oldest already-processed (uploaded) files when total exceeds diskSpaceLimit.
+//! Disk space management — per-source log directory size limits.
+//!
+//! `enforce_disk_limit` runs every scan cycle: it enumerates the directory,
+//! classifies each file (active / uploaded-safe / un-uploaded), and deletes the
+//! oldest eligible files until under `diskSpaceLimit`. Uploaded-safe files are
+//! reclaimed first; un-uploaded files only when the caller opts in. The newest
+//! (active) file is never deleted, and each file is re-stat'd immediately before
+//! unlink so one that has since grown into the active file is left alone.
 
 use regex::Regex;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-/// Calculate total size of regular files matching `pattern` in `dir` (top-level only).
-/// Skips symlinks and subdirectories.
-fn dir_size(dir: &Path, pattern: &Regex) -> u64 {
-    match fs::read_dir(dir) {
-        Ok(entries) => entries
-            .filter_map(|e| e.ok())
-            .filter(|e| e.file_type().is_ok_and(|ft| ft.is_file()))
-            .filter(|e| pattern.is_match(&e.file_name().to_string_lossy()))
-            .filter_map(|e| e.metadata().ok())
-            .map(|m| m.len())
-            .sum(),
+/// Files deleted by [`enforce_disk_limit`], split by upload status.
+#[derive(Debug, Default, PartialEq, Eq)]
+#[must_use = "disk-enforcement outcome records which files were deleted"]
+pub struct EnforceOutcome {
+    /// Fully-uploaded ("uploaded-safe") files that were deleted.
+    pub uploaded_deleted: Vec<PathBuf>,
+    /// Un-uploaded files deleted under disk pressure (only when `allow_unuploaded`).
+    pub unuploaded_deleted: Vec<PathBuf>,
+}
+
+/// A matching regular file found during directory enumeration.
+#[derive(Debug)]
+struct DiskEntry {
+    path: PathBuf,
+    size: u64,
+    mtime: SystemTime,
+}
+
+/// Enumerate top-level regular files in `dir` matching `pattern`.
+/// Skips symlinks and subdirectories (mirrors the scanner).
+fn enumerate_files(dir: &Path, pattern: &Regex) -> Vec<DiskEntry> {
+    let entries = match fs::read_dir(dir) {
+        Ok(e) => e,
         Err(e) => {
             tracing::warn!(dir = %dir.display(), error = %e, "Cannot read directory for disk management");
-            0
+            return Vec::new();
+        }
+    };
+    entries
+        .filter_map(Result::ok)
+        .filter_map(|e| {
+            if !e.file_type().ok()?.is_file() {
+                return None;
+            }
+            if !pattern.is_match(&e.file_name().to_string_lossy()) {
+                return None;
+            }
+            let meta = e.metadata().ok()?;
+            Some(DiskEntry {
+                path: e.path(),
+                size: meta.len(),
+                mtime: meta.modified().unwrap_or(SystemTime::UNIX_EPOCH),
+            })
+        })
+        .collect()
+}
+
+fn mtime_ms(t: SystemTime) -> u64 {
+    t.duration_since(SystemTime::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+/// Re-stat immediately before unlink (TOCTOU guard) and delete.
+/// Returns freed bytes on success, or `None` if the file has become the
+/// newest/active file, vanished, or could not be removed.
+fn restat_and_unlink(path: &Path, newest: SystemTime) -> Option<u64> {
+    let meta = fs::metadata(path).ok()?;
+    if meta.modified().unwrap_or(SystemTime::UNIX_EPOCH) >= newest {
+        // Grew into the newest/active file since enumeration — do not delete.
+        tracing::debug!(path = %path.display(), "Skipping delete: file is now newest/active");
+        return None;
+    }
+    match fs::remove_file(path) {
+        Ok(()) => Some(meta.len()),
+        Err(e) => {
+            tracing::warn!(path = %path.display(), error = %e, "Failed to delete file, skipping");
+            None
         }
     }
 }
 
-/// Free disk space by deleting oldest processed files until directory size ≤ limit.
+// Real-filesystem-usage-based enforcement (statvfs) is not supported: enforcement is a
+// per-source quota on each source's own directory, not a check of actual device free space.
+// It therefore does not protect against whole-device disk exhaustion (e.g. another process
+// filling the disk), and this component can only ever delete its own files.
+
+// TODO: apply Bytes/EpochMs (and Duration for sec/ms values) newtypes crate-wide instead of
+// bare u64s. The epoch-ms fields serialize into the backward-compatible checkpoint format, so
+// this needs #[serde(transparent)] plus a wire-format round-trip test against the legacy layout.
+/// Enforce `limit_bytes` on `dir` by deleting the oldest eligible files.
 ///
-/// Only deletes files in `processed_files` — caller must ensure these are safe to delete
-/// (fully uploaded, not actively written to). This function trusts the list it receives.
-///
-/// Returns paths of successfully deleted files.
-pub fn free_disk_space(
+/// Enumerates `dir` directly and classifies each matching file: newest mtime = **active**
+/// (never deleted); `mtime <= last_ts_ms && !is_tracked` = **uploaded-safe**; the rest =
+/// **un-uploaded**. Deletes uploaded-safe oldest-first until under limit, then (only if
+/// `allow_unuploaded`) un-uploaded oldest-first, WARN each. Files are re-stat'd before unlink.
+pub fn enforce_disk_limit(
     dir: &Path,
     pattern: &Regex,
     limit_bytes: u64,
-    processed_files: &[PathBuf],
-) -> Vec<PathBuf> {
-    if processed_files.is_empty() {
-        return Vec::new();
+    last_ts_ms: u64,
+    is_tracked: impl Fn(&Path) -> bool,
+    allow_unuploaded: bool,
+) -> EnforceOutcome {
+    let mut outcome = EnforceOutcome::default();
+
+    let entries = enumerate_files(dir, pattern);
+    let total: u64 = entries.iter().map(|e| e.size).sum();
+    if total <= limit_bytes {
+        return outcome;
     }
 
-    let total_size = dir_size(dir, pattern);
-
-    if total_size <= limit_bytes {
-        return Vec::new();
-    }
-
-    // Cache metadata upfront to avoid double reads (once for sort, once for size).
-    let mut file_info: Vec<_> = processed_files
+    // Active file(s) = newest mtime; never deleted (ties treated as active for safety).
+    let newest = entries
         .iter()
-        .filter_map(|p| {
-            fs::metadata(p).ok().map(|m| {
-                (
-                    p.clone(),
-                    m.len(),
-                    m.modified().unwrap_or(SystemTime::UNIX_EPOCH),
-                )
-            })
-        })
-        .collect();
-    file_info.sort_by_key(|(_, _, mtime)| *mtime); // oldest first
+        .map(|e| e.mtime)
+        .max()
+        .unwrap_or(SystemTime::UNIX_EPOCH);
 
-    let mut bytes_to_free = total_size.saturating_sub(limit_bytes);
-    let mut deleted = Vec::with_capacity(file_info.len());
-    let mut actually_freed: u64 = 0;
+    let mut uploaded_safe: Vec<&DiskEntry> = Vec::new();
+    let mut unuploaded: Vec<&DiskEntry> = Vec::new();
+    for e in &entries {
+        if e.mtime >= newest {
+            continue; // active — never delete
+        }
+        if mtime_ms(e.mtime) <= last_ts_ms && !is_tracked(&e.path) {
+            uploaded_safe.push(e);
+        } else {
+            unuploaded.push(e);
+        }
+    }
+    uploaded_safe.sort_by_key(|e| e.mtime); // oldest first
+    unuploaded.sort_by_key(|e| e.mtime);
 
-    for (path, size, _) in file_info {
-        if bytes_to_free == 0 {
+    let mut remaining = total;
+
+    // Phase 1: reclaim uploaded-safe files first.
+    for e in uploaded_safe {
+        if remaining <= limit_bytes {
             break;
         }
-        if let Err(e) = fs::remove_file(&path) {
-            tracing::warn!(path = %path.display(), error = %e, "Failed to delete processed file, skipping");
-            continue;
+        if let Some(freed) = restat_and_unlink(&e.path, newest) {
+            tracing::info!(path = %e.path.display(), freed_bytes = freed, "Deleted uploaded log file under disk pressure");
+            remaining = remaining.saturating_sub(freed);
+            outcome.uploaded_deleted.push(e.path.clone());
         }
-        tracing::info!(path = %path.display(), freed_bytes = size, "Deleted processed log file");
-        deleted.push(path);
-        actually_freed += size;
-        bytes_to_free = bytes_to_free.saturating_sub(size);
     }
 
-    if !deleted.is_empty() {
-        tracing::info!(
-            total_freed = actually_freed,
-            files_deleted = deleted.len(),
-            "Disk space freed"
+    // Phase 2: reclaim un-uploaded files only when opted in and still over.
+    if allow_unuploaded {
+        for e in unuploaded {
+            if remaining <= limit_bytes {
+                break;
+            }
+            if let Some(freed) = restat_and_unlink(&e.path, newest) {
+                tracing::warn!(
+                    path = %e.path.display(),
+                    freed_bytes = freed,
+                    reason = "disk pressure, not yet uploaded",
+                    "Deleted un-uploaded log file under disk pressure"
+                );
+                remaining = remaining.saturating_sub(freed);
+                outcome.unuploaded_deleted.push(e.path.clone());
+            }
+        }
+    }
+
+    if !outcome.unuploaded_deleted.is_empty() {
+        tracing::warn!(
+            count = outcome.unuploaded_deleted.len(),
+            dir = %dir.display(),
+            "Deleted un-uploaded files under disk pressure"
+        );
+    } else if outcome.uploaded_deleted.is_empty() {
+        // Over limit but nothing eligible to reclaim (e.g. only the active file, or
+        // all remaining files are un-uploaded and un-uploaded shedding is disabled).
+        tracing::warn!(
+            dir = %dir.display(),
+            total_bytes = total,
+            limit_bytes,
+            "Over disk limit but no eligible files to delete"
         );
     }
 
-    deleted
+    outcome
 }
 
-// Single-arg &[x.clone()] kept per review; allow for clippy 1.94.1.
 #[cfg(test)]
-#[allow(clippy::cloned_ref_to_slice_refs)]
 mod tests {
     use super::*;
     use std::fs::File;
@@ -124,114 +221,191 @@ mod tests {
         Regex::new(r"\.log$").expect("invalid test regex")
     }
 
-    #[test]
-    fn no_op_when_under_limit() {
-        let tmp = TempDir::new().unwrap();
-        let f1 = create_file(tmp.path(), "a.log", 100);
-        let f2 = create_file(tmp.path(), "b.log", 100);
-        let processed = vec![f1, f2];
-
-        let deleted = free_disk_space(tmp.path(), &log_pattern(), 500, &processed);
-        assert!(deleted.is_empty());
-        assert!(processed.iter().all(|p| p.exists()));
+    /// Epoch-millis for `secs` seconds ago — matches how `set_mtime` sets mtimes.
+    fn ts_ms_secs_ago(secs: i64) -> u64 {
+        let now = i64::try_from(
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock before UNIX_EPOCH")
+                .as_secs(),
+        )
+        .expect("timestamp overflow");
+        u64::try_from((now - secs) * 1000).expect("negative timestamp")
     }
 
-    #[test]
-    fn deletes_oldest_first_until_under_limit() {
-        let tmp = TempDir::new().unwrap();
-        let old = create_file(tmp.path(), "old.log", 100);
-        let mid = create_file(tmp.path(), "mid.log", 100);
-        let new = create_file(tmp.path(), "new.log", 100);
-        set_mtime(&old, 300);
-        set_mtime(&mid, 200);
-        set_mtime(&new, 100);
-
-        let processed = vec![old.clone(), mid.clone(), new.clone()];
-        // total=300, limit=250 → need to free 50 → delete oldest (100 bytes)
-        let deleted = free_disk_space(tmp.path(), &log_pattern(), 250, &processed);
-        assert_eq!(deleted, vec![old.clone()]);
-        assert!(!old.exists());
-        assert!(mid.exists());
-        assert!(new.exists());
+    fn untracked(_: &Path) -> bool {
+        false
     }
 
+    // T1 (default): over limit, allow_unuploaded=false → deletes only uploaded-safe
+    // oldest-first; never the active file; never un-uploaded files.
     #[test]
-    fn only_deletes_processed_files() {
+    fn enforce_deletes_only_uploaded_safe_oldest_first() {
         let tmp = TempDir::new().unwrap();
-        let active = create_file(tmp.path(), "active.log", 200);
-        let processed = create_file(tmp.path(), "done.log", 200);
-        set_mtime(&processed, 100);
+        let active = create_file(tmp.path(), "active.log", 100);
+        let unup = create_file(tmp.path(), "unup.log", 100);
+        let up_old = create_file(tmp.path(), "up_old.log", 100);
+        let up_mid = create_file(tmp.path(), "up_mid.log", 100);
+        set_mtime(&active, 10);
+        set_mtime(&unup, 50);
+        set_mtime(&up_mid, 200);
+        set_mtime(&up_old, 300);
+        let last_ts = ts_ms_secs_ago(150);
 
-        // total=400, limit=250 → need 150 freed, but only processed is deletable
-        let deleted = free_disk_space(tmp.path(), &log_pattern(), 250, &[processed.clone()]);
-        assert_eq!(deleted, vec![processed]);
-        assert!(active.exists(), "active file must not be deleted");
+        // total=400, limit=250 → reclaim the two uploaded-safe files.
+        let outcome =
+            enforce_disk_limit(tmp.path(), &log_pattern(), 250, last_ts, untracked, false);
+
+        assert_eq!(
+            outcome.uploaded_deleted,
+            vec![up_old.clone(), up_mid.clone()]
+        );
+        assert!(outcome.unuploaded_deleted.is_empty());
+        assert!(!up_old.exists() && !up_mid.exists());
+        assert!(active.exists(), "active file must never be deleted");
+        assert!(
+            unup.exists(),
+            "un-uploaded file must not be deleted by default"
+        );
     }
 
+    // T2 (opt-in): still over after uploaded-safe removed → deletes oldest un-uploaded.
+    // Asserts a file with mtime > last_ts (un-uploaded) is deleted — the differentiator.
     #[test]
-    fn handles_missing_files_gracefully() {
+    fn enforce_deletes_unuploaded_when_still_over_and_opted_in() {
         let tmp = TempDir::new().unwrap();
-        let exists = create_file(tmp.path(), "exists.log", 200);
-        let ghost = tmp.path().join("ghost.log");
-        set_mtime(&exists, 50);
+        let active = create_file(tmp.path(), "active.log", 100);
+        let unup = create_file(tmp.path(), "unup.log", 100);
+        let up_old = create_file(tmp.path(), "up_old.log", 100);
+        let up_mid = create_file(tmp.path(), "up_mid.log", 100);
+        set_mtime(&active, 10);
+        set_mtime(&unup, 50);
+        set_mtime(&up_mid, 200);
+        set_mtime(&up_old, 300);
+        let last_ts = ts_ms_secs_ago(150);
 
-        // total=200, limit=50 → need to free 150
-        let deleted = free_disk_space(tmp.path(), &log_pattern(), 50, &[ghost, exists.clone()]);
-        assert_eq!(deleted, vec![exists]);
+        // total=400, limit=150 → reclaim both uploaded-safe, then the oldest un-uploaded.
+        let outcome = enforce_disk_limit(tmp.path(), &log_pattern(), 150, last_ts, untracked, true);
+
+        assert_eq!(outcome.uploaded_deleted, vec![up_old, up_mid]);
+        assert_eq!(outcome.unuploaded_deleted, vec![unup.clone()]);
+        assert!(
+            !unup.exists(),
+            "un-uploaded (mtime>last_ts) file should be deleted when opted in"
+        );
+        assert!(active.exists(), "active file must never be deleted");
     }
 
+    // T3: a single active file alone exceeds the limit → nothing deleted, no thrash/panic.
     #[test]
-    fn empty_processed_files_is_noop() {
+    fn enforce_single_active_file_over_limit_deletes_nothing() {
         let tmp = TempDir::new().unwrap();
-        create_file(tmp.path(), "a.log", 1000);
+        let active = create_file(tmp.path(), "active.log", 1000);
+        set_mtime(&active, 10);
 
-        let deleted = free_disk_space(tmp.path(), &log_pattern(), 10, &[]);
-        assert!(deleted.is_empty());
+        let outcome = enforce_disk_limit(tmp.path(), &log_pattern(), 100, 0, untracked, true);
+
+        assert!(outcome.uploaded_deleted.is_empty());
+        assert!(outcome.unuploaded_deleted.is_empty());
+        assert!(active.exists());
     }
 
+    // T4 (negative): under limit → no-op regardless of classification.
     #[test]
-    fn all_files_deleted_when_way_over_limit() {
+    fn enforce_noop_when_under_limit() {
         let tmp = TempDir::new().unwrap();
-        let f1 = create_file(tmp.path(), "a.log", 500);
-        let f2 = create_file(tmp.path(), "b.log", 500);
-        let f3 = create_file(tmp.path(), "c.log", 500);
-        set_mtime(&f1, 300);
-        set_mtime(&f2, 200);
-        set_mtime(&f3, 100);
+        let a = create_file(tmp.path(), "a.log", 100);
+        let b = create_file(tmp.path(), "b.log", 100);
+        set_mtime(&a, 200);
+        set_mtime(&b, 100);
 
-        // total=1500, limit=100 → need 1400 freed → all 3 deleted
-        let deleted = free_disk_space(
+        let outcome = enforce_disk_limit(
             tmp.path(),
             &log_pattern(),
-            100,
-            &[f1.clone(), f2.clone(), f3.clone()],
+            1000,
+            ts_ms_secs_ago(50),
+            untracked,
+            true,
         );
-        assert_eq!(deleted.len(), 3);
-        assert!(!f1.exists());
-        assert!(!f2.exists());
-        assert!(!f3.exists());
+
+        assert_eq!(outcome, EnforceOutcome::default());
+        assert!(a.exists() && b.exists());
     }
 
+    // A file with mtime <= last_ts but still tracked in the checkpoint is classified
+    // un-uploaded (in-progress), so the default (uploaded-safe only) pass must not delete it.
     #[test]
-    fn zero_limit_deletes_all_processed() {
+    fn enforce_tracked_file_is_not_uploaded_safe() {
         let tmp = TempDir::new().unwrap();
-        let f1 = create_file(tmp.path(), "a.log", 100);
-        let f2 = create_file(tmp.path(), "b.log", 200);
-        set_mtime(&f1, 200);
-        set_mtime(&f2, 100);
+        let active = create_file(tmp.path(), "active.log", 100);
+        let tracked = create_file(tmp.path(), "tracked.log", 100);
+        let untracked_old = create_file(tmp.path(), "untracked.log", 100);
+        set_mtime(&active, 10);
+        set_mtime(&untracked_old, 250);
+        set_mtime(&tracked, 300);
+        let last_ts = ts_ms_secs_ago(150);
 
-        let deleted = free_disk_space(tmp.path(), &log_pattern(), 0, &[f1.clone(), f2.clone()]);
-        assert_eq!(deleted.len(), 2);
-        assert!(!f1.exists());
-        assert!(!f2.exists());
+        let tracked_path = tracked.clone();
+        // total=300, limit=150, default pass. Only the untracked old file is uploaded-safe.
+        let outcome = enforce_disk_limit(
+            tmp.path(),
+            &log_pattern(),
+            150,
+            last_ts,
+            move |p| p == tracked_path.as_path(),
+            false,
+        );
+
+        assert_eq!(outcome.uploaded_deleted, vec![untracked_old.clone()]);
+        assert!(outcome.unuploaded_deleted.is_empty());
+        assert!(!untracked_old.exists());
+        assert!(
+            tracked.exists(),
+            "tracked (in-progress) file must not be deleted"
+        );
+        assert!(active.exists());
     }
 
+    // Missing directory is a safe no-op (nothing to enumerate).
+    #[test]
+    fn enforce_missing_directory_is_noop() {
+        let missing = Path::new("/nonexistent/path/enforce/12345");
+        let outcome = enforce_disk_limit(missing, &log_pattern(), 0, 0, untracked, true);
+        assert_eq!(outcome, EnforceOutcome::default());
+    }
+
+    // Files matching the pattern total under the limit even though a non-matching file
+    // inflates the directory → no-op (only matching files count toward the limit).
+    #[test]
+    fn enforce_pattern_filter_excludes_non_matching_files() {
+        let tmp = TempDir::new().unwrap();
+        // Non-log file inflates the directory but must not count toward the limit.
+        create_file(tmp.path(), "config.json", 1000);
+        let log_file = create_file(tmp.path(), "app.log", 100);
+        set_mtime(&log_file, 100);
+
+        // Only 100 bytes of .log files → under the 200-byte limit → nothing deleted.
+        let outcome = enforce_disk_limit(
+            tmp.path(),
+            &log_pattern(),
+            200,
+            ts_ms_secs_ago(50),
+            untracked,
+            true,
+        );
+
+        assert_eq!(outcome, EnforceOutcome::default());
+        assert!(log_file.exists());
+    }
+
+    // Undeletable files (read-only directory) are skipped without panicking; the outcome
+    // reports nothing deleted because the unlink failed.
     #[cfg(unix)]
     #[test]
-    fn skips_undeletable_files() {
+    fn enforce_skips_undeletable_files() {
         use std::os::unix::fs::PermissionsExt;
 
-        // Skip if running as root (root ignores permission bits)
+        // Skip if running as root (root ignores permission bits).
         if std::process::Command::new("id")
             .arg("-u")
             .output()
@@ -242,37 +416,30 @@ mod tests {
         }
 
         let tmp = TempDir::new().unwrap();
-        let f1 = create_file(tmp.path(), "a.log", 200);
-        let f2 = create_file(tmp.path(), "b.log", 200);
-        set_mtime(&f1, 200);
-        set_mtime(&f2, 100);
+        let active = create_file(tmp.path(), "active.log", 200);
+        let old = create_file(tmp.path(), "old.log", 200);
+        set_mtime(&active, 10);
+        set_mtime(&old, 200);
 
-        // Make directory read-only so files can't be deleted
-        let dir_perms = fs::Permissions::from_mode(0o555);
-        fs::set_permissions(tmp.path(), dir_perms).unwrap();
+        // Make the directory read-only so files cannot be unlinked.
+        fs::set_permissions(tmp.path(), fs::Permissions::from_mode(0o555)).unwrap();
 
-        // total=400, limit=0 → wants to delete all, but can't
-        let deleted = free_disk_space(tmp.path(), &log_pattern(), 0, &[f1.clone(), f2.clone()]);
-        assert!(deleted.is_empty());
-        assert!(f1.exists());
-        assert!(f2.exists());
+        // total=400, limit=100, opted in → wants to delete `old`, but cannot.
+        let outcome = enforce_disk_limit(
+            tmp.path(),
+            &log_pattern(),
+            100,
+            ts_ms_secs_ago(50),
+            untracked,
+            true,
+        );
 
-        // Restore permissions for cleanup
-        let restore_perms = fs::Permissions::from_mode(0o755);
-        fs::set_permissions(tmp.path(), restore_perms).unwrap();
-    }
+        assert!(outcome.uploaded_deleted.is_empty());
+        assert!(outcome.unuploaded_deleted.is_empty());
+        assert!(old.exists());
+        assert!(active.exists());
 
-    #[test]
-    fn pattern_filter_excludes_non_matching_files() {
-        let tmp = TempDir::new().unwrap();
-        // Non-log file inflates directory but shouldn't count toward limit
-        create_file(tmp.path(), "config.json", 1000);
-        let log_file = create_file(tmp.path(), "app.log", 100);
-        set_mtime(&log_file, 100);
-
-        // dir has 1100 bytes total, but only 100 bytes of .log files → under limit
-        let deleted = free_disk_space(tmp.path(), &log_pattern(), 200, &[log_file.clone()]);
-        assert!(deleted.is_empty());
-        assert!(log_file.exists());
+        // Restore permissions so the TempDir can be cleaned up.
+        fs::set_permissions(tmp.path(), fs::Permissions::from_mode(0o755)).unwrap();
     }
 }

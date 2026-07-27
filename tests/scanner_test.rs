@@ -47,7 +47,9 @@ fn test_scan_with_rotation_active_file_detection() {
     create_file_with_content(dir.path(), "c.emf.json", &[b'c'; 50]);
     // No offset needed - it's the newest
 
-    let files = scan_directory(dir.path().to_str().unwrap(), &pattern).unwrap();
+    let files = scan_directory(dir.path().to_str().unwrap(), &pattern)
+        .unwrap()
+        .files;
 
     assert_eq!(files.len(), 3);
 
@@ -102,7 +104,9 @@ fn test_scan_rotation_renamed_file_still_scannable() {
 
     // First scan with pattern matching .emf.json
     let pattern1 = Regex::new(r".*\.emf\.json$").unwrap();
-    let files_before = scan_directory(dir.path().to_str().unwrap(), &pattern1).unwrap();
+    let files_before = scan_directory(dir.path().to_str().unwrap(), &pattern1)
+        .unwrap()
+        .files;
     assert_eq!(files_before.len(), 3);
 
     // Get hash of b before rename
@@ -118,7 +122,9 @@ fn test_scan_rotation_renamed_file_still_scannable() {
 
     // Re-scan with pattern that includes .old files
     let pattern2 = Regex::new(r".*\.emf\.json$|.*\.old$").unwrap();
-    let files_after = scan_directory(dir.path().to_str().unwrap(), &pattern2).unwrap();
+    let files_after = scan_directory(dir.path().to_str().unwrap(), &pattern2)
+        .unwrap()
+        .files;
 
     // Should still find 3 files (a.emf.json, b.old, c.emf.json)
     assert_eq!(files_after.len(), 3);
@@ -141,7 +147,9 @@ fn test_scan_content_hash_is_sha256() {
     create_file_with_content(dir.path(), "test.emf.json", b"test content");
 
     let pattern = Regex::new(r".*\.emf\.json$").unwrap();
-    let files = scan_directory(dir.path().to_str().unwrap(), &pattern).unwrap();
+    let files = scan_directory(dir.path().to_str().unwrap(), &pattern)
+        .unwrap()
+        .files;
 
     assert_eq!(files.len(), 1);
     // SHA-256 produces 64 hex characters
@@ -158,7 +166,9 @@ fn test_scan_empty_directory() {
     let dir = TempDir::new().unwrap();
     let pattern = Regex::new(r".*\.emf\.json$").unwrap();
 
-    let files = scan_directory(dir.path().to_str().unwrap(), &pattern).unwrap();
+    let files = scan_directory(dir.path().to_str().unwrap(), &pattern)
+        .unwrap()
+        .files;
     assert!(files.is_empty());
 }
 
@@ -168,7 +178,9 @@ fn test_scan_single_file_is_active() {
     create_file_with_content(dir.path(), "only.emf.json", b"content");
 
     let pattern = Regex::new(r".*\.emf\.json$").unwrap();
-    let files = scan_directory(dir.path().to_str().unwrap(), &pattern).unwrap();
+    let files = scan_directory(dir.path().to_str().unwrap(), &pattern)
+        .unwrap()
+        .files;
 
     assert_eq!(files.len(), 1);
     assert!(files[0].is_active, "Single file should be marked as active");
@@ -182,7 +194,9 @@ fn test_scan_filters_by_regex() {
     create_file_with_content(dir.path(), "another.log", b"content");
 
     let pattern = Regex::new(r".*\.emf\.json$").unwrap();
-    let files = scan_directory(dir.path().to_str().unwrap(), &pattern).unwrap();
+    let files = scan_directory(dir.path().to_str().unwrap(), &pattern)
+        .unwrap()
+        .files;
 
     assert_eq!(files.len(), 1);
     assert!(files[0].path.ends_with("match.emf.json"));
@@ -200,8 +214,9 @@ fn test_scan_directory_skips_symlinks() {
         std::os::unix::fs::symlink(&real_path, dir.path().join("link.log")).unwrap();
     }
     let pattern = regex::Regex::new(r".*\.log$").unwrap();
-    let result =
-        gg_log_manager::scanner::scan_directory(dir.path().to_str().unwrap(), &pattern).unwrap();
+    let result = gg_log_manager::scanner::scan_directory(dir.path().to_str().unwrap(), &pattern)
+        .unwrap()
+        .files;
     // Should only find the real file, not the symlink
     assert_eq!(result.len(), 1);
     assert!(result[0].path.ends_with("real.log"));

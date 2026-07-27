@@ -79,6 +79,9 @@ pub fn validate_config(config: &LogManagerConfig) -> Result<(), ConfigError> {
         warn_if_upload_interval_unwired(&sys.source, "systemLogsConfiguration");
         validate_log_source(&sys.source)?;
     }
+    if let Some(ref limit) = config.logs_uploader_configuration.default_disk_space_limit {
+        validate_disk_limit(limit)?;
+    }
     tracing::info!("Configuration validation passed");
     Ok(())
 }
@@ -130,6 +133,38 @@ pub fn parse_disk_space_limit(limit: Option<&str>) -> Result<Option<u64>, Config
             Ok(parsed)
         })
         .transpose()
+}
+
+/// Effective disk limit in bytes for a source, or `None` when the source is unbounded.
+///
+/// Resolution: the source's own `diskSpaceLimit`, else the component-level
+/// `defaultDiskSpaceLimit`, else `None` — only ever customer-provided values. A value that
+/// fails to parse is treated as unset (WARN); `validate_config` rejects invalid limits at
+/// load, so the `Err` arms are defensive.
+#[must_use]
+pub fn effective_disk_limit_bytes(
+    source: &LogSourceConfig,
+    uploader_config: &LogsUploaderConfig,
+) -> Option<u64> {
+    match parse_disk_space_limit(source.disk_space_limit.as_deref()) {
+        Ok(Some(limit)) => return Some(source.disk_space_limit_unit.to_bytes(limit)),
+        Ok(None) => {} // unset — fall through to the component default
+        Err(e) => {
+            tracing::warn!(error = %e, "Invalid source diskSpaceLimit; ignoring it and trying the component default");
+        }
+    }
+    match parse_disk_space_limit(uploader_config.default_disk_space_limit.as_deref()) {
+        Ok(Some(limit)) => Some(
+            uploader_config
+                .default_disk_space_limit_unit
+                .to_bytes(limit),
+        ),
+        Ok(None) => None, // neither set — the source is unbounded
+        Err(e) => {
+            tracing::warn!(error = %e, "Invalid defaultDiskSpaceLimit; source is left unbounded");
+            None
+        }
+    }
 }
 
 /// Derive log group name: /aws/greengrass/{componentType}/{region}/{componentName}
@@ -265,6 +300,79 @@ mod tests {
         assert!(parse_disk_space_limit(Some("abc")).is_err());
         assert_eq!(parse_disk_space_limit(None).unwrap(), None);
         assert_eq!(parse_disk_space_limit(Some("")).unwrap(), None);
+    }
+
+    #[test]
+    fn test_effective_disk_limit_none_when_neither_set() {
+        let comp: ComponentSourceConfig =
+            serde_json::from_str(r#"{"logFileDirectoryPath":"/tmp","logFileRegex":".*"}"#).unwrap();
+        let uploader = LogsUploaderConfig::default();
+        assert_eq!(effective_disk_limit_bytes(&comp.source, &uploader), None);
+    }
+
+    #[test]
+    fn test_effective_disk_limit_uses_configured_source_value() {
+        let comp: ComponentSourceConfig = serde_json::from_str(
+            r#"{"logFileDirectoryPath":"/tmp","logFileRegex":".*","diskSpaceLimit":"50","diskSpaceLimitUnit":"MB"}"#,
+        )
+        .unwrap();
+        let uploader = LogsUploaderConfig::default();
+        assert_eq!(
+            effective_disk_limit_bytes(&comp.source, &uploader),
+            Some(50 * 1024 * 1024)
+        );
+    }
+
+    #[test]
+    fn test_effective_disk_limit_falls_back_to_component_default() {
+        let comp: ComponentSourceConfig =
+            serde_json::from_str(r#"{"logFileDirectoryPath":"/tmp","logFileRegex":".*"}"#).unwrap();
+        let uploader = LogsUploaderConfig {
+            default_disk_space_limit: Some("10".into()),
+            default_disk_space_limit_unit: DiskSpaceLimitUnit::MB,
+            ..Default::default()
+        };
+        assert_eq!(
+            effective_disk_limit_bytes(&comp.source, &uploader),
+            Some(10 * 1024 * 1024)
+        );
+    }
+
+    #[test]
+    fn test_effective_disk_limit_source_overrides_component_default() {
+        let comp: ComponentSourceConfig = serde_json::from_str(
+            r#"{"logFileDirectoryPath":"/tmp","logFileRegex":".*","diskSpaceLimit":"5","diskSpaceLimitUnit":"MB"}"#,
+        )
+        .unwrap();
+        let uploader = LogsUploaderConfig {
+            default_disk_space_limit: Some("99".into()),
+            default_disk_space_limit_unit: DiskSpaceLimitUnit::GB,
+            ..Default::default()
+        };
+        // Source limit wins over the component default.
+        assert_eq!(
+            effective_disk_limit_bytes(&comp.source, &uploader),
+            Some(5 * 1024 * 1024)
+        );
+    }
+
+    #[test]
+    fn test_effective_disk_limit_bad_source_falls_to_component_default() {
+        // An unparseable source limit is treated as unset and falls through to the default;
+        // a bound is never invented from a bad value.
+        let comp: ComponentSourceConfig = serde_json::from_str(
+            r#"{"logFileDirectoryPath":"/tmp","logFileRegex":".*","diskSpaceLimit":"not-a-number"}"#,
+        )
+        .unwrap();
+        let uploader = LogsUploaderConfig {
+            default_disk_space_limit: Some("2".into()),
+            default_disk_space_limit_unit: DiskSpaceLimitUnit::MB,
+            ..Default::default()
+        };
+        assert_eq!(
+            effective_disk_limit_bytes(&comp.source, &uploader),
+            Some(2 * 1024 * 1024)
+        );
     }
 
     #[test]

@@ -29,16 +29,43 @@ pub struct ScannedFile {
     pub is_active: bool,
 }
 
+/// Result of scanning a directory. Named fields (rather than a positional tuple, which this
+/// crate avoids for multi-value returns) so callers read `.files` / `.dedup_dropped` instead of
+/// `.0` / `.1`.
+#[derive(Debug)]
+pub struct ScanDirectoryResult {
+    /// Surviving files, sorted by mtime ascending, with the newest marked active.
+    pub files: Vec<ScannedFile>,
+    /// Paths of older files skipped because they share a content hash with a newer file. Handed
+    /// back (rather than discarded) so disk enforcement can treat them as un-uploaded — the
+    /// pipeline never reads or uploads a deduped-away file, so classifying it uploaded-safe by
+    /// mtime alone would risk deleting never-uploaded data.
+    pub dedup_dropped: Vec<PathBuf>,
+}
+
 /// Scan a directory for log files matching the given regex pattern.
-/// Returns files sorted by mtime ascending, with the newest marked as active.
+/// Returns a [`ScanDirectoryResult`]: `files` sorted by mtime ascending with the newest marked
+/// active, and `dedup_dropped` — paths of older files skipped for sharing a content hash with a
+/// newer file (consumed by disk enforcement, which matches on the same `entry.path()` form).
 /// TODO: Optimize to skip hashing files that haven't changed since last scan (cache by path+mtime)
-pub fn scan_directory(directory: &str, pattern: &Regex) -> std::io::Result<Vec<ScannedFile>> {
+pub fn scan_directory(directory: &str, pattern: &Regex) -> std::io::Result<ScanDirectoryResult> {
     tracing::info!(directory = %directory, "Starting directory scan");
     let dir_entries = match fs::read_dir(directory) {
         Ok(entries) => entries,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            // A not-yet-created directory is a benign idle cycle, not an error.
+            tracing::debug!(directory = %directory, "Directory does not exist yet; treating as empty");
+            return Ok(ScanDirectoryResult {
+                files: vec![],
+                dedup_dropped: vec![],
+            });
+        }
         Err(e) => {
-            tracing::debug!(directory = %directory, error = %e, "Unable to read the directory");
-            return Ok(vec![]);
+            // A genuine read error (e.g. permission denied) means we have no reliable view of the
+            // directory this cycle; surface it so the caller can skip disk enforcement rather than
+            // act on incomplete classification data.
+            tracing::warn!(directory = %directory, error = %e, "Failed to read directory");
+            return Err(e);
         }
     };
     let mut files: Vec<(PathBuf, SystemTime)> = dir_entries
@@ -91,6 +118,7 @@ pub fn scan_directory(directory: &str, pattern: &Regex) -> std::io::Result<Vec<S
         .enumerate()
         .map(|(i, f)| (f.content_hash.clone(), i))
         .collect();
+    let mut dedup_dropped: Vec<PathBuf> = Vec::new();
     if newest_index.len() != result.len() {
         let survivor_paths: HashMap<String, PathBuf> = newest_index
             .iter()
@@ -106,6 +134,7 @@ pub fn scan_directory(directory: &str, pattern: &Regex) -> std::io::Result<Vec<S
                     kept = %kept.display(),
                     "file shares content hash with a newer file; skipping"
                 );
+                dedup_dropped.push(file.path);
             }
         }
         result = deduped;
@@ -117,7 +146,10 @@ pub fn scan_directory(directory: &str, pattern: &Regex) -> std::io::Result<Vec<S
     }
 
     tracing::info!(file_count = result.len(), "Directory scan complete");
-    Ok(result)
+    Ok(ScanDirectoryResult {
+        files: result,
+        dedup_dropped,
+    })
 }
 
 #[cfg(test)]
@@ -139,7 +171,9 @@ mod tests {
     fn test_scan_directory_empty() {
         let dir = tempfile::tempdir().unwrap();
         let pattern = Regex::new(r".*\.log$").unwrap();
-        let result = scan_directory(dir.path().to_str().unwrap(), &pattern).unwrap();
+        let result = scan_directory(dir.path().to_str().unwrap(), &pattern)
+            .unwrap()
+            .files;
         assert!(result.is_empty());
     }
 
@@ -151,7 +185,9 @@ mod tests {
         create_test_file(dir.path(), "other.log", b"other log");
 
         let pattern = Regex::new(r".*\.log$").unwrap();
-        let result = scan_directory(dir.path().to_str().unwrap(), &pattern).unwrap();
+        let result = scan_directory(dir.path().to_str().unwrap(), &pattern)
+            .unwrap()
+            .files;
 
         assert_eq!(result.len(), 2);
         assert!(result.iter().all(|f| f.path.extension().unwrap() == "log"));
@@ -168,7 +204,9 @@ mod tests {
         create_test_file(dir.path(), "new.log", b"new");
 
         let pattern = Regex::new(r".*\.log$").unwrap();
-        let result = scan_directory(dir.path().to_str().unwrap(), &pattern).unwrap();
+        let result = scan_directory(dir.path().to_str().unwrap(), &pattern)
+            .unwrap()
+            .files;
 
         assert_eq!(result.len(), 3);
         // Sorted by mtime ascending
@@ -186,7 +224,9 @@ mod tests {
         create_test_file(dir.path(), "only.log", b"content");
 
         let pattern = Regex::new(r".*\.log$").unwrap();
-        let result = scan_directory(dir.path().to_str().unwrap(), &pattern).unwrap();
+        let result = scan_directory(dir.path().to_str().unwrap(), &pattern)
+            .unwrap()
+            .files;
 
         assert_eq!(result.len(), 1);
         assert!(result[0].is_active);
@@ -198,7 +238,9 @@ mod tests {
         create_test_file(dir.path(), "test.log", b"test content");
 
         let pattern = Regex::new(r".*\.log$").unwrap();
-        let result = scan_directory(dir.path().to_str().unwrap(), &pattern).unwrap();
+        let result = scan_directory(dir.path().to_str().unwrap(), &pattern)
+            .unwrap()
+            .files;
 
         assert_eq!(result.len(), 1);
         assert!(!result[0].content_hash.is_empty());
@@ -208,7 +250,9 @@ mod tests {
     #[test]
     fn test_scan_directory_nonexistent_returns_empty() {
         let pattern = Regex::new(r".*\.log$").unwrap();
-        let result = scan_directory("/nonexistent/path/12345", &pattern).unwrap();
+        let result = scan_directory("/nonexistent/path/12345", &pattern)
+            .unwrap()
+            .files;
         assert!(result.is_empty());
     }
 
@@ -229,11 +273,17 @@ mod tests {
         );
 
         let pattern = Regex::new(r".*\.log$").unwrap();
-        let result = scan_directory(dir.path().to_str().unwrap(), &pattern).unwrap();
+        let ScanDirectoryResult {
+            files: result,
+            dedup_dropped: dropped,
+        } = scan_directory(dir.path().to_str().unwrap(), &pattern).unwrap();
 
         // Only the newest of the two colliding files survives, and it is the active file.
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].path.file_name().unwrap(), "new.log");
         assert!(result[0].is_active);
+        // The older colliding file is reported as dedup-dropped (not silently discarded).
+        assert_eq!(dropped.len(), 1);
+        assert_eq!(dropped[0].file_name().unwrap(), "old.log");
     }
 }

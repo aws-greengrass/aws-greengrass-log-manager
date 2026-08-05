@@ -164,6 +164,18 @@ public class PositionTrackingBufferedReader extends Reader {
                     nextChar++;
                     if (c == '\r') {
                         skipLF = true;
+                        // Eagerly consume the '\n' if it's available in the buffer.
+                        // This ensures position is accurate before readLine() returns,
+                        // so the caller's position snapshot includes the full line ending.
+                        if (nextChar >= nChars) {
+                            // '\n' may be in the next buffer fill — load it now
+                            fill();
+                        }
+                        if (nextChar < nChars && cb[nextChar] == '\n') {
+                            nextChar++;
+                            position++;
+                        }
+                        skipLF = false;
                     }
                     return str;
                 }

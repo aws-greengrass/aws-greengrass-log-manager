@@ -275,7 +275,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
             assertEquals(MAX_NUM_OF_LOG_EVENTS, logEventsForStream1.getLogEvents().size());
             assertTrue(logEventsForStream1.getAttemptLogFileInformationMap().containsKey(fileHash));
             assertEquals(0, logEventsForStream1.getAttemptLogFileInformationMap().get(fileHash).getStartPosition());
-            assertEquals((logEventMessageLength+2)*10000 - 1, logEventsForStream1.getAttemptLogFileInformationMap().get(fileHash).getBytesRead());
+            assertEquals((logEventMessageLength+2)*10000, logEventsForStream1.getAttemptLogFileInformationMap().get(fileHash).getBytesRead());
             assertEquals("TestComponent", logEventsForStream1.getComponentName());
             LocalDateTime localDateTimeNow = LocalDateTime.now(ZoneOffset.UTC);
             for (InputLogEvent logEvent: logEventsForStream1.getLogEvents()) {
@@ -340,7 +340,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
             assertEquals(991, logEventsForStream1.getLogEvents().size());
             assertTrue(logEventsForStream1.getAttemptLogFileInformationMap().containsKey(fileHash));
             assertEquals(0, logEventsForStream1.getAttemptLogFileInformationMap().get(fileHash).getStartPosition());
-            assertEquals(1016765, logEventsForStream1.getAttemptLogFileInformationMap().get(fileHash).getBytesRead());
+            assertEquals(1016766, logEventsForStream1.getAttemptLogFileInformationMap().get(fileHash).getBytesRead());
             assertEquals("TestComponent", logEventsForStream1.getComponentName());
             LocalDateTime localDateTimeNow = LocalDateTime.now(ZoneOffset.UTC);
             for (InputLogEvent logEvent: logEventsForStream1.getLogEvents()) {

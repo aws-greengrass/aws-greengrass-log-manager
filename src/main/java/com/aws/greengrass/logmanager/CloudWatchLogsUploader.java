@@ -167,11 +167,15 @@ public class CloudWatchLogsUploader {
             addNextSequenceToken(logGroupName, logStreamName, e.expectedSequenceToken());
             return true;
         } catch (ResourceNotFoundException e) {
-            // Handle no log group/log stream
+            // Create the stream first; create the group only on fallback to avoid wasted CreateLogGroup calls.
             logger.atInfo().log("Unable to find log group- {} or log stream - {}. Creating them now.",
                     logGroupName, logStreamName);
-            createNewLogGroup(logGroupName);
-            createNewLogSteam(logGroupName, logStreamName);
+            try {
+                createNewLogSteam(logGroupName, logStreamName);
+            } catch (ResourceNotFoundException streamException) {
+                // The log group does not exist yet; create the group and the stream together.
+                createLogGroupAndStream(logGroupName, logStreamName);
+            }
             return uploadLogs(logGroupName, logStreamName, logEvents, tryCount + 1);
         } catch (AwsServiceException e) {
             // Back off for some time and then retry
@@ -179,6 +183,22 @@ public class CloudWatchLogsUploader {
                     logStreamName);
         }
         return false;
+    }
+
+    /**
+     * Creates the log group and then the log stream for a not-found resource. Any failure here (for example
+     * throttling) is contained so it cannot abort the whole upload batch; the PutLogEvents retry re-drives.
+     *
+     * @param logGroupName  The log group name.
+     * @param logStreamName The log stream name.
+     */
+    private void createLogGroupAndStream(String logGroupName, String logStreamName) {
+        try {
+            createNewLogGroup(logGroupName);
+            createNewLogSteam(logGroupName, logStreamName);
+        } catch (CloudWatchLogsException e) {
+            logger.atWarn().cause(e).log("Unable to create log group/stream {}-{}.", logGroupName, logStreamName);
+        }
     }
 
     /**
@@ -215,6 +235,10 @@ public class CloudWatchLogsUploader {
             this.cloudWatchWrapper.execute(client -> client.createLogStream(request));
         } catch (ResourceAlreadyExistsException e) {
             // Don't do anything if the resource already exists.
+        } catch (ResourceNotFoundException e) {
+            // Log group not found while creating the stream; propagate for the caller to handle.
+            logger.atDebug().log("Log group {} not found while creating stream {}.", logGroupName, logStreamName);
+            throw e;
         } catch (CloudWatchLogsException e) {
             logger.atError().cause(e).log("Unable to create log stream {} for group {}.", logStreamName, logGroupName);
             throw e;

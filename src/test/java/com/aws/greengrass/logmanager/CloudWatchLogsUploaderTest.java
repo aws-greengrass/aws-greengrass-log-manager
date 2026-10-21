@@ -21,6 +21,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.extension.ExtensionContext;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import software.amazon.awssdk.awscore.exception.AwsServiceException;
@@ -29,6 +30,7 @@ import software.amazon.awssdk.core.exception.SdkClientException;
 import software.amazon.awssdk.services.cloudwatchlogs.CloudWatchLogsClient;
 import software.amazon.awssdk.services.cloudwatchlogs.model.CreateLogGroupRequest;
 import software.amazon.awssdk.services.cloudwatchlogs.model.CreateLogStreamRequest;
+import software.amazon.awssdk.services.cloudwatchlogs.model.CreateLogStreamResponse;
 import software.amazon.awssdk.services.cloudwatchlogs.model.DataAlreadyAcceptedException;
 import software.amazon.awssdk.services.cloudwatchlogs.model.InputLogEvent;
 import software.amazon.awssdk.services.cloudwatchlogs.model.InvalidSequenceTokenException;
@@ -63,6 +65,7 @@ import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -144,7 +147,8 @@ public class CloudWatchLogsUploaderTest extends GGServiceTestUtil {
 
         assertTrue(attemptFinishedLatch.await(5, TimeUnit.SECONDS));
         verify(mockCloudWatchLogsClient, times(1)).createLogStream(any(CreateLogStreamRequest.class));
-        verify(mockCloudWatchLogsClient, times(1)).createLogGroup(any(CreateLogGroupRequest.class));
+        // Log group already exists in the common case, so CreateLogGroup must NOT be called.
+        verify(mockCloudWatchLogsClient, times(0)).createLogGroup(any(CreateLogGroupRequest.class));
         verify(mockCloudWatchLogsClient, times(2)).putLogEvents(putLogEventsRequestArgumentCaptor.capture());
 
         Set<String> messageTextToCheck = new HashSet<>();
@@ -282,7 +286,6 @@ public class CloudWatchLogsUploaderTest extends GGServiceTestUtil {
         when(mockCloudWatchLogsClient.putLogEvents(any(PutLogEventsRequest.class)))
                 .thenThrow(ResourceNotFoundException.class)
                 .thenReturn(response);
-        when(mockCloudWatchLogsClient.createLogGroup(any(CreateLogGroupRequest.class))).thenThrow(ResourceAlreadyExistsException.class);
         when(mockCloudWatchLogsClient.createLogStream(any(CreateLogStreamRequest.class))).thenThrow(ResourceAlreadyExistsException.class);
         uploader = new CloudWatchLogsUploader(mockCloudWatchClientFactory);
         uploader.addNextSequenceToken(mockGroupName, mockStreamNameForGroup, mockSequenceToken);
@@ -296,7 +299,8 @@ public class CloudWatchLogsUploaderTest extends GGServiceTestUtil {
 
         assertTrue(attemptFinishedLatch.await(5, TimeUnit.SECONDS));
         verify(mockCloudWatchLogsClient, times(1)).createLogStream(any(CreateLogStreamRequest.class));
-        verify(mockCloudWatchLogsClient, times(1)).createLogGroup(any(CreateLogGroupRequest.class));
+        // Log group already exists in the common case, so CreateLogGroup must NOT be called.
+        verify(mockCloudWatchLogsClient, times(0)).createLogGroup(any(CreateLogGroupRequest.class));
         verify(mockCloudWatchLogsClient, times(2)).putLogEvents(putLogEventsRequestArgumentCaptor.capture());
 
         Set<String> messageTextToCheck = new HashSet<>();
@@ -426,6 +430,7 @@ public class CloudWatchLogsUploaderTest extends GGServiceTestUtil {
         attempt.setLogGroupName(mockGroupName);
         attempt.setLogStreamsToLogEventsMap(logSteamForGroup1Map);
         when(mockCloudWatchLogsClient.putLogEvents(any(PutLogEventsRequest.class))).thenThrow(ResourceNotFoundException.class);
+        when(mockCloudWatchLogsClient.createLogStream(any(CreateLogStreamRequest.class))).thenThrow(ResourceNotFoundException.class);
         when(mockCloudWatchLogsClient.createLogGroup(any(CreateLogGroupRequest.class))).thenThrow(LimitExceededException.class);
 
         CountDownLatch attemptFinishedLatch = new CountDownLatch(1);
@@ -438,6 +443,8 @@ public class CloudWatchLogsUploaderTest extends GGServiceTestUtil {
         uploader.upload(attempt, 1);
 
         assertTrue(attemptFinishedLatch.await(5, TimeUnit.SECONDS));
+        // LimitExceeded during the fallback create is contained (not escaped): uploadLogs keeps retrying, so PutLogEvents is called MAX_RETRIES times.
+        verify(mockCloudWatchLogsClient, times(3)).putLogEvents(any(PutLogEventsRequest.class));
     }
 
     @Test
@@ -774,5 +781,167 @@ public class CloudWatchLogsUploaderTest extends GGServiceTestUtil {
 
         assertEquals(0, messageTextToCheck.size());
         assertEquals(mockNextSequenceToken, uploader.logGroupsToSequenceTokensMap.get(mockGroupName).get(mockStreamNameForGroup));
+    }
+
+    @Test
+    public void GIVEN_new_stream_but_existing_group_WHEN_put_events_THEN_creates_stream_without_creating_group(
+            ExtensionContext context1) throws InterruptedException {
+        ignoreExceptionOfType(context1, ResourceNotFoundException.class);
+        String mockGroupName = "testGroup";
+        String mockStreamNameForGroup = "testStream";
+        String mockSequenceToken = UUID.randomUUID().toString();
+        String mockNextSequenceToken = UUID.randomUUID().toString();
+        CloudWatchAttempt attempt = new CloudWatchAttempt();
+        Map<String, CloudWatchAttemptLogInformation> logSteamForGroup1Map = new ConcurrentHashMap<>();
+        Queue<InputLogEvent> inputLogEventsForStream1OfGroup1 = new PriorityQueue<>(EVENT_COMPARATOR);
+        inputLogEventsForStream1OfGroup1.add(InputLogEvent.builder()
+                .timestamp(Instant.now().toEpochMilli())
+                .message("test")
+                .build());
+        Map<String, CloudWatchAttemptLogFileInformation> attemptLogFileInformationMap = new HashMap<>();
+        attemptLogFileInformationMap.put("test.log", CloudWatchAttemptLogFileInformation.builder()
+                .startPosition(0)
+                .bytesRead(100)
+                .build());
+        logSteamForGroup1Map.put(mockStreamNameForGroup,
+                CloudWatchAttemptLogInformation.builder()
+                        .logEvents(inputLogEventsForStream1OfGroup1)
+                        .attemptLogFileInformationMap(attemptLogFileInformationMap)
+                        .build());
+        attempt.setLogGroupName(mockGroupName);
+        attempt.setLogStreamsToLogEventsMap(logSteamForGroup1Map);
+        PutLogEventsResponse response = PutLogEventsResponse.builder().nextSequenceToken(mockNextSequenceToken).build();
+        // PutLogEvents fails once because the new date-based stream does not exist yet, but the group does, so stream creation succeeds without creating the group.
+        when(mockCloudWatchLogsClient.putLogEvents(any(PutLogEventsRequest.class)))
+                .thenThrow(ResourceNotFoundException.class)
+                .thenReturn(response);
+
+        uploader = new CloudWatchLogsUploader(mockCloudWatchClientFactory);
+        uploader.addNextSequenceToken(mockGroupName, mockStreamNameForGroup, mockSequenceToken);
+        CountDownLatch attemptFinishedLatch = new CountDownLatch(1);
+        uploader.registerAttemptStatus(UUID.randomUUID().toString(), cloudWatchAttempt -> {
+            assertTrue(cloudWatchAttempt.getLogStreamUploadedSet().contains("testStream"));
+            attemptFinishedLatch.countDown();
+        });
+
+        uploader.upload(attempt, 1);
+
+        assertTrue(attemptFinishedLatch.await(5, TimeUnit.SECONDS));
+        verify(mockCloudWatchLogsClient, times(1)).createLogStream(any(CreateLogStreamRequest.class));
+        // The key assertion for the fix: no CreateLogGroup call when only the stream was missing.
+        verify(mockCloudWatchLogsClient, times(0)).createLogGroup(any(CreateLogGroupRequest.class));
+        verify(mockCloudWatchLogsClient, times(2)).putLogEvents(any(PutLogEventsRequest.class));
+    }
+
+    @Test
+    public void GIVEN_missing_log_group_WHEN_create_stream_fails_THEN_creates_group_then_stream(
+            ExtensionContext context1) throws InterruptedException {
+        ignoreExceptionOfType(context1, ResourceNotFoundException.class);
+        String mockGroupName = "testGroup";
+        String mockStreamNameForGroup = "testStream";
+        String mockSequenceToken = UUID.randomUUID().toString();
+        String mockNextSequenceToken = UUID.randomUUID().toString();
+        CloudWatchAttempt attempt = new CloudWatchAttempt();
+        Map<String, CloudWatchAttemptLogInformation> logSteamForGroup1Map = new ConcurrentHashMap<>();
+        Queue<InputLogEvent> inputLogEventsForStream1OfGroup1 = new PriorityQueue<>(EVENT_COMPARATOR);
+        inputLogEventsForStream1OfGroup1.add(InputLogEvent.builder()
+                .timestamp(Instant.now().toEpochMilli())
+                .message("test")
+                .build());
+        Map<String, CloudWatchAttemptLogFileInformation> attemptLogFileInformationMap = new HashMap<>();
+        attemptLogFileInformationMap.put("test.log", CloudWatchAttemptLogFileInformation.builder()
+                .startPosition(0)
+                .bytesRead(100)
+                .build());
+        logSteamForGroup1Map.put(mockStreamNameForGroup,
+                CloudWatchAttemptLogInformation.builder()
+                        .logEvents(inputLogEventsForStream1OfGroup1)
+                        .attemptLogFileInformationMap(attemptLogFileInformationMap)
+                        .build());
+        attempt.setLogGroupName(mockGroupName);
+        attempt.setLogStreamsToLogEventsMap(logSteamForGroup1Map);
+        PutLogEventsResponse response = PutLogEventsResponse.builder().nextSequenceToken(mockNextSequenceToken).build();
+        when(mockCloudWatchLogsClient.putLogEvents(any(PutLogEventsRequest.class)))
+                .thenThrow(ResourceNotFoundException.class)
+                .thenReturn(response);
+        // CreateLogStream reports the group missing; the helper creates the group and stream together.
+        when(mockCloudWatchLogsClient.createLogStream(any(CreateLogStreamRequest.class)))
+                .thenThrow(ResourceNotFoundException.class)
+                .thenReturn(CreateLogStreamResponse.builder().build());
+
+        uploader = new CloudWatchLogsUploader(mockCloudWatchClientFactory);
+        uploader.addNextSequenceToken(mockGroupName, mockStreamNameForGroup, mockSequenceToken);
+        CountDownLatch attemptFinishedLatch = new CountDownLatch(1);
+        uploader.registerAttemptStatus(UUID.randomUUID().toString(), cloudWatchAttempt -> {
+            assertTrue(cloudWatchAttempt.getLogStreamUploadedSet().contains("testStream"));
+            attemptFinishedLatch.countDown();
+        });
+
+        uploader.upload(attempt, 1);
+
+        assertTrue(attemptFinishedLatch.await(5, TimeUnit.SECONDS));
+        // CreateLogGroup is only called after the first CreateLogStream reports the group missing: stream -> group -> stream.
+        InOrder inOrder = inOrder(mockCloudWatchLogsClient);
+        inOrder.verify(mockCloudWatchLogsClient).createLogStream(any(CreateLogStreamRequest.class));
+        inOrder.verify(mockCloudWatchLogsClient).createLogGroup(any(CreateLogGroupRequest.class));
+        inOrder.verify(mockCloudWatchLogsClient).createLogStream(any(CreateLogStreamRequest.class));
+        verify(mockCloudWatchLogsClient, times(2)).createLogStream(any(CreateLogStreamRequest.class));
+        verify(mockCloudWatchLogsClient, times(1)).createLogGroup(any(CreateLogGroupRequest.class));
+        verify(mockCloudWatchLogsClient, times(2)).putLogEvents(any(PutLogEventsRequest.class));
+    }
+
+    @Test
+    public void GIVEN_missing_log_group_WHEN_group_created_concurrently_THEN_swallows_and_uploads(
+            ExtensionContext context1) throws InterruptedException {
+        ignoreExceptionOfType(context1, ResourceNotFoundException.class);
+        ignoreExceptionOfType(context1, ResourceAlreadyExistsException.class);
+        String mockGroupName = "testGroup";
+        String mockStreamNameForGroup = "testStream";
+        String mockSequenceToken = UUID.randomUUID().toString();
+        String mockNextSequenceToken = UUID.randomUUID().toString();
+        CloudWatchAttempt attempt = new CloudWatchAttempt();
+        Map<String, CloudWatchAttemptLogInformation> logSteamForGroup1Map = new ConcurrentHashMap<>();
+        Queue<InputLogEvent> inputLogEventsForStream1OfGroup1 = new PriorityQueue<>(EVENT_COMPARATOR);
+        inputLogEventsForStream1OfGroup1.add(InputLogEvent.builder()
+                .timestamp(Instant.now().toEpochMilli())
+                .message("test")
+                .build());
+        Map<String, CloudWatchAttemptLogFileInformation> attemptLogFileInformationMap = new HashMap<>();
+        attemptLogFileInformationMap.put("test.log", CloudWatchAttemptLogFileInformation.builder()
+                .startPosition(0)
+                .bytesRead(100)
+                .build());
+        logSteamForGroup1Map.put(mockStreamNameForGroup,
+                CloudWatchAttemptLogInformation.builder()
+                        .logEvents(inputLogEventsForStream1OfGroup1)
+                        .attemptLogFileInformationMap(attemptLogFileInformationMap)
+                        .build());
+        attempt.setLogGroupName(mockGroupName);
+        attempt.setLogStreamsToLogEventsMap(logSteamForGroup1Map);
+        PutLogEventsResponse response = PutLogEventsResponse.builder().nextSequenceToken(mockNextSequenceToken).build();
+        when(mockCloudWatchLogsClient.putLogEvents(any(PutLogEventsRequest.class)))
+                .thenThrow(ResourceNotFoundException.class)
+                .thenReturn(response);
+        // CreateLogStream reports group-missing; the helper's CreateLogGroup returns ResourceAlreadyExists (swallowed) and the stream is then created.
+        when(mockCloudWatchLogsClient.createLogStream(any(CreateLogStreamRequest.class)))
+                .thenThrow(ResourceNotFoundException.class)
+                .thenReturn(CreateLogStreamResponse.builder().build());
+        when(mockCloudWatchLogsClient.createLogGroup(any(CreateLogGroupRequest.class)))
+                .thenThrow(ResourceAlreadyExistsException.class);
+
+        uploader = new CloudWatchLogsUploader(mockCloudWatchClientFactory);
+        uploader.addNextSequenceToken(mockGroupName, mockStreamNameForGroup, mockSequenceToken);
+        CountDownLatch attemptFinishedLatch = new CountDownLatch(1);
+        uploader.registerAttemptStatus(UUID.randomUUID().toString(), cloudWatchAttempt -> {
+            assertTrue(cloudWatchAttempt.getLogStreamUploadedSet().contains("testStream"));
+            attemptFinishedLatch.countDown();
+        });
+
+        uploader.upload(attempt, 1);
+
+        assertTrue(attemptFinishedLatch.await(5, TimeUnit.SECONDS));
+        verify(mockCloudWatchLogsClient, times(2)).createLogStream(any(CreateLogStreamRequest.class));
+        verify(mockCloudWatchLogsClient, times(1)).createLogGroup(any(CreateLogGroupRequest.class));
+        verify(mockCloudWatchLogsClient, times(2)).putLogEvents(any(PutLogEventsRequest.class));
     }
 }

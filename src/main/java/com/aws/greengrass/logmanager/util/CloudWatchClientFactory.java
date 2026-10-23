@@ -13,6 +13,7 @@ import lombok.Getter;
 import software.amazon.awssdk.core.client.config.ClientOverrideConfiguration;
 import software.amazon.awssdk.core.retry.RetryPolicy;
 import software.amazon.awssdk.core.retry.backoff.BackoffStrategy;
+import software.amazon.awssdk.core.retry.backoff.FullJitterBackoffStrategy;
 import software.amazon.awssdk.core.retry.conditions.OrRetryCondition;
 import software.amazon.awssdk.core.retry.conditions.RetryCondition;
 import software.amazon.awssdk.core.retry.conditions.RetryOnExceptionsCondition;
@@ -21,6 +22,7 @@ import software.amazon.awssdk.services.cloudwatchlogs.CloudWatchLogsClient;
 import software.amazon.awssdk.services.cloudwatchlogs.model.LimitExceededException;
 import software.amazon.awssdk.services.iam.model.ServiceFailureException;
 
+import java.time.Duration;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
@@ -42,8 +44,14 @@ public class CloudWatchClientFactory {
             .create(RetryCondition.defaultRetryCondition(),
                     RetryOnExceptionsCondition.create(retryableCWLogsExceptions));
 
+    // At UTC log rollover the whole fleet creates new log streams at once, so CreateLogStream/CreateLogGroup are
+    // throttled in a synchronized burst. Retry throttled (and 5xx) calls with full-jitter backoff so devices
+    // desynchronize and the burst drains. numRetries is global, so it also lengthens LimitExceeded/ServiceFailure/5xx
+    // retries, not just throttling.
     private static final RetryPolicy retryPolicy =
-            RetryPolicy.builder().numRetries(5).backoffStrategy(BackoffStrategy.defaultStrategy())
+            RetryPolicy.builder().numRetries(8).backoffStrategy(BackoffStrategy.defaultStrategy())
+                    .throttlingBackoffStrategy(FullJitterBackoffStrategy.builder()
+                            .baseDelay(Duration.ofSeconds(1)).maxBackoffTime(Duration.ofSeconds(20)).build())
                     .retryCondition(retryCondition).build();
 
     /**

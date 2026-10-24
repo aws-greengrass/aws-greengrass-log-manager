@@ -361,15 +361,12 @@ class PartialUploadTest {
                 PutLogEventsRequest request = invocation.getArgument(0);
                 int position = callsThisCycle.getAndIncrement();
                 boolean fails;
-                switch (failingStream) {
-                    case FIRST_ATTEMPTED:
-                        fails = position == 0;
-                        break;
-                    case AFTER_FIRST_ATTEMPTED:
-                        fails = position > 0;
-                        break;
-                    default:
-                        fails = request.logStreamName().equals(failingStreamName);
+                if (failingStream == FailingStream.FIRST_ATTEMPTED) {
+                    fails = position == 0;
+                } else if (failingStream == FailingStream.AFTER_FIRST_ATTEMPTED) {
+                    fails = position > 0;
+                } else {
+                    fails = request.logStreamName().equals(failingStreamName);
                 }
                 if (failing.get() && fails) {
                     failedStreams.add(request.logStreamName());

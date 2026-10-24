@@ -679,6 +679,10 @@ class LogManagerServiceTest {
         LogFileGroup logFileGroup = LogFileGroup.create(ComponentLogConfiguration.builder()
                 .directoryPath(logDirectory).fileNameRegex(Pattern.compile("^furthest.log$"))
                 .name("TestComponent").build(), mockInstant, workdirectory);
+        Topics componentConfig = config.lookupTopics(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC,
+                COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME, "TestComponent");
+        componentConfig.createLeafChild(FILE_REGEX_CONFIG_TOPIC_NAME).withValue("^furthest.log$");
+        componentConfig.createLeafChild(FILE_DIRECTORY_PATH_CONFIG_TOPIC_NAME).withValue(logDirectory.toString());
         doNothing().when(mockUploader).registerAttemptStatus(anyString(), callbackCaptor.capture());
         logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, nucleusPaths);
 

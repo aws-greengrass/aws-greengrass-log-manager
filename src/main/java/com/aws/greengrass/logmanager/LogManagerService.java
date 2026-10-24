@@ -44,6 +44,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -504,41 +505,20 @@ public class LogManagerService extends PluginService {
      *     processing log file for the component and what is the starting position of the next log line.
      */
     private void handleCloudWatchAttemptStatus(CloudWatchAttempt cloudWatchAttempt) {
-        Map<String, Set<LogFile>> completedLogFilePerComponent = new ConcurrentHashMap<>();
+        Map<String, CloudWatchAttemptLogInformation> streams = cloudWatchAttempt.getLogStreamsToLogEventsMap();
+        Map<String, LogFileGroup> logFileGroupPerComponent = new HashMap<>();
+        streams.values().forEach(stream ->
+                logFileGroupPerComponent.put(stream.getComponentName(), stream.getLogFileGroup()));
 
-        // Compute completed files (we only create 1 attempt per component)
-        cloudWatchAttempt.getLogStreamUploadedSet().forEach((streamName) -> {
-            CloudWatchAttemptLogInformation attemptLogInformation =
-                    cloudWatchAttempt.getLogStreamsToLogEventsMap().get(streamName);
+        if (cloudWatchAttempt.getLogStreamUploadedSet().containsAll(streams.keySet())) {
+            commitUploadedAttempt(streams.values(), logFileGroupPerComponent);
+        } else {
+            logger.atWarn().kv("logGroup", cloudWatchAttempt.getLogGroupName())
+                    .log("Not all log streams were uploaded. The same logs will be read and uploaded again");
+        }
 
-            // Each attempt holds a map mapping hash to file information
-            attemptLogInformation.getAttemptLogFileInformationMap().forEach(
-                    (fileHash, cloudWatchAttemptLogFileInformation) ->
-                            processCloudWatchAttemptLogInformation(completedLogFilePerComponent,
-                                    attemptLogInformation, fileHash,
-                                    cloudWatchAttemptLogFileInformation));
-
-            // Update the last updated
-            String componentName = attemptLogInformation.getComponentName();
-            Set<LogFile> completedFiles = completedLogFilePerComponent.getOrDefault(componentName, new HashSet<>());
-
-
-            // If the component is not configured, delete the uploaded files along with their processing file info.
-            // Otherwise, delete the file based on the component delete configuration.
-            boolean shouldDeleteFile =
-                    !componentLogConfigurations.containsKey(componentName) || componentLogConfigurations.get(
-                            componentName).isDeleteLogFileAfterCloudUpload();
-            // Record the last processed file timestamp
-            completedFiles.forEach(file -> {
-                updatelastComponentUploadedLogFile(lastComponentUploadedLogFileInstantMap, componentName, file);
-                // This will always remove the processing file information of the uploaded file.
-                this.deleteFileFromGroup(componentName, shouldDeleteFile, file,
-                        attemptLogInformation.getLogFileGroup());
-            });
-
-            // Delete files based on diskspace
-            List<String> deletedHashes =
-                    this.diskSpaceManagementService.freeDiskSpace(attemptLogInformation.getLogFileGroup());
+        logFileGroupPerComponent.forEach((componentName, logFileGroup) -> {
+            List<String> deletedHashes = this.diskSpaceManagementService.freeDiskSpace(logFileGroup);
 
             ProcessingFiles processingFiles = processingFilesInformation.get(componentName);
             if (processingFiles != null) {
@@ -550,6 +530,40 @@ public class LogManagerService extends PluginService {
         if (shouldUpdateConfig()) {
             updateConfig();
         }
+    }
+
+    private void commitUploadedAttempt(Collection<CloudWatchAttemptLogInformation> streams,
+                                       Map<String, LogFileGroup> logFileGroupPerComponent) {
+        Map<String, CloudWatchAttemptLogInformation> furthestStreamByFileHash = new HashMap<>();
+        streams.forEach(stream -> stream.getAttemptLogFileInformationMap().keySet().forEach(fileHash ->
+                furthestStreamByFileHash.merge(fileHash, stream, (current, candidate) ->
+                        uploadedUpTo(candidate, fileHash) > uploadedUpTo(current, fileHash) ? candidate : current)));
+
+        Map<String, Set<LogFile>> completedLogFilePerComponent = new HashMap<>();
+        furthestStreamByFileHash.forEach((fileHash, stream) ->
+                processCloudWatchAttemptLogInformation(completedLogFilePerComponent, stream, fileHash,
+                        stream.getAttemptLogFileInformationMap().get(fileHash)));
+
+        logFileGroupPerComponent.forEach((componentName, logFileGroup) -> {
+            Set<LogFile> completedFiles = completedLogFilePerComponent.getOrDefault(componentName, new HashSet<>());
+
+            // If the component is not configured, delete the uploaded files along with their processing file info.
+            // Otherwise, delete the file based on the component delete configuration.
+            boolean shouldDeleteFile =
+                    !componentLogConfigurations.containsKey(componentName) || componentLogConfigurations.get(
+                            componentName).isDeleteLogFileAfterCloudUpload();
+            // Record the last processed file timestamp
+            completedFiles.forEach(file -> {
+                updatelastComponentUploadedLogFile(lastComponentUploadedLogFileInstantMap, componentName, file);
+                // This will always remove the processing file information of the uploaded file.
+                this.deleteFileFromGroup(componentName, shouldDeleteFile, file, logFileGroup);
+            });
+        });
+    }
+
+    private static long uploadedUpTo(CloudWatchAttemptLogInformation stream, String fileHash) {
+        CloudWatchAttemptLogFileInformation progress = stream.getAttemptLogFileInformationMap().get(fileHash);
+        return progress.getStartPosition() + progress.getBytesRead();
     }
 
     private boolean shouldUpdateConfig() {

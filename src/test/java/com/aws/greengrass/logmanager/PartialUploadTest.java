@@ -65,6 +65,7 @@ import static com.aws.greengrass.deployment.DeviceConfiguration.DEVICE_PARAM_AWS
 import static com.aws.greengrass.deployment.DeviceConfiguration.DEVICE_PARAM_THING_NAME;
 import static com.aws.greengrass.logmanager.LogManagerService.COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME;
 import static com.aws.greengrass.logmanager.LogManagerService.DELETE_LOG_FILES_AFTER_UPLOAD_CONFIG_TOPIC_NAME;
+import static com.aws.greengrass.logmanager.LogManagerService.DISK_SPACE_LIMIT_CONFIG_TOPIC_NAME;
 import static com.aws.greengrass.logmanager.LogManagerService.FILE_DIRECTORY_PATH_CONFIG_TOPIC_NAME;
 import static com.aws.greengrass.logmanager.LogManagerService.FILE_REGEX_CONFIG_TOPIC_NAME;
 import static com.aws.greengrass.logmanager.LogManagerService.LOGS_UPLOADER_CONFIGURATION_TOPIC;
@@ -72,6 +73,7 @@ import static com.aws.greengrass.logmanager.LogManagerService.LOGS_UPLOADER_PERI
 import static com.aws.greengrass.logmanager.LogManagerService.MULTILINE_PATTERN_CONFIG_TOPIC_NAME;
 import static com.aws.greengrass.testcommons.testutilities.ExceptionLogProtector.ignoreExceptionOfType;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
@@ -174,6 +176,31 @@ class PartialUploadTest {
 
             assertTrue(Files.exists(scenario.files.get("rotated")),
                     "rotated file kept while its earlier lines never uploaded");
+        });
+    }
+
+    @Test
+    void GIVEN_disk_space_limit_WHEN_one_stream_fails_THEN_already_uploaded_files_are_still_freed() throws Exception {
+        new Scenario().run("disk space freed", scenario -> {
+            scenario.writeFile("older", "test.log.1", Instant.now().minusSeconds(600),
+                    line(DAY_D, "20:00:00", "a"), line(DAY_D, "20:00:01", "b"));
+            scenario.writeFile("active", "test.log", Instant.now().minusSeconds(300),
+                    line(DAY_D, "21:00:00", "c"), line(DAY_D, "21:00:01", "d"));
+            scenario.failing.set(false);
+            scenario.stubCloudWatch(FailingStream.LATER, streamFor(DAY_D1), Failure.SERVICE_ERROR_CONTINUES_BATCH);
+            scenario.configure(false);
+            scenario.component().createLeafChild(DISK_SPACE_LIMIT_CONFIG_TOPIC_NAME).withValue("1");
+
+            scenario.startService();
+            scenario.awaitCycles(1);
+            scenario.failing.set(true);
+            Files.write(scenario.files.get("active"), (line(DAY_D, "23:59:59", "e") + "\n"
+                    + line(DAY_D1, "00:00:01", "f") + "\n").getBytes(StandardCharsets.UTF_8),
+                    StandardOpenOption.APPEND);
+            scenario.awaitCycles(3);
+
+            assertFalse(Files.exists(scenario.files.get("older")),
+                    "uploaded file over the disk space limit deleted while another stream fails");
         });
     }
 

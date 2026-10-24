@@ -55,6 +55,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
@@ -668,6 +669,40 @@ class LogManagerServiceTest {
         assertEquals(component2ActiveFile.hashString(), currentProcessingFileInformationActive2.getFileHash());
         assertEquals(0, currentProcessingFileInformationActive2.getStartPosition());
         assertEquals(component2ActiveFile.lastModified(), currentProcessingFileInformationActive2.getLastModifiedTime());
+    }
+
+    @Test
+    void GIVEN_file_read_by_two_streams_WHEN_attempt_uploaded_THEN_saved_position_is_the_furthest_in_either_order()
+            throws IOException, InvalidLogGroupException {
+        Path logDirectory = Files.createDirectories(directoryPath.resolve("furthest"));
+        LogFile file = createLogFileWithSize(logDirectory.resolve("furthest.log").toUri(), 2048);
+        LogFileGroup logFileGroup = LogFileGroup.create(ComponentLogConfiguration.builder()
+                .directoryPath(logDirectory).fileNameRegex(Pattern.compile("^furthest.log$"))
+                .name("TestComponent").build(), mockInstant, workdirectory);
+        doNothing().when(mockUploader).registerAttemptStatus(anyString(), callbackCaptor.capture());
+        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, nucleusPaths);
+
+        for (boolean furthestFirst : new boolean[]{true, false}) {
+            logsUploaderService.processingFilesInformation.clear();
+            Map<String, CloudWatchAttemptLogInformation> streams = new LinkedHashMap<>();
+            List<Long> bytesRead = furthestFirst ? Arrays.asList(1500L, 700L) : Arrays.asList(700L, 1500L);
+            for (int i = 0; i < bytesRead.size(); i++) {
+                Map<String, CloudWatchAttemptLogFileInformation> fileInformation = new HashMap<>();
+                fileInformation.put(file.hashString(), CloudWatchAttemptLogFileInformation.builder()
+                        .startPosition(100).bytesRead(bytesRead.get(i)).lastModifiedTime(file.lastModified())
+                        .fileHash(file.hashString()).build());
+                streams.put("stream" + i, CloudWatchAttemptLogInformation.builder().componentName("TestComponent")
+                        .attemptLogFileInformationMap(fileInformation).logFileGroup(logFileGroup).build());
+            }
+            CloudWatchAttempt attempt = new CloudWatchAttempt();
+            attempt.setLogStreamsToLogEventsMap(streams);
+            attempt.setLogStreamUploadedSet(new HashSet<>(streams.keySet()));
+
+            callbackCaptor.getValue().accept(attempt);
+
+            assertEquals(1600, logsUploaderService.processingFilesInformation.get("TestComponent")
+                    .get(file.hashString()).getStartPosition(), "furthestFirst=" + furthestFirst);
+        }
     }
 
     @Test

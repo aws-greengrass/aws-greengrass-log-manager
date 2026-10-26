@@ -8,13 +8,17 @@ package com.aws.greengrass.logmanager;
 import com.aws.greengrass.config.Configuration;
 import com.aws.greengrass.config.Topic;
 import com.aws.greengrass.config.Topics;
+import com.aws.greengrass.config.UpdateBehaviorTree;
 import com.aws.greengrass.dependency.Context;
 import com.aws.greengrass.deployment.DeviceConfiguration;
+import com.aws.greengrass.logging.impl.GreengrassLogMessage;
+import com.aws.greengrass.logging.impl.Slf4jLogAdapter;
 import com.aws.greengrass.logmanager.model.EventType;
 import com.aws.greengrass.logmanager.model.LogFile;
 import com.aws.greengrass.logmanager.util.CloudWatchClientFactory;
 import com.aws.greengrass.logmanager.util.SdkClientWrapper;
 import com.aws.greengrass.testcommons.testutilities.GGExtension;
+import com.aws.greengrass.util.Digest;
 import com.aws.greengrass.util.NucleusPaths;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -44,6 +48,7 @@ import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -60,11 +65,13 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
 import java.util.stream.Stream;
 
 import static com.aws.greengrass.componentmanager.KernelConfigResolver.CONFIGURATION_CONFIG_KEY;
 import static com.aws.greengrass.deployment.DeviceConfiguration.DEVICE_PARAM_AWS_REGION;
 import static com.aws.greengrass.deployment.DeviceConfiguration.DEVICE_PARAM_THING_NAME;
+import static com.aws.greengrass.lifecyclemanager.GreengrassService.RUNTIME_STORE_NAMESPACE_TOPIC;
 import static com.aws.greengrass.logmanager.LogManagerService.COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME;
 import static com.aws.greengrass.logmanager.LogManagerService.DELETE_LOG_FILES_AFTER_UPLOAD_CONFIG_TOPIC_NAME;
 import static com.aws.greengrass.logmanager.LogManagerService.DISK_SPACE_LIMIT_CONFIG_TOPIC_NAME;
@@ -73,6 +80,12 @@ import static com.aws.greengrass.logmanager.LogManagerService.FILE_REGEX_CONFIG_
 import static com.aws.greengrass.logmanager.LogManagerService.LOGS_UPLOADER_CONFIGURATION_TOPIC;
 import static com.aws.greengrass.logmanager.LogManagerService.LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC;
 import static com.aws.greengrass.logmanager.LogManagerService.MULTILINE_PATTERN_CONFIG_TOPIC_NAME;
+import static com.aws.greengrass.logmanager.LogManagerService.PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION_V2;
+import static com.aws.greengrass.logmanager.LogManagerService.PERSISTED_CURRENT_PROCESSING_FILE_HASH;
+import static com.aws.greengrass.logmanager.LogManagerService.PERSISTED_CURRENT_PROCESSING_FILE_LAST_ACCESSED_TIME;
+import static com.aws.greengrass.logmanager.LogManagerService.PERSISTED_CURRENT_PROCESSING_FILE_LAST_MODIFIED_TIME;
+import static com.aws.greengrass.logmanager.LogManagerService.PERSISTED_CURRENT_PROCESSING_FILE_NAME;
+import static com.aws.greengrass.logmanager.LogManagerService.PERSISTED_CURRENT_PROCESSING_FILE_START_POSITION;
 import static com.aws.greengrass.testcommons.testutilities.ExceptionLogProtector.ignoreExceptionOfType;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -238,6 +251,39 @@ class PartialUploadTest {
             }
         }
         return cases.build();
+    }
+
+    @TestFactory
+    Stream<DynamicTest> GIVEN_active_file_rotated_by_rename_WHEN_cycles_run_THEN_each_file_resumes_at_its_own_position() {
+        return Stream.of(true, false).map(deleteAfterUpload -> DynamicTest.dynamicTest("delete=" + deleteAfterUpload,
+                () -> new Scenario().run("rename rotation delete=" + deleteAfterUpload,
+                        scenario -> scenario.renameRotation(deleteAfterUpload))));
+    }
+
+    @TestFactory
+    Stream<DynamicTest> GIVEN_file_truncated_and_regrown_with_same_first_line_WHEN_cycle_runs_THEN_read_from_start() {
+        Stream.Builder<DynamicTest> cases = Stream.builder();
+        for (boolean copyInLogDirectory : new boolean[]{true, false}) {
+            for (boolean deleteAfterUpload : new boolean[]{true, false}) {
+                String name = String.format("copyInLogDirectory=%s delete=%s", copyInLogDirectory,
+                        deleteAfterUpload);
+                cases.add(DynamicTest.dynamicTest(name, () -> new Scenario().run(name,
+                        scenario -> scenario.copyTruncate(copyInLogDirectory, deleteAfterUpload))));
+            }
+        }
+        return cases.build();
+    }
+
+    @Test
+    void GIVEN_position_saved_by_an_older_version_WHEN_upgraded_THEN_resumes_there_and_tells_later_files_apart()
+            throws Exception {
+        new Scenario().run("legacy record", Scenario::legacyRecord);
+    }
+
+    @Test
+    void GIVEN_older_version_position_matching_two_files_WHEN_upgraded_THEN_both_read_from_start_with_a_warning()
+            throws Exception {
+        new Scenario().run("ambiguous legacy record", Scenario::ambiguousLegacyRecord);
     }
 
     interface ScenarioBody {
@@ -421,12 +467,156 @@ class PartialUploadTest {
                 expected.addAll(Files.readAllLines(files.get("active"), StandardCharsets.UTF_8));
                 awaitCycles(2);
             }
-            String appended = shortLine("23:00:00", "appended");
-            Files.write(files.get("active"), (appended + "\n").getBytes(StandardCharsets.UTF_8),
-                    StandardOpenOption.APPEND);
-            expected.add(appended);
+            expected.add(append("active", shortLine("23:00:00", "appended")));
             awaitCycles(4);
 
+            assertDeliveredOnce(expected);
+            for (String role : rotatedRoles) {
+                assertEquals(!deleteAfterUpload, Files.exists(files.get(role)),
+                        role + " file deleted once fully uploaded only when delete-after-upload is on");
+            }
+            assertTrue(Files.exists(files.get("active")), "active file kept");
+        }
+
+        void renameRotation(boolean deleteAfterUpload) throws Exception {
+            Instant base = Instant.now().minusSeconds(600);
+            List<String> expected = new ArrayList<>(writeFile("active", "test.log", base, banner("active", true),
+                    shortLine("20:00:00", "a"), shortLine("20:00:01", "b")));
+            failing.set(false);
+            stubCloudWatch(FailingStream.EARLIER, "", Failure.SERVICE_ERROR_CONTINUES_BATCH);
+            configure(deleteAfterUpload);
+
+            startService();
+            awaitCycles(2);
+            stopService();
+            expected.add(append("active", shortLine("20:00:02", "written before rotation")));
+            Path rotated = rotate(base.plusSeconds(30));
+            expected.addAll(writeFile("active", "test.log", base.plusSeconds(60), banner("active", true),
+                    shortLine("21:00:00", "c")));
+            startService();
+            awaitCycles(2);
+            stopService();
+            expected.add(append("active", shortLine("21:00:01", "written after restart")));
+            startService();
+            awaitCycles(2);
+
+            assertDeliveredOnce(expected);
+            assertEquals(!deleteAfterUpload, Files.exists(rotated),
+                    "rotated file deleted once fully uploaded only when delete-after-upload is on");
+        }
+
+        void copyTruncate(boolean copyInLogDirectory, boolean deleteAfterUpload) throws Exception {
+            Instant base = Instant.now().minusSeconds(600);
+            List<String> expected = new ArrayList<>(writeFile("active", "test.log", base, banner("active", true),
+                    shortLine("20:00:00", "a"), shortLine("20:00:01", "b")));
+            failing.set(false);
+            stubCloudWatch(FailingStream.EARLIER, "", Failure.SERVICE_ERROR_CONTINUES_BATCH);
+            configure(deleteAfterUpload);
+
+            startService();
+            awaitCycles(2);
+            stopService();
+            Path copy = (copyInLogDirectory ? logDir
+                    : Files.createDirectories(logDir.resolveSibling(logDir.getFileName() + "-archive")))
+                    .resolve("test.log.1");
+            Files.copy(files.get("active"), copy);
+            Files.setLastModifiedTime(copy, FileTime.from(base.plusSeconds(60)));
+            long truncatedLength = Files.size(files.get("active"));
+            expected.addAll(writeFile("active", "test.log", base.plusSeconds(120), banner("active", true),
+                    shortLine("21:00:00", "c regrown past the saved position"),
+                    shortLine("21:00:01", "d regrown past the saved position")));
+            assertTrue(Files.size(files.get("active")) > truncatedLength, "regrown past the saved position");
+            startService();
+            awaitCycles(3);
+
+            assertDeliveredOnce(expected);
+            if (copyInLogDirectory) {
+                assertEquals(!deleteAfterUpload, Files.exists(copy),
+                        "copy deleted once fully uploaded only when delete-after-upload is on");
+            }
+        }
+
+        void legacyRecord() throws Exception {
+            Instant base = Instant.now().minusSeconds(600);
+            String banner = banner("active", true);
+            writeFile("active", "test.log", base, banner, shortLine("20:00:00", "a"), shortLine("20:00:01", "b"));
+            persistLegacyRecord(banner, Files.size(files.get("active")), base);
+            failing.set(false);
+            stubCloudWatch(FailingStream.EARLIER, "", Failure.SERVICE_ERROR_CONTINUES_BATCH);
+            configure(false);
+
+            startService();
+            awaitCycles(2);
+            List<String> expected = new ArrayList<>();
+            expected.add(append("active", shortLine("20:00:02", "after upgrade")));
+            awaitCycles(2);
+            rotate(base.plusSeconds(30));
+            expected.addAll(writeFile("active", "test.log", base.plusSeconds(60), banner,
+                    shortLine("21:00:00", "c")));
+            awaitCycles(3);
+
+            assertDeliveredOnce(expected);
+        }
+
+        void ambiguousLegacyRecord() throws Exception {
+            Instant base = Instant.now().minusSeconds(600);
+            String banner = banner("active", true);
+            List<String> expected = new ArrayList<>(writeFile("rotated", "test.log.1", base, banner,
+                    shortLine("20:00:00", "a"), shortLine("20:00:01", "b")));
+            expected.addAll(writeFile("active", "test.log", base.plusSeconds(60), banner,
+                    shortLine("21:00:00", "c")));
+            persistLegacyRecord(banner, Files.size(files.get("active")), base.plusSeconds(60));
+            failing.set(false);
+            stubCloudWatch(FailingStream.EARLIER, "", Failure.SERVICE_ERROR_CONTINUES_BATCH);
+            configure(false);
+            List<GreengrassLogMessage> warnings = Collections.synchronizedList(new ArrayList<>());
+            Consumer<GreengrassLogMessage> listener = message -> {
+                if ("WARN".equals(message.getLevel())) {
+                    warnings.add(message);
+                }
+            };
+            Slf4jLogAdapter.addGlobalListener(listener);
+            try {
+                startService();
+                awaitCycles(3);
+            } finally {
+                Slf4jLogAdapter.removeGlobalListener(listener);
+            }
+
+            assertDeliveredOnce(expected);
+            String bothFiles = Arrays.asList("test.log.1", "test.log").toString();
+            assertTrue(warnings.stream().anyMatch(message -> bothFiles.equals(message.getContexts().get("files"))),
+                    "warning names the files read from the start: " + warnings);
+        }
+
+        private void persistLegacyRecord(String firstLine, long position, Instant lastModified) throws Exception {
+            String firstLineHash = Digest.calculate(firstLine + "\n");
+            Map<String, Object> record = new HashMap<>();
+            record.put(PERSISTED_CURRENT_PROCESSING_FILE_NAME, files.get("active").toString());
+            record.put(PERSISTED_CURRENT_PROCESSING_FILE_HASH, firstLineHash);
+            record.put(PERSISTED_CURRENT_PROCESSING_FILE_START_POSITION, position);
+            record.put(PERSISTED_CURRENT_PROCESSING_FILE_LAST_MODIFIED_TIME, lastModified.toEpochMilli());
+            record.put(PERSISTED_CURRENT_PROCESSING_FILE_LAST_ACCESSED_TIME, System.currentTimeMillis());
+            config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC,
+                    PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION_V2, COMPONENT, firstLineHash)
+                    .updateFromMap(record,
+                    new UpdateBehaviorTree(UpdateBehaviorTree.UpdateBehavior.REPLACE, System.currentTimeMillis()));
+        }
+
+        private Path rotate(Instant lastWritten) throws IOException {
+            Path rotated = logDir.resolve("test.log.1");
+            Files.move(files.get("active"), rotated);
+            Files.setLastModifiedTime(rotated, FileTime.from(lastWritten));
+            files.put("rotated", rotated);
+            return rotated;
+        }
+
+        private String append(String role, String line) throws IOException {
+            Files.write(files.get(role), (line + "\n").getBytes(StandardCharsets.UTF_8), StandardOpenOption.APPEND);
+            return line;
+        }
+
+        private void assertDeliveredOnce(List<String> expected) {
             List<String> extra = new ArrayList<>(delivered);
             List<String> missing = new ArrayList<>();
             for (String line : expected) {
@@ -436,11 +626,6 @@ class PartialUploadTest {
             }
             assertEquals("missing=[] extra=[]", "missing=" + missing + " extra=" + extra,
                     "each line of every file delivered exactly once");
-            for (String role : rotatedRoles) {
-                assertEquals(!deleteAfterUpload, Files.exists(files.get(role)),
-                        role + " file deleted once fully uploaded only when delete-after-upload is on");
-            }
-            assertTrue(Files.exists(files.get("active")), "active file kept");
         }
 
         private String writeFiles(Layout layout, FailingStream failingStream) throws IOException {
@@ -486,7 +671,8 @@ class PartialUploadTest {
             return failingStream == FailingStream.EARLIER ? earlier : later;
         }
 
-        private void writeFile(String role, String name, Instant modified, String... lines) throws IOException {
+        private List<String> writeFile(String role, String name, Instant modified, String... lines)
+                throws IOException {
             Path path = logDir.resolve(name);
             StringBuilder content = new StringBuilder();
             Set<String> streams = new HashSet<>();
@@ -499,6 +685,7 @@ class PartialUploadTest {
             Files.write(path, content.toString().getBytes(StandardCharsets.UTF_8));
             Files.setLastModifiedTime(path, FileTime.from(modified));
             files.put(role, path);
+            return Arrays.asList(lines);
         }
 
         private void stubCloudWatch(FailingStream failingStream, String failingStreamName, Failure failure) {

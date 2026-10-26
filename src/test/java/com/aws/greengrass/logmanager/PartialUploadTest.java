@@ -218,6 +218,29 @@ class PartialUploadTest {
         new Scenario().run("tied modification times", Scenario::tiedRotatedFilesSecondFails);
     }
 
+    @Test
+    void GIVEN_entry_with_three_byte_characters_WHEN_split_into_events_THEN_characters_are_intact()
+            throws Exception {
+        assertSplitEntryKeepsCharacters("\u20ac");
+    }
+
+    @Test
+    void GIVEN_entry_with_four_byte_characters_WHEN_split_into_events_THEN_characters_are_intact()
+            throws Exception {
+        assertSplitEntryKeepsCharacters("\uD83D\uDE00");
+    }
+
+    private void assertSplitEntryKeepsCharacters(String character) throws Exception {
+        new Scenario().run("multi-byte chunk boundary " + character, scenario -> {
+            // After the 1024-byte prefix, the first event boundary falls inside a 3- or 4-byte character
+            String big = fill(line(DAY_D, "10:00:00", "utf8"), character, 300_000);
+            String small = line(DAY_D1, "01:00:00", "small");
+            scenario.uploadOnce(big, small);
+
+            assertSameText(big, scenario.deliveredExcept(small), "entry delivered character for character");
+        });
+    }
+
     interface ScenarioBody {
         void accept(Scenario scenario) throws Exception;
     }
@@ -362,6 +385,24 @@ class PartialUploadTest {
             }
             assertEquals(expectedOldDay, deliveredOldDay, "old-day lines delivered exactly once");
             assertEquals(Collections.emptySet(), missing, "new-day lines never delivered to CloudWatch");
+        }
+
+        void uploadOnce(String rotatedEntry, String activeEntry) throws Exception {
+            writeFile("rotated", "test.log.1", Instant.now().minusSeconds(600), rotatedEntry);
+            writeFile("active", "test.log", Instant.now().minusSeconds(300), activeEntry);
+            failing.set(false);
+            stubCloudWatch(FailingStream.EARLIER, "", Failure.SERVICE_ERROR_CONTINUES_BATCH);
+            configure(false);
+            startService();
+            awaitCycles(4);
+        }
+
+        String deliveredExcept(String message) {
+            StringBuilder text = new StringBuilder();
+            synchronized (delivered) {
+                delivered.stream().filter(m -> !m.equals(message)).forEach(text::append);
+            }
+            return text.toString();
         }
 
         private String writeFiles(Layout layout, FailingStream failingStream) throws IOException {
@@ -518,6 +559,27 @@ class PartialUploadTest {
         StringBuilder sb = new StringBuilder(prefix).append(' ');
         while (sb.length() < LogFile.bytesNeeded) {
             sb.append('x');
+        }
+        return sb.toString();
+    }
+
+    private static void assertSameText(String expected, String actual, String what) {
+        int at = 0;
+        while (at < expected.length() && at < actual.length() && expected.charAt(at) == actual.charAt(at)) {
+            at++;
+        }
+        assertEquals(window(expected, at), window(actual, at), what + ", first difference at char " + at);
+    }
+
+    private static String window(String text, int at) {
+        return text.length() + " chars, " + text.substring(Math.max(0, at - 12), Math.min(text.length(), at + 12));
+    }
+
+    private static String fill(String prefix, String unit, int utf8Bytes) {
+        StringBuilder sb = new StringBuilder(prefix);
+        int unitBytes = unit.getBytes(StandardCharsets.UTF_8).length;
+        for (int size = prefix.getBytes(StandardCharsets.UTF_8).length; size < utf8Bytes; size += unitBytes) {
+            sb.append(unit);
         }
         return sb.toString();
     }

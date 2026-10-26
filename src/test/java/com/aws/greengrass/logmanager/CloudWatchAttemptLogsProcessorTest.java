@@ -49,9 +49,11 @@ import java.time.ZoneOffset;
 import java.time.format.DateTimeParseException;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.TimeZone;
 import java.util.regex.Pattern;
 
@@ -898,6 +900,64 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
         String thingName3 = "a:zA_Z:0-9";
         String logStream3 = logsProcessor.getLogStreamName(thingName3);
         assertEquals("/{date}/thing/a+zA_Z+0-9", logStream3);
+    }
+
+    @Test
+    void GIVEN_multiline_entries_of_two_days_WHEN_read_from_resume_offset_THEN_each_stream_records_its_first_entry_start()
+            throws IOException {
+        String skipped = "2020-12-16T09:00:00Z [INFO] before resume offset\r\n";
+        String day1First = "2020-12-16T10:00:00Z [INFO] day one first\r\n    at continuation\r\n";
+        String day2First = "2020-12-17T00:00:01Z [INFO] day two first\r\n    at continuation\r\n";
+        String day1Again = "2020-12-16T23:59:59Z [INFO] day one again\r\n";
+        String day2Again = "2020-12-17T00:00:02Z [INFO] day two again\n";
+        File file = directoryPath.resolve("entry_start.log").toFile();
+        Files.write(file.toPath(), (skipped + day1First + day2First + day1Again + day2Again)
+                .getBytes(StandardCharsets.UTF_8));
+        long resumeOffset = skipped.length();
+        try {
+            List<LogFileInformation> logFileInformationList = new ArrayList<>();
+            logFileInformationList.add(LogFileInformation.builder().startPosition(resumeOffset)
+                    .logFile(LogFile.of(file)).fileHash("entry-start").build());
+            logsProcessor = new CloudWatchAttemptLogsProcessor(mockDeviceConfiguration, defaultClock);
+
+            CloudWatchAttempt attempt = logsProcessor.processLogFiles(ComponentLogFileInformation.builder()
+                    .name("TestComponent").desiredLogLevel(Level.INFO).componentType(ComponentType.UserComponent)
+                    .logFileInformationList(logFileInformationList).build());
+
+            Map<String, CloudWatchAttemptLogInformation> streams = attempt.getLogStreamsToLogEventsMap();
+            assertEquals(resumeOffset, streams.get("/2020/12/16/thing/testThing").getAttemptLogFileInformationMap()
+                    .get("entry-start").getFirstEntryStartPosition());
+            assertEquals(resumeOffset + day1First.length(), streams.get("/2020/12/17/thing/testThing")
+                    .getAttemptLogFileInformationMap().get("entry-start").getFirstEntryStartPosition());
+        } finally {
+            assertTrue(file.delete());
+        }
+    }
+
+    @Test
+    void GIVEN_three_files_WHEN_processed_THEN_file_hashes_are_recorded_in_read_order() throws IOException {
+        List<String> hashes = Arrays.asList("third", "first", "second");
+        List<LogFileInformation> logFileInformationList = new ArrayList<>();
+        List<File> files = new ArrayList<>();
+        for (String hash : hashes) {
+            File file = directoryPath.resolve("read_order_" + hash + ".log").toFile();
+            Files.write(file.toPath(), ("2020-12-17T10:00:00Z [INFO] " + hash + "\n")
+                    .getBytes(StandardCharsets.UTF_8));
+            files.add(file);
+            logFileInformationList.add(LogFileInformation.builder().startPosition(0).logFile(LogFile.of(file))
+                    .fileHash(hash).build());
+        }
+        try {
+            logsProcessor = new CloudWatchAttemptLogsProcessor(mockDeviceConfiguration, defaultClock);
+
+            CloudWatchAttempt attempt = logsProcessor.processLogFiles(ComponentLogFileInformation.builder()
+                    .name("TestComponent").desiredLogLevel(Level.INFO).componentType(ComponentType.UserComponent)
+                    .logFileInformationList(logFileInformationList).build());
+
+            assertEquals(hashes, attempt.getFileHashesInReadOrder());
+        } finally {
+            files.forEach(file -> assertTrue(file.delete()));
+        }
     }
 
     private String calculateLogGroupName(ComponentType componentType, String awsRegion, String componentName) {

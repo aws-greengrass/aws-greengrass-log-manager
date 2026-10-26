@@ -10,7 +10,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -30,4 +32,9 @@ public class CloudWatchAttempt {
      * successfully uploaded to cloud.
      */
     private Set<String> logStreamUploadedSet = new HashSet<>();
+
+    /**
+     * Hashes of the files the processor opened, in the order it read them.
+     */
+    private List<String> fileHashesInReadOrder = new ArrayList<>();
 }

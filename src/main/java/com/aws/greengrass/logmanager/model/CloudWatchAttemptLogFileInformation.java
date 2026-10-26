@@ -21,4 +21,9 @@ public class CloudWatchAttemptLogFileInformation {
     //TODO: this fileHash added here is only for passing the tests for the current small PR, it will be removed and
     // passed in another way, when the feature is fully enbaled.
     private String fileHash;
+    /**
+     * Offset where this stream's first entry from this file begins. -1 when unknown, read as startPosition.
+     */
+    @Builder.Default
+    private long firstEntryStartPosition = -1;
 }

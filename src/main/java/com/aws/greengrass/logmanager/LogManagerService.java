@@ -17,7 +17,6 @@ import com.aws.greengrass.logging.impl.LogManager;
 import com.aws.greengrass.logging.impl.config.LogConfig;
 import com.aws.greengrass.logmanager.exceptions.InvalidLogGroupException;
 import com.aws.greengrass.logmanager.model.CloudWatchAttempt;
-import com.aws.greengrass.logmanager.model.CloudWatchAttemptLogFileInformation;
 import com.aws.greengrass.logmanager.model.CloudWatchAttemptLogInformation;
 import com.aws.greengrass.logmanager.model.ComponentLogConfiguration;
 import com.aws.greengrass.logmanager.model.ComponentLogFileInformation;
@@ -44,7 +43,6 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -510,12 +508,7 @@ public class LogManagerService extends PluginService {
         streams.values().forEach(stream ->
                 logFileGroupPerComponent.put(stream.getComponentName(), stream.getLogFileGroup()));
 
-        if (cloudWatchAttempt.getLogStreamUploadedSet().containsAll(streams.keySet())) {
-            commitUploadedAttempt(streams.values(), logFileGroupPerComponent);
-        } else {
-            logger.atWarn().kv("logGroup", cloudWatchAttempt.getLogGroupName())
-                    .log("Not all log streams were uploaded. The same logs will be read and uploaded again");
-        }
+        commit(CommitPlan.of(cloudWatchAttempt), logFileGroupPerComponent);
 
         logFileGroupPerComponent.forEach((componentName, logFileGroup) -> {
             List<String> deletedHashes = this.diskSpaceManagementService.freeDiskSpace(logFileGroup);
@@ -532,17 +525,9 @@ public class LogManagerService extends PluginService {
         }
     }
 
-    private void commitUploadedAttempt(Collection<CloudWatchAttemptLogInformation> streams,
-                                       Map<String, LogFileGroup> logFileGroupPerComponent) {
-        Map<String, CloudWatchAttemptLogInformation> furthestStreamByFileHash = new HashMap<>();
-        streams.forEach(stream -> stream.getAttemptLogFileInformationMap().keySet().forEach(fileHash ->
-                furthestStreamByFileHash.merge(fileHash, stream, (current, candidate) ->
-                        uploadedUpTo(candidate, fileHash) > uploadedUpTo(current, fileHash) ? candidate : current)));
-
+    private void commit(List<CommitPlan.FileCommit> fileCommits, Map<String, LogFileGroup> logFileGroupPerComponent) {
         Map<String, Set<LogFile>> completedLogFilePerComponent = new HashMap<>();
-        furthestStreamByFileHash.forEach((fileHash, stream) ->
-                processCloudWatchAttemptLogInformation(completedLogFilePerComponent, stream, fileHash,
-                        stream.getAttemptLogFileInformationMap().get(fileHash)));
+        fileCommits.forEach(fileCommit -> processFileCommit(completedLogFilePerComponent, fileCommit));
 
         logFileGroupPerComponent.forEach((componentName, logFileGroup) -> {
             Set<LogFile> completedFiles = completedLogFilePerComponent.getOrDefault(componentName, new HashSet<>());
@@ -559,11 +544,6 @@ public class LogManagerService extends PluginService {
                 this.deleteFileFromGroup(componentName, shouldDeleteFile, file, logFileGroup);
             });
         });
-    }
-
-    private static long uploadedUpTo(CloudWatchAttemptLogInformation stream, String fileHash) {
-        CloudWatchAttemptLogFileInformation progress = stream.getAttemptLogFileInformationMap().get(fileHash);
-        return progress.getStartPosition() + progress.getBytesRead();
     }
 
     private boolean shouldUpdateConfig() {
@@ -664,12 +644,10 @@ public class LogManagerService extends PluginService {
         }
     }
 
-    private void processCloudWatchAttemptLogInformation(Map<String, Set<LogFile>> completedLogFilePerComponent,
-                                                        CloudWatchAttemptLogInformation attemptLogInformation,
-                                                        String fileHash,
-                                                        CloudWatchAttemptLogFileInformation
-                                                                cloudWatchAttemptLogFileInformation) {
-        LogFileGroup logFileGroup = attemptLogInformation.getLogFileGroup();
+    private void processFileCommit(Map<String, Set<LogFile>> completedLogFilePerComponent,
+                                   CommitPlan.FileCommit fileCommit) {
+        LogFileGroup logFileGroup = fileCommit.getStream().getLogFileGroup();
+        String fileHash = fileCommit.getFileHash();
         LogFile file = logFileGroup.getFile(fileHash);
 
         if (file == null) {
@@ -680,9 +658,8 @@ public class LogManagerService extends PluginService {
 
         // If we have completely read the file, then we need add it to the completed files list and remove it
         // (if necessary) for the current processing list.
-        String componentName = attemptLogInformation.getComponentName();
-        long bytesUploaded = cloudWatchAttemptLogFileInformation.getBytesRead()
-                + cloudWatchAttemptLogFileInformation.getStartPosition();
+        String componentName = fileCommit.getStream().getComponentName();
+        long bytesUploaded = fileCommit.getPosition();
 
         if (!logFileGroup.isActiveFile(file) && file.length() == bytesUploaded) {
             Set<LogFile> completedFiles = completedLogFilePerComponent.getOrDefault(componentName,
@@ -698,7 +675,7 @@ public class LogManagerService extends PluginService {
                 CurrentProcessingFileInformation.builder()
                         .fileName(file.getSourcePath()) // @deprecated
                         .startPosition(bytesUploaded)
-                        .lastModifiedTime(cloudWatchAttemptLogFileInformation.getLastModifiedTime())
+                        .lastModifiedTime(fileCommit.getLastModifiedTime())
                         .fileHash(fileHash)
                         .build();
 

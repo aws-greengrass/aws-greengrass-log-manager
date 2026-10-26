@@ -53,7 +53,7 @@ public final class PositionCheck {
         return Base64.getEncoder().encodeToString(digest.digest());
     }
 
-    private static ByteBuffer read(SeekableByteChannel channel, long offset, int length) throws IOException {
+    private static byte[] read(SeekableByteChannel channel, long offset, int length) throws IOException {
         ByteBuffer buffer = ByteBuffer.allocate(length);
         channel.position(offset);
         while (buffer.hasRemaining()) {
@@ -61,7 +61,6 @@ public final class PositionCheck {
                 throw new EOFException("File is shorter than the saved position");
             }
         }
-        buffer.flip();
-        return buffer;
+        return buffer.array();
     }
 }

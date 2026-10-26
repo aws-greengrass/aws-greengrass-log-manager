@@ -46,6 +46,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -161,6 +162,12 @@ class PartialUploadTest {
             }
         }
         return cases.build();
+    }
+
+    @TestFactory
+    Stream<DynamicTest> GIVEN_active_file_crosses_midnight_WHEN_new_day_stream_fails_THEN_old_day_lines_are_sent_once() {
+        return Stream.of(Failure.values()).map(failure -> DynamicTest.dynamicTest(failure.name(),
+                () -> new Scenario().run("new day fails " + failure, scenario -> scenario.newDayFails(failure))));
     }
 
     @Test
@@ -296,6 +303,32 @@ class PartialUploadTest {
             if (layout != Layout.ACTIVE_ACROSS_MIDNIGHT) {
                 assertEquals(!deleteAfterUpload, Files.exists(files.get("rotated")));
             }
+        }
+
+        void newDayFails(Failure failure) throws Exception {
+            String newDayStream = writeFiles(Layout.ACTIVE_ACROSS_MIDNIGHT, FailingStream.LATER);
+            stubCloudWatch(FailingStream.LATER, newDayStream, failure);
+            configure(false);
+
+            startService();
+            awaitCycles(4);
+            failing.set(false);
+            awaitCycles(3);
+
+            Map<String, Long> expectedOldDay = new LinkedHashMap<>();
+            Map<String, Long> deliveredOldDay = new LinkedHashMap<>();
+            Set<String> missing = new LinkedHashSet<>();
+            for (String line : expectedLines) {
+                long sends = delivered.stream().filter(line::equals).count();
+                if (line.startsWith(DAY_D)) {
+                    expectedOldDay.put(line, 1L);
+                    deliveredOldDay.put(line, sends);
+                } else if (sends == 0) {
+                    missing.add(line);
+                }
+            }
+            assertEquals(expectedOldDay, deliveredOldDay, "old-day lines delivered exactly once");
+            assertEquals(Collections.emptySet(), missing, "new-day lines never delivered to CloudWatch");
         }
 
         private String writeFiles(Layout layout, FailingStream failingStream) throws IOException {

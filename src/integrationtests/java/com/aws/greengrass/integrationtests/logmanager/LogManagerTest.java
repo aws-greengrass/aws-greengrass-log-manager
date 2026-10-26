@@ -46,6 +46,7 @@ import software.amazon.awssdk.services.cloudwatchlogs.CloudWatchLogsClient;
 import software.amazon.awssdk.services.cloudwatchlogs.model.PutLogEventsRequest;
 import software.amazon.awssdk.services.cloudwatchlogs.model.PutLogEventsResponse;
 
+import java.io.File;
 import java.io.IOException;
 import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
@@ -57,6 +58,7 @@ import java.text.SimpleDateFormat;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
@@ -465,13 +467,19 @@ class LogManagerTest extends BaseITCase {
                 "Expected first CloudWatch upload within 15 seconds");
 
         // Create second batch of log files
+        List<File> secondBatch = new ArrayList<>();
         for (int i = 5; i < 10; i++) {
-            createTempFileAndWriteData(tempDirectoryPath, "integTestRandomLogFiles.log_", Coerce.toString(i));
+            secondBatch.add(
+                    createTempFileAndWriteData(tempDirectoryPath, "integTestRandomLogFiles.log_", Coerce.toString(i)));
         }
 
         // Wait for second upload to complete
         assertTrue(secondUploadLatch.await(15, TimeUnit.SECONDS),
                 "Expected second CloudWatch upload within 15 seconds");
+        // The mocked call returns before the service commits the upload. The commit deletes the uploaded rotated
+        // files and leaves the active one.
+        assertThat(() -> secondBatch.stream().filter(File::exists).count(),
+                eventuallyEval(is(1L), Duration.ofSeconds(15)));
         //Verify write to tlog has not been performed before shutdown
         assertEquals(2, configWriteCount.get());
 

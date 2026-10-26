@@ -44,6 +44,7 @@ import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -216,6 +217,33 @@ class PartialUploadTest {
     void GIVEN_rotated_files_share_a_modification_time_WHEN_stream_of_the_second_fails_THEN_no_line_is_lost()
             throws Exception {
         new Scenario().run("tied modification times", Scenario::tiedRotatedFilesSecondFails);
+    }
+
+    @Test
+    void GIVEN_entry_split_into_pieces_WHEN_an_earlier_timestamp_follows_THEN_pieces_are_sent_in_file_order()
+            throws Exception {
+        new Scenario().run("split entry order", scenario -> {
+            StringBuilder big = new StringBuilder(line(DAY_D, "10:00:05", "big"));
+            while (big.length() < 300 * 1024) {
+                big.append('y');
+            }
+            String first = line(DAY_D, "10:00:01", "a");
+            String later = line(DAY_D, "10:00:02", "d");
+            scenario.writeFile("active", "test.log", Instant.now().minusSeconds(600), first, big.toString(), later);
+            scenario.failing.set(false);
+            scenario.stubCloudWatch(FailingStream.EARLIER, "", Failure.SERVICE_ERROR_CONTINUES_BATCH);
+            scenario.configure(false);
+
+            scenario.startService();
+            scenario.awaitCycles(1);
+
+            List<String> order = new ArrayList<>();
+            for (String message : scenario.delivered) {
+                order.add(message.startsWith("y") ? "rest of line-big" : message.split(" ")[2]);
+            }
+            assertEquals(Arrays.asList("line-a", "line-d", "line-big", "rest of line-big"), order,
+                    "events sorted by timestamp, pieces of one entry kept in file order");
+        });
     }
 
     interface ScenarioBody {

@@ -218,6 +218,19 @@ class PartialUploadTest {
         new Scenario().run("tied modification times", Scenario::tiedRotatedFilesSecondFails);
     }
 
+    @TestFactory
+    Stream<DynamicTest> GIVEN_entry_larger_than_a_batch_WHEN_it_is_uploaded_over_several_cycles_THEN_no_byte_is_skipped() {
+        Stream.Builder<DynamicTest> cases = Stream.builder();
+        for (String ending : new String[]{"\n", "\r\n"}) {
+            for (int lineCount : new int[]{1, 120}) {
+                String name = "lines=" + lineCount + " ending=" + ending.replace("\r", "CR").replace("\n", "LF");
+                cases.add(DynamicTest.dynamicTest(name, () -> new Scenario().run(name,
+                        scenario -> scenario.entryLargerThanABatch(lineCount, ending))));
+            }
+        }
+        return cases.build();
+    }
+
     interface ScenarioBody {
         void accept(Scenario scenario) throws Exception;
     }
@@ -229,6 +242,7 @@ class PartialUploadTest {
         private final CloudWatchLogsClient client = mock(CloudWatchLogsClient.class);
         private final NucleusPaths nucleusPaths = mock(NucleusPaths.class);
         private final AtomicBoolean failing = new AtomicBoolean(true);
+        private String lineEnding = "\n";
         private final List<String> delivered = Collections.synchronizedList(new ArrayList<>());
         private final AtomicInteger cycles = new AtomicInteger();
         private final Set<String> expectedLines = new LinkedHashSet<>();
@@ -254,6 +268,40 @@ class PartialUploadTest {
             } finally {
                 stopService();
             }
+        }
+
+        void entryLargerThanABatch(int lineCount, String ending) throws Exception {
+            StringBuilder entry = new StringBuilder();
+            StringBuilder text = new StringBuilder();
+            for (int i = 0; i < lineCount; i++) {
+                StringBuilder physicalLine = new StringBuilder(i == 0 ? line(DAY_D, "10:00:00", "big") : "\tat frame");
+                while (physicalLine.length() < 1_200_000 / lineCount) {
+                    physicalLine.append((char) ('0' + physicalLine.length() % 10));
+                }
+                entry.append(i == 0 ? "" : ending).append(physicalLine);
+                text.append(physicalLine);
+            }
+            String small = line(DAY_D1, "01:00:00", "small");
+            lineEnding = ending;
+            writeFile("rotated", "test.log.1", Instant.now().minusSeconds(600), entry.toString());
+            writeFile("active", "test.log", Instant.now().minusSeconds(300), small);
+            failing.set(false);
+            stubCloudWatch(FailingStream.EARLIER, "", Failure.SERVICE_ERROR_CONTINUES_BATCH);
+            configure(false);
+
+            startService();
+            awaitCycles(4);
+
+            StringBuilder deliveredText = new StringBuilder();
+            synchronized (delivered) {
+                delivered.stream().filter(message -> !message.equals(small)).forEach(deliveredText::append);
+            }
+            int at = 0;
+            while (at < text.length() && at < deliveredText.length() && text.charAt(at) == deliveredText.charAt(at)) {
+                at++;
+            }
+            assertEquals(window(text, at), window(deliveredText, at),
+                    "text of the split entry without line endings, first difference at char " + at);
         }
 
         void partialFailure(Layout layout, FailingStream failingStream, Failure failure, boolean deleteAfterUpload,
@@ -412,7 +460,7 @@ class PartialUploadTest {
             StringBuilder content = new StringBuilder();
             Set<String> streams = new HashSet<>();
             for (String line : lines) {
-                content.append(line).append('\n');
+                content.append(line).append(lineEnding);
                 expectedLines.add(line);
                 streams.add(streamFor(Character.isDigit(line.charAt(0)) ? line.substring(0, 10) : today()));
             }
@@ -532,6 +580,10 @@ class PartialUploadTest {
 
     private static String utcDay(Instant instant) {
         return DateTimeFormatter.ISO_LOCAL_DATE.withZone(ZoneOffset.UTC).format(instant);
+    }
+
+    private static String window(CharSequence text, int at) {
+        return text.length() + " chars, " + text.subSequence(Math.max(0, at - 12), Math.min(text.length(), at + 12));
     }
 }
 

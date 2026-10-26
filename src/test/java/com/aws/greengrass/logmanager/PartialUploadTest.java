@@ -10,6 +10,8 @@ import com.aws.greengrass.config.Topic;
 import com.aws.greengrass.config.Topics;
 import com.aws.greengrass.dependency.Context;
 import com.aws.greengrass.deployment.DeviceConfiguration;
+import com.aws.greengrass.logmanager.model.CloudWatchAttempt;
+import com.aws.greengrass.logmanager.model.ComponentLogFileInformation;
 import com.aws.greengrass.logmanager.model.EventType;
 import com.aws.greengrass.logmanager.model.LogFile;
 import com.aws.greengrass.logmanager.util.CloudWatchClientFactory;
@@ -72,8 +74,10 @@ import static com.aws.greengrass.logmanager.LogManagerService.FILE_DIRECTORY_PAT
 import static com.aws.greengrass.logmanager.LogManagerService.FILE_REGEX_CONFIG_TOPIC_NAME;
 import static com.aws.greengrass.logmanager.LogManagerService.LOGS_UPLOADER_CONFIGURATION_TOPIC;
 import static com.aws.greengrass.logmanager.LogManagerService.LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC;
+import static com.aws.greengrass.logmanager.LogManagerService.MIN_LOG_LEVEL_CONFIG_TOPIC_NAME;
 import static com.aws.greengrass.logmanager.LogManagerService.MULTILINE_PATTERN_CONFIG_TOPIC_NAME;
 import static com.aws.greengrass.testcommons.testutilities.ExceptionLogProtector.ignoreExceptionOfType;
+import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -218,6 +222,20 @@ class PartialUploadTest {
         new Scenario().run("tied modification times", Scenario::tiedRotatedFilesSecondFails);
     }
 
+    @Test
+    void GIVEN_rotated_file_ending_below_minimum_level_WHEN_uploaded_THEN_file_is_completed_and_deleted()
+            throws Exception {
+        new Scenario().run("filtered tail", scenario -> scenario.filteredRotatedFile(
+                jsonLine("INFO", "a"), jsonLine("INFO", "b"), jsonLine("DEBUG", "c"), jsonLine("DEBUG", "d")));
+    }
+
+    @Test
+    void GIVEN_rotated_file_entirely_below_minimum_level_WHEN_uploaded_THEN_file_is_completed_and_deleted()
+            throws Exception {
+        new Scenario().run("all filtered", scenario -> scenario.filteredRotatedFile(
+                jsonLine("DEBUG", "a"), jsonLine("DEBUG", "b")));
+    }
+
     interface ScenarioBody {
         void accept(Scenario scenario) throws Exception;
     }
@@ -239,6 +257,7 @@ class PartialUploadTest {
         private CountDownLatch serviceStopped;
         private final AtomicInteger callsThisCycle = new AtomicInteger();
         private final Set<String> failedStreams = ConcurrentHashMap.newKeySet();
+        private final Map<String, AtomicInteger> readsByFileName = new ConcurrentHashMap<>();
 
         Scenario() throws IOException {
             logDir = Files.createTempDirectory(tempDir, "logs");
@@ -364,6 +383,31 @@ class PartialUploadTest {
             assertEquals(Collections.emptySet(), missing, "new-day lines never delivered to CloudWatch");
         }
 
+        void filteredRotatedFile(String... rotatedLines) throws Exception {
+            writeFile("rotated", "test.log.1", Instant.now().minusSeconds(600), rotatedLines);
+            writeFile("active", "test.log", Instant.now().minusSeconds(300), jsonLine("INFO", "e"),
+                    jsonLine("INFO", "f"));
+            failing.set(false);
+            stubCloudWatch(FailingStream.EARLIER, "", Failure.SERVICE_ERROR_CONTINUES_BATCH);
+            configure(true);
+            component().createLeafChild(MIN_LOG_LEVEL_CONFIG_TOPIC_NAME).withValue("INFO");
+
+            startService();
+            awaitCycles(6);
+
+            List<String> expected = new ArrayList<>();
+            expectedLines.stream().filter(line -> line.contains("\"level\":\"INFO\"")).forEach(expected::add);
+            List<String> actual = new ArrayList<>(delivered);
+            Collections.sort(expected);
+            Collections.sort(actual);
+            int rotatedReads = readsByFileName.getOrDefault("test.log.1", new AtomicInteger()).get();
+            assertAll(
+                    () -> assertEquals(expected, actual, "each INFO line delivered exactly once"),
+                    () -> assertEquals(1, rotatedReads, "cycles that read the rotated file"),
+                    () -> assertFalse(Files.exists(files.get("rotated")),
+                            "rotated file deleted once every line at or above the minimum level is uploaded"));
+        }
+
         private String writeFiles(Layout layout, FailingStream failingStream) throws IOException {
             Instant base = Instant.now().minusSeconds(600);
             String earlier;
@@ -467,7 +511,15 @@ class PartialUploadTest {
             CloudWatchClientFactory factory = mock(CloudWatchClientFactory.class);
             lenient().when(factory.getWrapper()).thenReturn(new SdkClientWrapper<>(() -> client));
             service = new LogManagerService(config, new CloudWatchLogsUploader(factory),
-                    new CloudWatchAttemptLogsProcessor(deviceConfiguration), nucleusPaths);
+                    new CloudWatchAttemptLogsProcessor(deviceConfiguration) {
+                        @Override
+                        public CloudWatchAttempt processLogFiles(ComponentLogFileInformation information) {
+                            information.getLogFileInformationList().forEach(file -> readsByFileName
+                                    .computeIfAbsent(file.getLogFile().getName(), name -> new AtomicInteger())
+                                    .incrementAndGet());
+                            return super.processLogFiles(information);
+                        }
+                    }, nucleusPaths);
             cycles.set(0);
             service.registerEventStatusListener(event -> {
                 if (event == EventType.ALL_COMPONENTS_PROCESSED) {
@@ -508,6 +560,16 @@ class PartialUploadTest {
 
     private static String line(String day, String time, String id) {
         return padToHashableLength(day + "T" + time + "Z [INFO] line-" + id);
+    }
+
+    private static String jsonLine(String level, String id) {
+        long timestamp = Instant.now().minus(3, ChronoUnit.DAYS).toEpochMilli();
+        StringBuilder message = new StringBuilder("line-").append(id).append(' ');
+        while (message.length() < LogFile.bytesNeeded) {
+            message.append('x');
+        }
+        return "{\"level\":\"" + level + "\",\"loggerName\":\"t\",\"message\":\"" + message
+                + "\",\"timestamp\":" + timestamp + "}";
     }
 
     private static String untimestamped(String id) {

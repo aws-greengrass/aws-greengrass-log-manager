@@ -40,7 +40,6 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.time.temporal.ChronoUnit;
 import java.time.temporal.TemporalAccessor;
-import java.util.Arrays;
 import java.util.Date;
 import java.util.Locale;
 import java.util.Map;
@@ -419,26 +418,25 @@ public class CloudWatchAttemptLogsProcessor {
             logger.atTrace().kv("log-line-size-bytes", dataSize)
                     .log("Log line larger than maximum event size 256KB, " + "will be split into multiple log events");
         }
-        int totalChunks = (dataSize - 1) / MAX_EVENT_LENGTH + 1;
-        int currChunk = 1;
-        int currChunkSize;
+        byte[] bytes = data.getBytes(StandardCharsets.UTF_8);
+        int startFromByte = 0;
         boolean reachedMaxBatchSize = false;
         AtomicInteger currBytesRead = new AtomicInteger();
 
         // Keep adding events until there are no more chunks left or max batch size limit is reached.
-        while (currChunk <= totalChunks) {
-            currChunkSize = currChunk == totalChunks ? (dataSize - 1) % MAX_EVENT_LENGTH + 1 : MAX_EVENT_LENGTH;
+        do {
+            int currChunkSize = Math.min(MAX_EVENT_LENGTH, dataSize - startFromByte);
+            // Cut between characters: a UTF-8 continuation byte (10xxxxxx) must stay with its lead byte
+            while (startFromByte + currChunkSize < dataSize && (bytes[startFromByte + currChunkSize] & 0xC0) == 0x80) {
+                currChunkSize--;
+            }
 
             reachedMaxBatchSize = reachedMaxBatchSize(totalBytesRead, currChunkSize);
             if (reachedMaxBatchSize) {
                 break;
             }
 
-            int startFromByte = MAX_EVENT_LENGTH * (currChunk - 1);
-            String partialData =
-                    new String(Arrays.copyOfRange(data.getBytes(StandardCharsets.UTF_8), startFromByte,
-                            startFromByte + currChunkSize),
-                            StandardCharsets.UTF_8);
+            String partialData = new String(bytes, startFromByte, currChunkSize, StandardCharsets.UTF_8);
             totalBytesRead.addAndGet(currChunkSize + TIMESTAMP_BYTES + EVENT_STORAGE_OVERHEAD);
             currBytesRead.addAndGet(currChunkSize);
 
@@ -449,8 +447,8 @@ public class CloudWatchAttemptLogsProcessor {
                 attemptLogInformation.getLogEvents().add(inputLogEvent);
             }
 
-            currChunk++;
-        }
+            startFromByte += currChunkSize;
+        } while (startFromByte < dataSize);
         return new Pair<>(reachedMaxBatchSize, currBytesRead);
     }
 

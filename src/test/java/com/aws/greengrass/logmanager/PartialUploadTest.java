@@ -32,6 +32,7 @@ import software.amazon.awssdk.services.cloudwatchlogs.model.PutLogEventsRequest;
 import software.amazon.awssdk.services.cloudwatchlogs.model.PutLogEventsResponse;
 import software.amazon.awssdk.services.cloudwatchlogs.model.ServiceUnavailableException;
 
+import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -211,6 +212,12 @@ class PartialUploadTest {
         });
     }
 
+    @Test
+    void GIVEN_rotated_files_share_a_modification_time_WHEN_stream_of_the_second_fails_THEN_no_line_is_lost()
+            throws Exception {
+        new Scenario().run("tied modification times", Scenario::tiedRotatedFilesSecondFails);
+    }
+
     interface ScenarioBody {
         void accept(Scenario scenario) throws Exception;
     }
@@ -279,6 +286,32 @@ class PartialUploadTest {
                 assertEquals(!deleteAfterUpload, Files.exists(files.get("rotated")),
                         "rotated file deleted once fully uploaded only when delete-after-upload is on");
             }
+        }
+
+        void tiedRotatedFilesSecondFails() throws Exception {
+            Instant tied = Instant.now().minusSeconds(600);
+            writeFile("older", "test.log.2", tied, line(DAY_D, "22:00:00", "a"), line(DAY_D, "22:00:01", "b"));
+            writeFile("rotated", "test.log.1", tied, line(DAY_D1, "02:00:00", "c"), line(DAY_D1, "02:00:01", "d"));
+            writeFile("active", "test.log", tied.plusSeconds(60), line(DAY_D1, "03:00:00", "e"),
+                    line(DAY_D1, "03:00:01", "f"));
+            // Equal modification times leave the read order to the directory listing, which the service also uses
+            String secondTiedFile = Stream.of(logDir.toFile().listFiles())
+                    .map(File::getName)
+                    .filter(name -> name.startsWith("test.log.")).reduce((first, second) -> second).get();
+            String failingStream = streamFor("test.log.2".equals(secondTiedFile) ? DAY_D : DAY_D1);
+            stubCloudWatch(FailingStream.EARLIER, failingStream, Failure.SERVICE_ERROR_CONTINUES_BATCH);
+            configure(true);
+
+            startService();
+            awaitCycles(4);
+            failing.set(false);
+            awaitCycles(3);
+
+            Set<String> missing = new LinkedHashSet<>(expectedLines);
+            delivered.forEach(missing::remove);
+            assertEquals(Collections.emptySet(), missing, "lines never delivered to CloudWatch");
+            assertFalse(Files.exists(files.get("older")), "tied rotated file deleted once uploaded");
+            assertFalse(Files.exists(files.get("rotated")), "tied rotated file deleted once uploaded");
         }
 
         void happyPath(Layout layout, boolean deleteAfterUpload) throws Exception {

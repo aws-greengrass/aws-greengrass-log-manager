@@ -147,8 +147,8 @@ public class ProcessingFilesTest {
         assertTrue(olderPosition < newerPosition && newerPosition <= older.length(),
                 "the older file is long enough for either saved position");
         ProcessingFiles processingFiles = new ProcessingFiles(60);
-        processingFiles.save(null, newer, newerPosition, newer.lastModified());
-        processingFiles.save(null, older, olderPosition, older.lastModified());
+        processingFiles.save(null, newer, newerPosition, newer.lastModified(), true);
+        processingFiles.save(null, older, olderPosition, older.lastModified(), true);
 
         Map<String, String> claims = processingFiles.claim(Arrays.asList(older, newer));
 

@@ -76,18 +76,22 @@ public class ProcessingFiles {
      * @param file             - the file
      * @param position         - the position to resume from
      * @param lastModifiedTime - the file's last modified time when it was read
+     * @param checkPosition    - whether to store a {@link PositionCheck}; only when the file is read through a
+     *                         hard link, since a plain path may name another file after a rotation
      * @return the record key now holding the position; the given key when the file could not be read to check
      *     the position, which keeps the old record so the next cycle re-sends the span instead of skipping it
      */
     @SuppressWarnings("deprecation")
-    public String save(String key, LogFile file, long position, long lastModifiedTime) {
-        String positionCheck;
-        try {
-            positionCheck = PositionCheck.of(file, position);
-        } catch (IOException e) {
-            logger.atWarn().cause(e).kv("file", file.getSourcePath()).kv("position", position)
-                    .log("Unable to read the file to check the saved position. Keeping the previous position");
-            return key;
+    public String save(String key, LogFile file, long position, long lastModifiedTime, boolean checkPosition) {
+        String positionCheck = null;
+        if (checkPosition) {
+            try {
+                positionCheck = PositionCheck.of(file, position);
+            } catch (IOException e) {
+                logger.atWarn().cause(e).kv("file", file.getSourcePath()).kv("position", position)
+                        .log("Unable to read the file to check the saved position. Keeping the previous position");
+                return key;
+            }
         }
         String recordKey = key == null ? newKey(file.hashString()) : key;
         put(recordKey, LogManagerService.CurrentProcessingFileInformation.builder()
@@ -111,10 +115,10 @@ public class ProcessingFiles {
     /**
      * Matches listed files to their saved records. Each record goes to at most one file, older files first. A
      * record matches a file with its first-line hash that is at least as long as the saved position and whose
-     * bytes hash to the record's position check; a file matching several takes the furthest. A record saved
-     * before position checks existed matches by first-line hash alone, and only when exactly one unmatched file
-     * has that hash and is long enough. When several files have that hash, or the one file is shorter, the record
-     * is dropped and those files are read from the start.
+     * bytes hash to the record's position check; a file matching several takes the furthest. A record without
+     * a position check, saved by an older version or without hard links, matches by first-line hash alone, and
+     * only when exactly one unmatched file has that hash and is long enough. When several files have that hash, or
+     * the one file is shorter, the record is dropped and those files are read from the start.
      *
      * @param files - listed files, oldest first
      * @return record key per file id, for the files that matched a record

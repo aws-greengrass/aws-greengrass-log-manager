@@ -28,6 +28,7 @@ import static com.aws.greengrass.logmanager.model.LogFile.HASH_VALUE_OF_EMPTY_ST
 
 public final class LogFileGroup {
     private static final Logger logger = LogManager.getLogger(LogFileGroup.class);
+    @Getter
     private final boolean isUsingHardlinks;
     @Getter
     private final Optional<Long> maxBytes;

@@ -675,7 +675,7 @@ public class LogManagerService extends PluginService {
         ProcessingFiles processingFiles = processingFilesInformation
                 .computeIfAbsent(componentName, name -> new ProcessingFiles(MAX_CACHE_INACTIVE_TIME_SECONDS));
         logFileGroup.setRecordKey(file, processingFiles.save(logFileGroup.getRecordKey(file), file, bytesUploaded,
-                fileCommit.getLastModifiedTime()));
+                fileCommit.getLastModifiedTime(), logFileGroup.isUsingHardlinks()));
         }
     }
 
@@ -853,7 +853,7 @@ public class LogManagerService extends PluginService {
         private String fileHash;
         /**
          * {@link com.aws.greengrass.logmanager.model.PositionCheck} of the file at startPosition. Null in records
-         * saved by versions that did not write it.
+         * saved by versions that did not write it, or saved without hard links.
          */
         private String positionCheck;
         private static final Logger logger = LogManager.getLogger(CurrentProcessingFileInformation.class);

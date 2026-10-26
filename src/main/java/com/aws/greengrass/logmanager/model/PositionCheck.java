@@ -16,9 +16,10 @@ import java.security.NoSuchAlgorithmException;
 import java.util.Base64;
 
 /**
- * Hash of the bytes a saved position vouches for: up to {@value SPAN} bytes at the head of the file and up to
- * {@value SPAN} bytes just before the position. Files that share a first line still differ before their saved
- * positions, so the check tells them apart without reading whole files.
+ * Hash of two windows of a file at a saved position, up to {@value SPAN} bytes at the head of the file and up to
+ * {@value SPAN} bytes just before the position. It tells apart files that share a first line without reading
+ * whole files. Bytes outside the two windows are not compared, so files whose windows match pass each other's
+ * check even when they differ in between.
  */
 public final class PositionCheck {
     static final int SPAN = 512;

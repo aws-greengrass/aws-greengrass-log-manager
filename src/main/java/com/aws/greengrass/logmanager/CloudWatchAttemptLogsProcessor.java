@@ -371,7 +371,7 @@ public class CloudWatchAttemptLogsProcessor {
                                                       GreengrassLogMessage logMessage) {
         Level currentLogLevel = Level.valueOf(logMessage.getLevel());
         if (currentLogLevel.toInt() < desiredLogLevel.toInt()) {
-            return new Pair<>(false, new AtomicInteger());
+            return new Pair<>(false, new AtomicInteger(dataSize));
         }
         return addNewLogEvent(totalBytesRead, attemptLogInformation, data, dataSize,
                 Instant.ofEpochMilli(logMessage.getTimestamp()));

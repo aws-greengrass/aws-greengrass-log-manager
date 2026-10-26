@@ -24,6 +24,7 @@ import org.junit.jupiter.api.TestFactory;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.extension.ExtensionContext;
 import org.junit.jupiter.api.io.TempDir;
+import org.mockito.ArgumentCaptor;
 import org.mockito.junit.jupiter.MockitoExtension;
 import software.amazon.awssdk.core.exception.SdkClientException;
 import software.amazon.awssdk.services.cloudwatchlogs.CloudWatchLogsClient;
@@ -79,8 +80,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 
 @ExtendWith({MockitoExtension.class, GGExtension.class})
 class PartialUploadTest {
@@ -243,6 +246,27 @@ class PartialUploadTest {
             }
             assertEquals(Arrays.asList("line-a", "line-d", "line-big", "rest of line-big"), order,
                     "events sorted by timestamp, pieces of one entry kept in file order");
+        });
+    }
+
+    @Test
+    void GIVEN_entries_over_23_hours_apart_WHEN_uploaded_THEN_they_are_sent_in_separate_requests() throws Exception {
+        new Scenario().run("23 hour window", scenario -> {
+            scenario.writeFile("active", "test.log", Instant.now().minusSeconds(600), line(DAY_D, "00:00:00", "a"),
+                    line(DAY_D, "23:30:00", "b"));
+            scenario.failing.set(false);
+            scenario.stubCloudWatch(FailingStream.EARLIER, "", Failure.SERVICE_ERROR_CONTINUES_BATCH);
+            scenario.configure(false);
+
+            scenario.startService();
+            scenario.awaitCycles(3);
+
+            ArgumentCaptor<PutLogEventsRequest> requests = ArgumentCaptor.forClass(PutLogEventsRequest.class);
+            verify(scenario.client, atLeastOnce()).putLogEvents(requests.capture());
+            for (PutLogEventsRequest request : requests.getAllValues()) {
+                assertEquals(1, request.logEvents().size(), "entries 23.5 hours apart share no request");
+            }
+            assertEquals(new ArrayList<>(scenario.expectedLines), new ArrayList<>(scenario.delivered));
         });
     }
 

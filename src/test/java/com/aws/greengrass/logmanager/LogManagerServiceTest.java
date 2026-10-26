@@ -579,35 +579,35 @@ class LogManagerServiceTest {
         assertTrue(component2LogFileGroup.isActiveFile(component2ActiveFile));
 
         Map<String, CloudWatchAttemptLogFileInformation> component2AttemptLogFileInfo = new HashMap<>();
-        component2AttemptLogFileInfo.put(component2TestLog.hashString(),
+        component2AttemptLogFileInfo.put(component2TestLog.getFileId(),
                 CloudWatchAttemptLogFileInformation.builder()
                         .startPosition(0)
                         .bytesRead(2943)
                         .lastModifiedTime(component2TestLog.lastModified())
-                        .fileHash(component2TestLog.hashString())
+                        .fileId(component2TestLog.getFileId())
                         .build());
-        component2AttemptLogFileInfo.put(component2ActiveFile.hashString(),
+        component2AttemptLogFileInfo.put(component2ActiveFile.getFileId(),
                 CloudWatchAttemptLogFileInformation.builder()
                         .startPosition(0)
                         .bytesRead(0)
                         .lastModifiedTime(component2ActiveFile.lastModified())
-                        .fileHash(component2ActiveFile.hashString())
+                        .fileId(component2ActiveFile.getFileId())
                         .build());
 
         Map<String, CloudWatchAttemptLogFileInformation> component1AttemptLogFileInfo = new HashMap<>();
-        component1AttemptLogFileInfo.put(component1TestLog.hashString(),
+        component1AttemptLogFileInfo.put(component1TestLog.getFileId(),
                 CloudWatchAttemptLogFileInformation.builder()
                 .startPosition(0)
                 .bytesRead(1060)
                 .lastModifiedTime(component1TestLog.lastModified())
-                .fileHash(component1TestLog.hashString())
+                .fileId(component1TestLog.getFileId())
                 .build());
-        component1AttemptLogFileInfo.put(component1ActiveFile.hashString(),
+        component1AttemptLogFileInfo.put(component1ActiveFile.getFileId(),
                 CloudWatchAttemptLogFileInformation.builder()
                         .startPosition(0)
                         .bytesRead(0)
                         .lastModifiedTime(component1ActiveFile.lastModified())
-                        .fileHash(component1ActiveFile.hashString())
+                        .fileId(component1ActiveFile.getFileId())
                         .build());
 
         CloudWatchAttemptLogInformation attemptLogInformation1 = CloudWatchAttemptLogInformation.builder()
@@ -692,9 +692,9 @@ class LogManagerServiceTest {
             List<Long> bytesRead = furthestFirst ? Arrays.asList(1500L, 700L) : Arrays.asList(700L, 1500L);
             for (int i = 0; i < bytesRead.size(); i++) {
                 Map<String, CloudWatchAttemptLogFileInformation> fileInformation = new HashMap<>();
-                fileInformation.put(file.hashString(), CloudWatchAttemptLogFileInformation.builder()
+                fileInformation.put(file.getFileId(), CloudWatchAttemptLogFileInformation.builder()
                         .startPosition(100).bytesRead(bytesRead.get(i)).lastModifiedTime(file.lastModified())
-                        .fileHash(file.hashString()).build());
+                        .fileId(file.getFileId()).build());
                 streams.put("stream" + i, CloudWatchAttemptLogInformation.builder().componentName("TestComponent")
                         .attemptLogFileInformationMap(fileInformation).logFileGroup(logFileGroup).build());
             }
@@ -731,7 +731,7 @@ class LogManagerServiceTest {
         logsUploaderService.lastComponentUploadedLogFileInstantMap.put(SYSTEM_LOGS_COMPONENT_NAME,
                 Instant.ofEpochMilli(file.lastModified()));
         ProcessingFiles processingFiles = new ProcessingFiles(5);
-        processingFiles.put(LogManagerService.CurrentProcessingFileInformation.builder()
+        processingFiles.put(currentProcessingFile.hashString(), LogManagerService.CurrentProcessingFileInformation.builder()
                 .fileHash(currentProcessingFile.hashString())
                 .lastModifiedTime(currentProcessingFile.lastModified())
                 .startPosition(2)
@@ -783,7 +783,7 @@ class LogManagerServiceTest {
         logsUploaderService.lastComponentUploadedLogFileInstantMap.put(SYSTEM_LOGS_COMPONENT_NAME,
                 Instant.ofEpochMilli(file.lastModified()));
         ProcessingFiles processingFiles = new ProcessingFiles(5);
-        processingFiles.put(LogManagerService.CurrentProcessingFileInformation.builder()
+        processingFiles.put(currentProcessingFile.hashString(), LogManagerService.CurrentProcessingFileInformation.builder()
                 .fileHash(currentProcessingFile.hashString())
                 .lastModifiedTime(currentProcessingFile.lastModified() - 1000)
                 .startPosition(2)
@@ -883,6 +883,31 @@ class LogManagerServiceTest {
         assertEquals("TestFileHash2", userComponentInfo.getFileHash());
         assertEquals(10000, userComponentInfo.getStartPosition());
         assertEquals(now.toEpochMilli(), userComponentInfo.getLastModifiedTime());
+    }
+
+    @Test
+    void GIVEN_records_sharing_a_first_line_hash_WHEN_reloaded_THEN_each_keeps_its_key_position_and_check()
+            throws IOException {
+        Topics componentConfig = config.lookupTopics(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC,
+                COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME, "UserComponentA");
+        componentConfig.createLeafChild(FILE_REGEX_CONFIG_TOPIC_NAME).withValue("^log.txt\\w*");
+        componentConfig.createLeafChild(FILE_DIRECTORY_PATH_CONFIG_TOPIC_NAME)
+                .withValue(directoryPath.toAbsolutePath().toString());
+        long now = Instant.now().toEpochMilli();
+        Map<String, Object> persisted = new HashMap<>();
+        persisted.put("sharedHash", LogManagerService.CurrentProcessingFileInformation.builder()
+                .fileHash("sharedHash").startPosition(200).positionCheck("check-200").lastModifiedTime(now).build()
+                .convertToMapOfObjects());
+        persisted.put("sharedHash.1", LogManagerService.CurrentProcessingFileInformation.builder()
+                .fileHash("sharedHash").startPosition(900).positionCheck("check-900").lastModifiedTime(now).build()
+                .convertToMapOfObjects());
+        config.lookupTopics(RUNTIME_STORE_NAMESPACE_TOPIC, PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION_V2,
+                "UserComponentA").updateFromMap(persisted,
+                new UpdateBehaviorTree(UpdateBehaviorTree.UpdateBehavior.REPLACE, now));
+
+        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, nucleusPaths);
+
+        assertEquals(persisted, logsUploaderService.processingFilesInformation.get("UserComponentA").toMap());
     }
 
     @Test

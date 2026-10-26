@@ -76,6 +76,7 @@ public class LogManagerService extends PluginService {
     public static final String PERSISTED_CURRENT_PROCESSING_FILE_NAME = "currentProcessingFileName";
     public static final String PERSISTED_CURRENT_PROCESSING_FILE_HASH = "currentProcessingFileHash";
     public static final String PERSISTED_CURRENT_PROCESSING_FILE_START_POSITION = "currentProcessingFileStartPosition";
+    public static final String PERSISTED_CURRENT_PROCESSING_FILE_POSITION_CHECK = "currentProcessingFilePositionCheck";
 
     // @deprecated - used for versions below 2.3.1
     public static final String PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION =
@@ -430,7 +431,7 @@ public class LogManagerService extends PluginService {
             if (lastComponentUploadedTime == null
                     || Instant.ofEpochMilli(processingFileInformation.lastModifiedTime)
                             .isAfter(lastComponentUploadedTime)) {
-                processingFiles.putIfAbsent(processingFileInformation);
+                processingFiles.putIfAbsent(processingFileInformation.getFileHash(), processingFileInformation);
             }
         }
     }
@@ -459,7 +460,7 @@ public class LogManagerService extends PluginService {
                     if (lastComponentUploadedTime == null
                             || Instant.ofEpochMilli(processingFileInformation.lastModifiedTime)
                                     .isAfter(lastComponentUploadedTime)) {
-                        processingFiles.putIfAbsent(processingFileInformation);
+                        processingFiles.putIfAbsent(node.getName(), processingFileInformation);
                     }
                 }
             });
@@ -511,12 +512,12 @@ public class LogManagerService extends PluginService {
         commit(CommitPlan.of(cloudWatchAttempt), logFileGroupPerComponent);
 
         logFileGroupPerComponent.forEach((componentName, logFileGroup) -> {
-            List<String> deletedHashes = this.diskSpaceManagementService.freeDiskSpace(logFileGroup);
+            List<LogFile> deletedFiles = this.diskSpaceManagementService.freeDiskSpace(logFileGroup);
 
             ProcessingFiles processingFiles = processingFilesInformation.get(componentName);
-            if (processingFiles != null) {
-                processingFiles.remove(deletedHashes); // Stop tracking the uploaded files that are removed due to disk
-                // space management
+            if (processingFiles != null && deletedFiles != null) {
+                // Stop tracking the uploaded files that are removed due to disk space management
+                deletedFiles.forEach(file -> processingFiles.remove(logFileGroup.getRecordKey(file)));
             }
         });
 
@@ -629,7 +630,7 @@ public class LogManagerService extends PluginService {
         // Remove the file processing information from memory
         ProcessingFiles processingFiles = processingFilesInformation.get(componentName);
         if (processingFiles != null) {
-            processingFiles.remove(file.hashString());
+            processingFiles.remove(group.getRecordKey(file));
         }
 
         if (!deleteFile) {
@@ -647,11 +648,11 @@ public class LogManagerService extends PluginService {
     private void processFileCommit(Map<String, Set<LogFile>> completedLogFilePerComponent,
                                    CommitPlan.FileCommit fileCommit) {
         LogFileGroup logFileGroup = fileCommit.getStream().getLogFileGroup();
-        String fileHash = fileCommit.getFileHash();
-        LogFile file = logFileGroup.getFile(fileHash);
+        String fileId = fileCommit.getFileId();
+        LogFile file = logFileGroup.getFile(fileId);
 
         if (file == null) {
-            logger.atTrace().kv("fileHash", fileHash).log("component",
+            logger.atTrace().kv("fileId", fileId).log("component",
                     logFileGroup.getFilePattern(), "File not found in directory");
             return;
         }
@@ -671,19 +672,10 @@ public class LogManagerService extends PluginService {
         // Track each file that got uploaded. So that if modified in the future we can still track upload
         // the new contents starting from the last upload position.
 
-        CurrentProcessingFileInformation processingFileInformation =
-                CurrentProcessingFileInformation.builder()
-                        .fileName(file.getSourcePath()) // @deprecated
-                        .startPosition(bytesUploaded)
-                        .lastModifiedTime(fileCommit.getLastModifiedTime())
-                        .fileHash(fileHash)
-                        .build();
-
-        processingFilesInformation
-                .putIfAbsent(componentName, new ProcessingFiles(MAX_CACHE_INACTIVE_TIME_SECONDS));
-
-        ProcessingFiles processingFiles = processingFilesInformation.get(componentName);
-        processingFiles.put(processingFileInformation);
+        ProcessingFiles processingFiles = processingFilesInformation
+                .computeIfAbsent(componentName, name -> new ProcessingFiles(MAX_CACHE_INACTIVE_TIME_SECONDS));
+        logFileGroup.setRecordKey(file, processingFiles.save(logFileGroup.getRecordKey(file), file, bytesUploaded,
+                fileCommit.getLastModifiedTime()));
         }
     }
 
@@ -758,26 +750,25 @@ public class LogManagerService extends PluginService {
                     componentMetadata.add(logFileInfo);
 
                     List<LogFile> filesToDelete = new ArrayList<>();
+                    ProcessingFiles processingFiles = processingFilesInformation.get(componentName);
+                    if (processingFiles != null) {
+                        logFileGroup.claimRecords(processingFiles);
+                    }
 
                     logFileGroup.getLogFiles().forEach(file -> {
                         long startPosition = 0;
-                        String fileHash = file.hashString();
 
                         // If the file was partially read in the previous run, then get the starting position for
                         // new log lines.
-                        if (processingFilesInformation.containsKey(componentName)) {
-                            ProcessingFiles processingFiles = processingFilesInformation.get(componentName);
-                            CurrentProcessingFileInformation info = processingFiles.get(fileHash);
-
-                            if (info != null) {
-                                startPosition = info.getStartPosition();
-                            }
+                        String recordKey = logFileGroup.getRecordKey(file);
+                        if (recordKey != null) {
+                            startPosition = processingFiles.get(recordKey).getStartPosition();
                         }
 
                         LogFileInformation logFileInformation = LogFileInformation.builder()
                                 .logFile(file)
                                 .startPosition(startPosition)
-                                .fileHash(fileHash)
+                                .fileId(file.getFileId())
                                 .build();
 
                         if (startPosition < file.length()) {
@@ -860,6 +851,11 @@ public class LogManagerService extends PluginService {
         @Builder.Default
         private long lastAccessedTime = Instant.now().toEpochMilli();
         private String fileHash;
+        /**
+         * {@link com.aws.greengrass.logmanager.model.PositionCheck} of the file at startPosition. Null in records
+         * saved by versions that did not write it.
+         */
+        private String positionCheck;
         private static final Logger logger = LogManager.getLogger(CurrentProcessingFileInformation.class);
 
         /**
@@ -876,6 +872,10 @@ public class LogManagerService extends PluginService {
             currentProcessingFileInformationMap.put(PERSISTED_CURRENT_PROCESSING_FILE_LAST_ACCESSED_TIME,
                     lastAccessedTime);
             currentProcessingFileInformationMap.put(PERSISTED_CURRENT_PROCESSING_FILE_HASH, fileHash);
+            if (positionCheck != null) {
+                currentProcessingFileInformationMap.put(PERSISTED_CURRENT_PROCESSING_FILE_POSITION_CHECK,
+                        positionCheck);
+            }
             return currentProcessingFileInformationMap;
         }
 
@@ -905,6 +905,9 @@ public class LogManagerService extends PluginService {
                 case PERSISTED_CURRENT_PROCESSING_FILE_HASH:
                     fileHash = getFileHashFromTopic(topic);
                     break;
+                case PERSISTED_CURRENT_PROCESSING_FILE_POSITION_CHECK:
+                    positionCheck = Coerce.toString(topic);
+                    break;
                 default:
                     break;
             }
@@ -927,6 +930,8 @@ public class LogManagerService extends PluginService {
                             .get(PERSISTED_CURRENT_PROCESSING_FILE_START_POSITION)))
                     .fileHash(Coerce.toString(currentProcessingFileInformationMap
                             .get(PERSISTED_CURRENT_PROCESSING_FILE_HASH)))
+                    .positionCheck(Coerce.toString(currentProcessingFileInformationMap
+                            .get(PERSISTED_CURRENT_PROCESSING_FILE_POSITION_CHECK)))
                     .build();
         }
 

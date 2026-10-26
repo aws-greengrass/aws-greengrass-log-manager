@@ -20,7 +20,7 @@ public class DiskSpaceManagementService {
      *
      * @param group - a Log File group
      */
-    public List<String> freeDiskSpace(LogFileGroup group) {
+    public List<LogFile> freeDiskSpace(LogFileGroup group) {
         if (!group.getMaxBytes().isPresent()) {
             return null;
         }
@@ -28,7 +28,7 @@ public class DiskSpaceManagementService {
         long bytesDeleted = 0;
         long minimumBytesToBeDeleted = Math.max(group.totalSizeInBytes() - group.getMaxBytes().get(), 0);
         List<LogFile> deletableFiles = group.getProcessedLogFiles();
-        List<String> deletedHashes = new ArrayList<>();
+        List<LogFile> deletedFiles = new ArrayList<>();
 
         for (LogFile logFile: deletableFiles) {
             if (bytesDeleted >= minimumBytesToBeDeleted) {
@@ -37,11 +37,11 @@ public class DiskSpaceManagementService {
             long filesSize = logFile.length();
 
             if (group.remove(logFile)) {
-                deletedHashes.add(logFile.hashString());
+                deletedFiles.add(logFile);
                 bytesDeleted += filesSize;
             }
         }
 
-        return deletedHashes;
+        return deletedFiles;
     }
 }

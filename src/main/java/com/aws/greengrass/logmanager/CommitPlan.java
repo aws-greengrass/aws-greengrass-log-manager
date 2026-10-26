@@ -36,7 +36,7 @@ final class CommitPlan {
     @Value
     static class FileCommit {
         CloudWatchAttemptLogInformation stream;
-        String fileHash;
+        String fileId;
         long position;
         long lastModifiedTime;
     }
@@ -48,7 +48,7 @@ final class CommitPlan {
      * @return one commit per file to update; files without a commit keep their saved position
      */
     static List<FileCommit> of(CloudWatchAttempt attempt) {
-        List<String> readOrder = attempt.getFileHashesInReadOrder();
+        List<String> readOrder = attempt.getFileIdsInReadOrder();
         FileCommit cut = null;
         int cutIndex = readOrder.size();
         for (Map.Entry<String, CloudWatchAttemptLogInformation> stream
@@ -60,7 +60,7 @@ final class CommitPlan {
                     : stream.getValue().getAttemptLogFileInformationMap().entrySet()) {
                 int index = readOrder.indexOf(record.getKey());
                 if (index < 0) {
-                    logger.atWarn().kv("logGroup", attempt.getLogGroupName()).kv("fileHash", record.getKey())
+                    logger.atWarn().kv("logGroup", attempt.getLogGroupName()).kv("fileId", record.getKey())
                             .log("A failed log stream read a file missing from the read order. Committing nothing");
                     return Collections.emptyList();
                 }
@@ -78,8 +78,8 @@ final class CommitPlan {
         }
 
         List<FileCommit> commits = new ArrayList<>();
-        for (String fileHash : readOrder.subList(0, cutIndex)) {
-            FileCommit commit = furthestPerFile.get(fileHash);
+        for (String fileId : readOrder.subList(0, cutIndex)) {
+            FileCommit commit = furthestPerFile.get(fileId);
             // Completing a file as new as the cut file would move the watermark past the cut file and skip it
             if (commit != null && commit.getLastModifiedTime() < cut.getLastModifiedTime()) {
                 commits.add(commit);
@@ -87,17 +87,17 @@ final class CommitPlan {
         }
         commits.add(cut);
         logger.atWarn().kv("logGroup", attempt.getLogGroupName()).kv("componentName", cut.getStream()
-                .getComponentName()).kv("fileHash", cut.getFileHash()).kv("position", cut.getPosition())
+                .getComponentName()).kv("fileId", cut.getFileId()).kv("position", cut.getPosition())
                 .log("Some log streams failed to upload. Committing up to the first entry of a failed stream");
         return commits;
     }
 
     private static Map<String, FileCommit> furthestPerFile(Collection<CloudWatchAttemptLogInformation> streams) {
         Map<String, FileCommit> furthest = new LinkedHashMap<>();
-        streams.forEach(stream -> stream.getAttemptLogFileInformationMap().forEach((fileHash, record) -> {
-            FileCommit candidate = new FileCommit(stream, fileHash, record.getStartPosition() + record.getBytesRead(),
+        streams.forEach(stream -> stream.getAttemptLogFileInformationMap().forEach((fileId, record) -> {
+            FileCommit candidate = new FileCommit(stream, fileId, record.getStartPosition() + record.getBytesRead(),
                     record.getLastModifiedTime());
-            furthest.merge(fileHash, candidate, (current, next) -> next.getPosition() > current.getPosition()
+            furthest.merge(fileId, candidate, (current, next) -> next.getPosition() > current.getPosition()
                     ? next : current);
         }));
         return furthest;

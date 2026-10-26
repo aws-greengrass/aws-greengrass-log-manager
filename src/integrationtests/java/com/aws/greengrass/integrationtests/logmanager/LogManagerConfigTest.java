@@ -420,7 +420,7 @@ class LogManagerConfigTest extends BaseITCase {
                         .startPosition(1000)
                         .lastModifiedTime(Instant.now().toEpochMilli())
                         .build();
-        processingFiles.put(infoOne);
+        processingFiles.put(infoOne.getFileHash(), infoOne);
         LogManagerService.CurrentProcessingFileInformation infoTwo =
                 LogManagerService.CurrentProcessingFileInformation.builder()
                         .fileName("test_2.log")
@@ -428,7 +428,7 @@ class LogManagerConfigTest extends BaseITCase {
                         .startPosition(1000)
                         .lastModifiedTime(Instant.now().toEpochMilli())
                         .build();
-        processingFiles.put(infoTwo);
+        processingFiles.put(infoTwo.getFileHash(), infoTwo);
 
         componentTopics.updateFromMap(processingFiles.toMap(),
                 new UpdateBehaviorTree(UpdateBehaviorTree.UpdateBehavior.REPLACE, System.currentTimeMillis()));

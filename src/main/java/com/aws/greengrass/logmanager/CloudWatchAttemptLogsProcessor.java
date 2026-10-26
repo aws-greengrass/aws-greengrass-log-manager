@@ -136,7 +136,7 @@ public class CloudWatchAttemptLogsProcessor {
             LogFileInformation logFileInformation = componentLogFileInformation.getLogFileInformationList().get(0);
             LogFile logFile = logFileInformation.getLogFile();
             long startPosition = logFileInformation.getStartPosition();
-            String fileHash = logFileInformation.getFileHash();
+            String fileId = logFileInformation.getFileId();
             //This has been handled in the service, but leave here to prevent processor crash
             if (logFile.isEmpty() || startPosition >= logFile.length()) {
                 componentLogFileInformation.getLogFileInformationList().remove(0);
@@ -150,7 +150,7 @@ public class CloudWatchAttemptLogsProcessor {
             try (SeekableByteChannel chan = Files.newByteChannel(logFile.toPath(), StandardOpenOption.READ);
                  PositionTrackingBufferedReader r = new PositionTrackingBufferedReader(
                          new InputStreamReader(Channels.newInputStream(chan), StandardCharsets.UTF_8))) {
-                attempt.getFileHashesInReadOrder().add(fileHash);
+                attempt.getFileIdsInReadOrder().add(fileId);
                 r.setInitialPosition(startPosition);
                 chan.position(startPosition);
                 long entryStartPosition = startPosition;
@@ -168,7 +168,7 @@ public class CloudWatchAttemptLogsProcessor {
                         if (partialLogLine == null) {
                             reachedMaxSize.set(
                                     processLogLine(totalBytesRead, componentLogFileInformation.getDesiredLogLevel(),
-                                            logStreamName, logStreamsMap, data, fileHash, startPosition,
+                                            logStreamName, logStreamsMap, data, fileId, startPosition,
                                             componentLogFileInformation.getName(), entryStartPosition,
                                             tempStartPosition, lastModified, logFileGroup));
                             componentLogFileInformation.getLogFileInformationList().remove(0);
@@ -182,7 +182,7 @@ public class CloudWatchAttemptLogsProcessor {
                         if (checkLogStartPattern(componentLogFileInformation, partialLogLine)) {
                             reachedMaxSize.set(
                                     processLogLine(totalBytesRead, componentLogFileInformation.getDesiredLogLevel(),
-                                            logStreamName, logStreamsMap, data, fileHash, startPosition,
+                                            logStreamName, logStreamsMap, data, fileId, startPosition,
                                             componentLogFileInformation.getName(), entryStartPosition,
                                             tempStartPosition, lastModified, logFileGroup));
                             data = new StringBuilder();
@@ -240,7 +240,7 @@ public class CloudWatchAttemptLogsProcessor {
                                    String logStreamName,
                                    Map<String, CloudWatchAttemptLogInformation> logStreamsMap,
                                    StringBuilder data,
-                                   String fileHash,
+                                   String fileId,
                                    long startPosition,
                                    String componentName,
                                    long entryStartPosition,
@@ -293,7 +293,7 @@ public class CloudWatchAttemptLogsProcessor {
         boolean reachedMaxSize = addEventResult.getLeft();
         int actualAddedSize = addEventResult.getRight().get();
         if (actualAddedSize > 0) {
-            updateCloudWatchAttemptLogInformation(fileHash, startPosition, entryStartPosition,
+            updateCloudWatchAttemptLogInformation(fileId, startPosition, entryStartPosition,
                     currentPosition - (dataSize - actualAddedSize), attemptLogInformation, lastModified);
         }
         return reachedMaxSize;
@@ -302,26 +302,26 @@ public class CloudWatchAttemptLogsProcessor {
     /**
      * Updates the number of bytes read for the current CloudWatchAttempt.
      *
-     * @param fileHash              The hash of the file we are currently processing, as the file identifier.
+     * @param fileId                The id of the file we are currently processing.
      * @param startPosition         The initial start offset of the file.
      * @param entryStartPosition    The offset where the log line being added begins.
      * @param currentPosition       The current offset in the file.
      * @param attemptLogInformation The attempt information containing the log file information.
      * @param lastModified          The last modified time for the file we are processing.
      */
-    private void updateCloudWatchAttemptLogInformation(String fileHash,
+    private void updateCloudWatchAttemptLogInformation(String fileId,
                                                        long startPosition,
                                                        long entryStartPosition,
                                                        long currentPosition,
                                                        CloudWatchAttemptLogInformation attemptLogInformation,
                                                        long lastModified) {
         CloudWatchAttemptLogFileInformation attemptLogFileInformation =
-                attemptLogInformation.getAttemptLogFileInformationMap().computeIfAbsent(fileHash,
+                attemptLogInformation.getAttemptLogFileInformationMap().computeIfAbsent(fileId,
                         key -> CloudWatchAttemptLogFileInformation.builder()
                                 .startPosition(startPosition)
                                 .firstEntryStartPosition(entryStartPosition)
                                 .lastModifiedTime(lastModified)
-                                .fileHash(fileHash)
+                                .fileId(fileId)
                                 .build());
         attemptLogFileInformation.setBytesRead(currentPosition - attemptLogFileInformation.getStartPosition());
     }

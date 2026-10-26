@@ -34,7 +34,7 @@ public class CloudWatchAttempt {
     private Set<String> logStreamUploadedSet = new HashSet<>();
 
     /**
-     * Hashes of the files the processor opened, in the order it read them.
+     * Ids of the files the processor opened, in the order it read them.
      */
-    private List<String> fileHashesInReadOrder = new ArrayList<>();
+    private List<String> fileIdsInReadOrder = new ArrayList<>();
 }

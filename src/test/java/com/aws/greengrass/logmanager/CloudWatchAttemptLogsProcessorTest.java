@@ -108,7 +108,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
         LogFile logFile1 = LogFile.of(file1);
         String fileHash = logFile1.hashString();
         List<LogFileInformation> logFileInformationSet = new ArrayList<>();
-        logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile1).fileHash(fileHash).build());
+        logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile1).fileId(fileHash).build());
         ComponentLogFileInformation componentLogFileInformation = ComponentLogFileInformation.builder()
                 .name("TestComponent")
                 .desiredLogLevel(Level.INFO)
@@ -151,7 +151,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
         LogFile logFile1 = LogFile.of(file1);
         String fileHash = logFile1.hashString();
         List<LogFileInformation> logFileInformationSet = new ArrayList<>();
-        logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile1).fileHash(fileHash).build());
+        logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile1).fileId(fileHash).build());
         ComponentLogFileInformation componentLogFileInformation = ComponentLogFileInformation.builder()
                 .name("TestComponent")
                 .desiredLogLevel(Level.INFO)
@@ -194,7 +194,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
         LogFile logFile1 = LogFile.of(file1);
         String fileHash = logFile1.hashString();
         List<LogFileInformation> logFileInformationSet = new ArrayList<>();
-        logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile1).fileHash(fileHash).build());
+        logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile1).fileId(fileHash).build());
         ComponentLogFileInformation componentLogFileInformation = ComponentLogFileInformation.builder()
                 .name("TestComponent")
                 .desiredLogLevel(Level.INFO)
@@ -253,7 +253,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
         String fileHash = logFile.hashString();
         try {
             List<LogFileInformation> logFileInformationSet = new ArrayList<>();
-            logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile).fileHash(fileHash).build());
+            logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile).fileId(fileHash).build());
             ComponentLogFileInformation componentLogFileInformation = ComponentLogFileInformation.builder()
                     .name("TestComponent")
                     .desiredLogLevel(Level.INFO)
@@ -318,7 +318,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
         String fileHash = logFile.hashString();
         try {
             List<LogFileInformation> logFileInformationSet = new ArrayList<>();
-            logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile).fileHash(fileHash).build());
+            logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile).fileId(fileHash).build());
             ComponentLogFileInformation componentLogFileInformation = ComponentLogFileInformation.builder()
                     .name("TestComponent")
                     .multiLineStartPattern(WHITESPACE)
@@ -378,7 +378,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
         String fileHash = logFile.hashString();
         try {
             List<LogFileInformation> logFileInformationSet = new ArrayList<>();
-            logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile).fileHash(fileHash).build());
+            logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile).fileId(fileHash).build());
             ComponentLogFileInformation componentLogFileInformation = ComponentLogFileInformation.builder()
                     .name("TestComponent")
                     .desiredLogLevel(Level.INFO)
@@ -419,7 +419,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
         String fileHash = logFile.hashString();
         try {
             List<LogFileInformation> logFileInformationSet = new ArrayList<>();
-            logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile).fileHash(fileHash).build());
+            logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile).fileId(fileHash).build());
             ComponentLogFileInformation componentLogFileInformation = ComponentLogFileInformation.builder()
                     .name("TestComponent")
                     .desiredLogLevel(Level.INFO)
@@ -452,8 +452,8 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
         LogFile logFile2 = new LogFile(getClass().getResource("testlogs1.log").toURI());
         String fileHash2 = logFile2.hashString();
         List<LogFileInformation> logFileInformationSet = new ArrayList<>();
-        logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile1).fileHash(fileHash1).build());
-        logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile2).fileHash(fileHash2).build());
+        logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile1).fileId(fileHash1).build());
+        logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile2).fileId(fileHash2).build());
         ComponentLogFileInformation componentLogFileInformation = ComponentLogFileInformation.builder()
                 .name("TestComponent")
                 .desiredLogLevel(Level.INFO)
@@ -532,7 +532,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
             LogFile logFile = LogFile.of(file);
             String fileHash = logFile.hashString();
             List<LogFileInformation> logFileInformationSet = new ArrayList<>();
-            logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile).fileHash(fileHash).build());
+            logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile).fileId(fileHash).build());
             ComponentLogFileInformation componentLogFileInformation =
                     ComponentLogFileInformation.builder().name("TestComponent")
                             .desiredLogLevel(Level.INFO).componentType(ComponentType.GreengrassSystemComponent)
@@ -599,7 +599,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
             LogFile logFile = LogFile.of(file);
             String fileHash = logFile.hashString();
             List<LogFileInformation> logFileInformationSet = new ArrayList<>();
-            logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile).fileHash(fileHash).build());
+            logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile).fileId(fileHash).build());
             ComponentLogFileInformation componentLogFileInformation =
                     ComponentLogFileInformation.builder().name("TestComponent")
                             .desiredLogLevel(Level.INFO)
@@ -650,7 +650,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
 
         try {
             List<LogFileInformation> logFileInformationSet = new ArrayList<>();
-            logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile).fileHash(fileHash).build());
+            logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile).fileId(fileHash).build());
             ComponentLogFileInformation componentLogFileInformation = ComponentLogFileInformation.builder()
                     .name("TestComponent")
                     .desiredLogLevel(Level.INFO)
@@ -712,7 +712,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
 
         try {
             List<LogFileInformation> logFileInformationSet = new ArrayList<>();
-            logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile).fileHash(fileHash).build());
+            logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile).fileId(fileHash).build());
             ComponentLogFileInformation componentLogFileInformation = ComponentLogFileInformation.builder()
                     .name("TestComponent")
                     .desiredLogLevel(Level.INFO)
@@ -768,7 +768,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
         String fileHash = logFile.hashString();
         try {
             List<LogFileInformation> logFileInformationSet = new ArrayList<>();
-            logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile).fileHash(fileHash).build());
+            logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile).fileId(fileHash).build());
             ComponentLogFileInformation componentLogFileInformation = ComponentLogFileInformation.builder()
                     .name("TestComponent")
                     .desiredLogLevel(Level.INFO)
@@ -813,7 +813,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
         String fileHash = logFile.hashString();
         try {
             List<LogFileInformation> logFileInformationSet = new ArrayList<>();
-            logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile).fileHash(fileHash).build());
+            logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile).fileId(fileHash).build());
             ComponentLogFileInformation componentLogFileInformation = ComponentLogFileInformation.builder()
                     .name("TestComponent")
                     .desiredLogLevel(Level.INFO)
@@ -852,7 +852,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
         LogFile logFile = LogFile.of(file);
         String fileHash = logFile.hashString();
         List<LogFileInformation> logFileInformationSet = new ArrayList<>();
-        logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile).fileHash(fileHash).build());
+        logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile).fileId(fileHash).build());
         ComponentLogFileInformation componentLogFileInformation = ComponentLogFileInformation.builder()
                 .name("TestComponent")
                 .desiredLogLevel(Level.INFO)
@@ -917,7 +917,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
         try {
             List<LogFileInformation> logFileInformationList = new ArrayList<>();
             logFileInformationList.add(LogFileInformation.builder().startPosition(resumeOffset)
-                    .logFile(LogFile.of(file)).fileHash("entry-start").build());
+                    .logFile(LogFile.of(file)).fileId("entry-start").build());
             logsProcessor = new CloudWatchAttemptLogsProcessor(mockDeviceConfiguration, defaultClock);
 
             CloudWatchAttempt attempt = logsProcessor.processLogFiles(ComponentLogFileInformation.builder()
@@ -935,7 +935,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
     }
 
     @Test
-    void GIVEN_three_files_WHEN_processed_THEN_file_hashes_are_recorded_in_read_order() throws IOException {
+    void GIVEN_three_files_WHEN_processed_THEN_file_ids_are_recorded_in_read_order() throws IOException {
         List<String> hashes = Arrays.asList("third", "first", "second");
         List<LogFileInformation> logFileInformationList = new ArrayList<>();
         List<File> files = new ArrayList<>();
@@ -945,7 +945,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
                     .getBytes(StandardCharsets.UTF_8));
             files.add(file);
             logFileInformationList.add(LogFileInformation.builder().startPosition(0).logFile(LogFile.of(file))
-                    .fileHash(hash).build());
+                    .fileId(hash).build());
         }
         try {
             logsProcessor = new CloudWatchAttemptLogsProcessor(mockDeviceConfiguration, defaultClock);
@@ -954,7 +954,7 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
                     .name("TestComponent").desiredLogLevel(Level.INFO).componentType(ComponentType.UserComponent)
                     .logFileInformationList(logFileInformationList).build());
 
-            assertEquals(hashes, attempt.getFileHashesInReadOrder());
+            assertEquals(hashes, attempt.getFileIdsInReadOrder());
         } finally {
             files.forEach(file -> assertTrue(file.delete()));
         }

@@ -18,9 +18,10 @@ public class CloudWatchAttemptLogFileInformation {
     private long startPosition;
     private long bytesRead;
     private long lastModifiedTime;
-    //TODO: this fileHash added here is only for passing the tests for the current small PR, it will be removed and
-    // passed in another way, when the feature is fully enbaled.
-    private String fileHash;
+    /**
+     * The file's id in the listing it was read from.
+     */
+    private String fileId;
     /**
      * Offset where this stream's first entry from this file begins. -1 when unknown, read as startPosition.
      */

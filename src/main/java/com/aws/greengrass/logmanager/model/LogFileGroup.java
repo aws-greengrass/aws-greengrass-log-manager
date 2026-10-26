@@ -33,7 +33,8 @@ public final class LogFileGroup {
     private final Optional<Long> maxBytes;
     private final Instant lastProcessed;
     private final List<LogFile> logFiles;
-    private final Map<String, LogFile> fileHashToLogFile;
+    private final Map<String, LogFile> filesById;
+    private final Map<String, String> recordKeysByFileId = new ConcurrentHashMap<>();
     @Getter
     private final Pattern filePattern;
 
@@ -61,14 +62,14 @@ public final class LogFileGroup {
     private LogFileGroup(
             List<LogFile> files,
             Pattern filePattern,
-            Map<String, LogFile> fileHashToLogFile,
+            Map<String, LogFile> filesById,
             boolean isUsingHardlinks,
             Instant lastProcessed,
             Optional<Long> maxBytes
     ) {
         this.logFiles = files;
         this.filePattern = filePattern;
-        this.fileHashToLogFile = fileHashToLogFile;
+        this.filesById = filesById;
         this.isUsingHardlinks = isUsingHardlinks;
         this.lastProcessed = lastProcessed;
         this.maxBytes = maxBytes;
@@ -148,15 +149,11 @@ public final class LogFileGroup {
                 .collect(Collectors.toList());
 
 
-        // Cache the logFiles by hash
-
-        Map<String, LogFile> fileHashToLogFileMap = new ConcurrentHashMap<>();
-        logFiles.forEach(logFile -> {
-            fileHashToLogFileMap.put(logFile.hashString(), logFile);
-        });
+        Map<String, LogFile> filesById = new ConcurrentHashMap<>();
+        logFiles.forEach(logFile -> filesById.put(logFile.getFileId(), logFile));
 
         Optional<Long> maxBytes = Optional.ofNullable(componentLogConfiguration.getDiskSpaceLimit());
-        return new LogFileGroup(logFiles, filePattern, fileHashToLogFileMap, isUsingHardlinks, lastProcessed, maxBytes);
+        return new LogFileGroup(logFiles, filePattern, filesById, isUsingHardlinks, lastProcessed, maxBytes);
     }
 
     /**
@@ -206,13 +203,43 @@ public final class LogFileGroup {
     }
 
     /**
-     * Get the LogFile object from the fileHash.
+     * Get the LogFile object from its id in this listing.
      *
-     * @param fileHash the fileHash obtained from uploader.
+     * @param fileId the file id obtained from uploader.
      * @return the logFile.
      */
-    public LogFile getFile(String fileHash) {
-        return fileHashToLogFile.get(fileHash);
+    public LogFile getFile(String fileId) {
+        return filesById.get(fileId);
+    }
+
+    /**
+     * Matches the files above the watermark to their saved records, once per listing.
+     *
+     * @param processingFiles the component's saved records
+     */
+    public void claimRecords(ProcessingFiles processingFiles) {
+        recordKeysByFileId.putAll(processingFiles.claim(getLogFiles()));
+    }
+
+    /**
+     * Returns the key of the saved record that belongs to a file of this listing, or null if it has none yet.
+     *
+     * @param file a file of this listing
+     */
+    public String getRecordKey(LogFile file) {
+        return recordKeysByFileId.get(file.getFileId());
+    }
+
+    /**
+     * Records the key a file's position was saved under.
+     *
+     * @param file a file of this listing
+     * @param key  its record key
+     */
+    public void setRecordKey(LogFile file, String key) {
+        if (key != null) {
+            recordKeysByFileId.put(file.getFileId(), key);
+        }
     }
 
     /**
@@ -247,7 +274,7 @@ public final class LogFileGroup {
             return false;
         }
 
-        return file.hashString().equals(activeFile.hashString());
+        return file.getFileId().equals(activeFile.getFileId());
     }
 
     /**
@@ -263,8 +290,7 @@ public final class LogFileGroup {
             logger.atInfo().log("Successfully deleted file: {}", logFile.getSourcePath());
 
             // Stop tracking the file
-            logFiles.remove(this.fileHashToLogFile.get(logFile.hashString()));
-            this.fileHashToLogFile.remove(logFile.hashString());
+            logFiles.remove(filesById.remove(logFile.getFileId()));
         }
 
         return result;

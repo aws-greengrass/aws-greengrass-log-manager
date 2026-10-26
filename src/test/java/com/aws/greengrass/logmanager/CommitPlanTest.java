@@ -110,7 +110,7 @@ class CommitPlanTest {
     void GIVEN_failed_record_without_first_entry_start_WHEN_planned_THEN_cut_is_its_read_start() {
         HandBuiltAttempt attempt = new HandBuiltAttempt("active");
         attempt.stream("uploaded", true, record("active", 40, 40, 900, ACTIVE));
-        attempt.stream("failed", false, CloudWatchAttemptLogFileInformation.builder().fileHash("active")
+        attempt.stream("failed", false, CloudWatchAttemptLogFileInformation.builder().fileId("active")
                 .startPosition(40).bytesRead(500).lastModifiedTime(ACTIVE).build());
 
         assertEquals(Collections.singletonList("active@40"), attempt.plan());
@@ -134,9 +134,9 @@ class CommitPlanTest {
         assertEquals(Collections.emptyList(), attempt.plan());
     }
 
-    private static CloudWatchAttemptLogFileInformation record(String fileHash, long readStart, long firstEntryStart,
+    private static CloudWatchAttemptLogFileInformation record(String fileId, long readStart, long firstEntryStart,
                                                               long end, long lastModified) {
-        return CloudWatchAttemptLogFileInformation.builder().fileHash(fileHash).startPosition(readStart)
+        return CloudWatchAttemptLogFileInformation.builder().fileId(fileId).startPosition(readStart)
                 .firstEntryStartPosition(firstEntryStart).bytesRead(end - readStart).lastModifiedTime(lastModified)
                 .build();
     }
@@ -150,16 +150,16 @@ class CommitPlanTest {
     private static class HandBuiltAttempt {
         private final CloudWatchAttempt attempt = new CloudWatchAttempt();
 
-        HandBuiltAttempt(String... fileHashesInReadOrder) {
+        HandBuiltAttempt(String... fileIdsInReadOrder) {
             attempt.setLogStreamsToLogEventsMap(new LinkedHashMap<>());
-            attempt.getFileHashesInReadOrder().addAll(Arrays.asList(fileHashesInReadOrder));
+            attempt.getFileIdsInReadOrder().addAll(Arrays.asList(fileIdsInReadOrder));
         }
 
         void stream(String name, boolean uploaded, CloudWatchAttemptLogFileInformation... records) {
             CloudWatchAttemptLogInformation stream = CloudWatchAttemptLogInformation.builder()
                     .componentName("TestComponent").build();
             for (CloudWatchAttemptLogFileInformation record : records) {
-                stream.getAttemptLogFileInformationMap().put(record.getFileHash(), record);
+                stream.getAttemptLogFileInformationMap().put(record.getFileId(), record);
             }
             attempt.getLogStreamsToLogEventsMap().put(name, stream);
             if (uploaded) {
@@ -168,7 +168,7 @@ class CommitPlanTest {
         }
 
         List<String> plan() {
-            return CommitPlan.of(attempt).stream().map(commit -> commit.getFileHash() + "@" + commit.getPosition())
+            return CommitPlan.of(attempt).stream().map(commit -> commit.getFileId() + "@" + commit.getPosition())
                     .collect(Collectors.toList());
         }
     }

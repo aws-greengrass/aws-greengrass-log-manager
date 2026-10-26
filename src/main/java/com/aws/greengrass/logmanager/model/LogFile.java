@@ -126,6 +126,14 @@ public class LogFile extends File {
         return this.hash;
     }
 
+    /**
+     * Names this file within one listing of its directory. Unique within a cycle; across cycles the same name can
+     * belong to another file, so saved positions match files by content instead.
+     */
+    public String getFileId() {
+        return getName();
+    }
+
     public boolean isEmpty() {
         return Utils.isEmpty(this.hashString());
     }

@@ -16,5 +16,5 @@ import lombok.Value;
 public class LogFileInformation {
     private LogFile logFile;
     private long startPosition;
-    private String fileHash;
+    private String fileId;
 }

@@ -20,6 +20,7 @@ import com.aws.greengrass.logmanager.util.SdkClientWrapper;
 import com.aws.greengrass.testcommons.testutilities.GGExtension;
 import com.aws.greengrass.util.Digest;
 import com.aws.greengrass.util.NucleusPaths;
+import com.aws.greengrass.util.Utils;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DynamicTest;
@@ -41,6 +42,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.FileTime;
 import java.time.Instant;
@@ -65,6 +67,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
 
@@ -90,6 +93,7 @@ import static com.aws.greengrass.testcommons.testutilities.ExceptionLogProtector
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
@@ -286,13 +290,25 @@ class PartialUploadTest {
         new Scenario().run("ambiguous legacy record", Scenario::ambiguousLegacyRecord);
     }
 
+    @Test
+    void GIVEN_no_hard_links_WHEN_files_rotate_during_upload_THEN_each_line_is_delivered_once() throws Exception {
+        new Scenario().run("no hard links", scenario -> scenario.rotationDuringUploadWithoutHardLinks(false));
+    }
+
+    @Test
+    void GIVEN_no_hard_links_and_shared_first_line_WHEN_files_rotate_during_upload_THEN_no_line_is_lost()
+            throws Exception {
+        new Scenario().run("no hard links shared first line",
+                scenario -> scenario.rotationDuringUploadWithoutHardLinks(true));
+    }
+
     interface ScenarioBody {
         void accept(Scenario scenario) throws Exception;
     }
 
     private class Scenario {
         private final Path logDir;
-        private final Path workDir;
+        private Path workDir;
         private final Topics config = new Configuration(context).lookupTopics("a");
         private final CloudWatchLogsClient client = mock(CloudWatchLogsClient.class);
         private final NucleusPaths nucleusPaths = mock(NucleusPaths.class);
@@ -307,6 +323,7 @@ class PartialUploadTest {
         private CountDownLatch serviceStopped;
         private final AtomicInteger callsThisCycle = new AtomicInteger();
         private final Set<String> failedStreams = ConcurrentHashMap.newKeySet();
+        private final AtomicReference<ScenarioBody> duringFirstUpload = new AtomicReference<>();
 
         Scenario() throws IOException {
             logDir = Files.createTempDirectory(tempDir, "logs");
@@ -321,6 +338,7 @@ class PartialUploadTest {
                 throw new AssertionError(name + ": " + e.getMessage(), e);
             } finally {
                 stopService();
+                Utils.deleteFileRecursively(workDir.toFile());
             }
         }
 
@@ -589,6 +607,49 @@ class PartialUploadTest {
                     "warning names the files read from the start: " + warnings);
         }
 
+        void rotationDuringUploadWithoutHardLinks(boolean sameFirstLine) throws Exception {
+            // A work directory on another volume than the logs makes hard links fail
+            Path otherVolume = Paths.get("/dev/shm");
+            assumeTrue(Files.isDirectory(otherVolume)
+                    && !Files.getFileStore(otherVolume).equals(Files.getFileStore(logDir)), "needs a second volume");
+            workDir = Files.createTempDirectory(otherVolume, "work");
+            lenient().when(nucleusPaths.workPath(LogManagerService.LOGS_UPLOADER_SERVICE_TOPICS)).thenReturn(workDir);
+            Instant base = Instant.now().minusSeconds(600);
+            List<String> expected = new ArrayList<>(writeFile("rotated", "test.log.1", base,
+                    banner("rotated", sameFirstLine), shortLine("20:00:00", "a"), shortLine("20:00:01", "b"),
+                    shortLine("20:00:02", "c")));
+            expected.addAll(writeFile("active", "test.log", base.plusSeconds(60), banner("active", sameFirstLine),
+                    shortLine("21:00:00", "d"), shortLine("21:00:01", "e")));
+            duringFirstUpload.set(scenario -> {
+                expected.add(append("active", shortLine("21:00:02", "f written during the upload")));
+                expected.add(append("active", shortLine("21:00:03", "g written during the upload")));
+                Path older = logDir.resolve("test.log.2");
+                Files.move(files.get("rotated"), older);
+                files.put("older", older);
+                rotate(base.plusSeconds(120));
+                // Without hard links the newest file is never read, so its lines are not expected
+                writeFile("active", "test.log", base.plusSeconds(180), banner("new active", sameFirstLine),
+                        shortLine("22:00:00", "h"));
+            });
+            failing.set(false);
+            stubCloudWatch(FailingStream.EARLIER, "", Failure.SERVICE_ERROR_CONTINUES_BATCH);
+            configure(false);
+
+            startService();
+            awaitCycles(4);
+
+            try (Stream<Path> links = Files.list(workDir.resolve(COMPONENT))) {
+                assertEquals(0, links.count(), "no hard links created");
+            }
+            if (sameFirstLine) {
+                Set<String> missing = new LinkedHashSet<>(expected);
+                delivered.forEach(missing::remove);
+                assertEquals(Collections.emptySet(), missing, "lines never delivered to CloudWatch");
+            } else {
+                assertDeliveredOnce(expected);
+            }
+        }
+
         private void persistLegacyRecord(String firstLine, long position, Instant lastModified) throws Exception {
             String firstLineHash = Digest.calculate(firstLine + "\n");
             Map<String, Object> record = new HashMap<>();
@@ -692,6 +753,10 @@ class PartialUploadTest {
             lenient().when(client.putLogEvents(any(PutLogEventsRequest.class))).thenAnswer(invocation -> {
                 PutLogEventsRequest request = invocation.getArgument(0);
                 int position = callsThisCycle.getAndIncrement();
+                ScenarioBody action = duringFirstUpload.getAndSet(null);
+                if (action != null) {
+                    action.accept(this);
+                }
                 boolean fails;
                 if (failingStream == FailingStream.FIRST_ATTEMPTED) {
                     fails = position == 0;

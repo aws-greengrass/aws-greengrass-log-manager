@@ -218,6 +218,28 @@ class PartialUploadTest {
         new Scenario().run("tied modification times", Scenario::tiedRotatedFilesSecondFails);
     }
 
+    enum FilePair {
+        TWO_ROTATED,
+        ROTATED_AND_ACTIVE,
+        ACTIVE_ROTATES_BETWEEN_CYCLES
+    }
+
+    @TestFactory
+    Stream<DynamicTest> GIVEN_files_of_one_component_WHEN_first_lines_match_THEN_each_line_is_delivered_once() {
+        Stream.Builder<DynamicTest> cases = Stream.builder();
+        for (FilePair pair : FilePair.values()) {
+            for (boolean sameFirstLine : new boolean[]{true, false}) {
+                for (boolean deleteAfterUpload : new boolean[]{true, false}) {
+                    String name = String.format("%s sameFirstLine=%s delete=%s", pair, sameFirstLine,
+                            deleteAfterUpload);
+                    cases.add(DynamicTest.dynamicTest(name, () -> new Scenario().run(name, scenario ->
+                            scenario.sharedFirstLine(pair, sameFirstLine, deleteAfterUpload))));
+                }
+            }
+        }
+        return cases.build();
+    }
+
     interface ScenarioBody {
         void accept(Scenario scenario) throws Exception;
     }
@@ -364,6 +386,63 @@ class PartialUploadTest {
             assertEquals(Collections.emptySet(), missing, "new-day lines never delivered to CloudWatch");
         }
 
+        void sharedFirstLine(FilePair pair, boolean sameFirstLine, boolean deleteAfterUpload) throws Exception {
+            Instant base = Instant.now().minusSeconds(600);
+            List<String> rotatedRoles = new ArrayList<>();
+            if (pair == FilePair.TWO_ROTATED) {
+                writeFile("older", "test.log.2", base, banner("older", sameFirstLine), shortLine("20:00:00", "a"),
+                        shortLine("20:00:01", "b"));
+                rotatedRoles.add("older");
+            }
+            if (pair != FilePair.ACTIVE_ROTATES_BETWEEN_CYCLES) {
+                writeFile("rotated", "test.log.1", base.plusSeconds(60), banner("rotated", sameFirstLine),
+                        shortLine("21:00:00", "c"), shortLine("21:00:01", "d"));
+                rotatedRoles.add("rotated");
+            }
+            writeFile("active", "test.log", base.plusSeconds(120), pair == FilePair.TWO_ROTATED
+                    ? shortLine("22:00:00", "e") : banner("active", sameFirstLine), shortLine("22:00:01", "f"));
+            List<String> expected = new ArrayList<>();
+            for (Path file : files.values()) {
+                expected.addAll(Files.readAllLines(file, StandardCharsets.UTF_8));
+            }
+            failing.set(false);
+            stubCloudWatch(FailingStream.EARLIER, "", Failure.SERVICE_ERROR_CONTINUES_BATCH);
+            configure(deleteAfterUpload);
+
+            startService();
+            awaitCycles(2);
+            if (pair == FilePair.ACTIVE_ROTATES_BETWEEN_CYCLES) {
+                Path rotated = logDir.resolve("test.log.1");
+                Files.move(files.get("active"), rotated);
+                files.put("rotated", rotated);
+                rotatedRoles.add("rotated");
+                writeFile("active", "test.log", base.plusSeconds(180), banner("new active", sameFirstLine),
+                        shortLine("22:30:00", "g"), shortLine("22:30:01", "h"));
+                expected.addAll(Files.readAllLines(files.get("active"), StandardCharsets.UTF_8));
+                awaitCycles(2);
+            }
+            String appended = shortLine("23:00:00", "appended");
+            Files.write(files.get("active"), (appended + "\n").getBytes(StandardCharsets.UTF_8),
+                    StandardOpenOption.APPEND);
+            expected.add(appended);
+            awaitCycles(4);
+
+            List<String> extra = new ArrayList<>(delivered);
+            List<String> missing = new ArrayList<>();
+            for (String line : expected) {
+                if (!extra.remove(line)) {
+                    missing.add(line);
+                }
+            }
+            assertEquals("missing=[] extra=[]", "missing=" + missing + " extra=" + extra,
+                    "each line of every file delivered exactly once");
+            for (String role : rotatedRoles) {
+                assertEquals(!deleteAfterUpload, Files.exists(files.get(role)),
+                        role + " file deleted once fully uploaded only when delete-after-upload is on");
+            }
+            assertTrue(Files.exists(files.get("active")), "active file kept");
+        }
+
         private String writeFiles(Layout layout, FailingStream failingStream) throws IOException {
             Instant base = Instant.now().minusSeconds(600);
             String earlier;
@@ -508,6 +587,14 @@ class PartialUploadTest {
 
     private static String line(String day, String time, String id) {
         return padToHashableLength(day + "T" + time + "Z [INFO] line-" + id);
+    }
+
+    private static String shortLine(String time, String id) {
+        return DAY_D + "T" + time + "Z [INFO] line-" + id;
+    }
+
+    private static String banner(String role, boolean sameFirstLine) {
+        return sameFirstLine ? "=== service starting ===" : "=== service starting " + role + " ===";
     }
 
     private static String untimestamped(String id) {

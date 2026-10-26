@@ -403,8 +403,7 @@ public class CloudWatchAttemptLogsProcessor {
         // If the earliest time + 24 hours is before the new time then we cannot insert it because the gap
         // from earliest to latest is greater than 24 hours. Otherwise we can add it.
         // Using 23 instead of 24 hours to have a bit of leeway.
-        InputLogEvent earliestTime = attemptLogInformation.getLogEvents().peek();
-        if (earliestTime != null && Instant.ofEpochMilli(earliestTime.timestamp()).plus(23, ChronoUnit.HOURS)
+        if (Instant.ofEpochMilli(attemptLogInformation.getEarliestTimestamp()).plus(23, ChronoUnit.HOURS)
                 .isBefore(timestamp)) {
             return new Pair<>(true, new AtomicInteger());
         }
@@ -447,6 +446,8 @@ public class CloudWatchAttemptLogsProcessor {
                 InputLogEvent inputLogEvent =
                         InputLogEvent.builder().message(partialData).timestamp(timestamp.toEpochMilli()).build();
                 attemptLogInformation.getLogEvents().add(inputLogEvent);
+                attemptLogInformation.setEarliestTimestamp(
+                        Math.min(attemptLogInformation.getEarliestTimestamp(), inputLogEvent.timestamp()));
             }
 
             currChunk++;

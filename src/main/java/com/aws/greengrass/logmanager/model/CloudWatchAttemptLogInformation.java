@@ -11,12 +11,12 @@ import lombok.Getter;
 import lombok.Setter;
 import software.amazon.awssdk.services.cloudwatchlogs.model.InputLogEvent;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.PriorityQueue;
 import java.util.Queue;
 
 @Builder
@@ -26,7 +26,9 @@ import java.util.Queue;
 public class CloudWatchAttemptLogInformation {
     public static final Comparator<InputLogEvent> EVENT_COMPARATOR = Comparator.comparing(InputLogEvent::timestamp);
     @Builder.Default
-    private Queue<InputLogEvent> logEvents = new PriorityQueue<>(EVENT_COMPARATOR);
+    private Queue<InputLogEvent> logEvents = new ArrayDeque<>();
+    @Builder.Default
+    private long earliestTimestamp = Long.MAX_VALUE;
     @Builder.Default
     private Map<String, CloudWatchAttemptLogFileInformation> attemptLogFileInformationMap = new HashMap<>();
     private String componentName;
@@ -38,8 +40,7 @@ public class CloudWatchAttemptLogInformation {
      * @return sorted events
      */
     public List<InputLogEvent> getSortedLogEvents() {
-        // Sort by timestamp because CloudWatch requires that the logs are in chronological order.
-        // Priority queue conversion to a list does NOT maintain proper ordering, so we must sort ourselves.
+        // CloudWatch requires chronological order. The sort is stable, so equal timestamps keep file order.
         ArrayList<InputLogEvent> l = new ArrayList<>(logEvents);
         l.sort(EVENT_COMPARATOR);
         return l;

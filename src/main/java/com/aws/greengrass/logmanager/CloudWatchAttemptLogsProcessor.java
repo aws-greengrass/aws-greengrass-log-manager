@@ -44,8 +44,10 @@ import java.util.Arrays;
 import java.util.Date;
 import java.util.Locale;
 import java.util.Map;
+import java.util.NavigableMap;
 import java.util.Optional;
 import java.util.TimeZone;
+import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -152,7 +154,11 @@ public class CloudWatchAttemptLogsProcessor {
                          new InputStreamReader(Channels.newInputStream(chan), StandardCharsets.UTF_8))) {
                 r.setInitialPosition(startPosition);
                 chan.position(startPosition);
-                StringBuilder data = new StringBuilder(r.readLine());
+                String firstLine = r.readLine();
+                StringBuilder data = new StringBuilder(firstLine);
+                NavigableMap<Integer, Long> lineEnds = new TreeMap<>();
+                lineEnds.put(0, startPosition);
+                lineEnds.put(firstLine.getBytes(StandardCharsets.UTF_8).length, r.position());
 
                 // Run the loop until we detect that the log file is completely read, or that we have reached the max
                 // message size or if we detect any IOException while reading from the file.
@@ -167,7 +173,7 @@ public class CloudWatchAttemptLogsProcessor {
                             reachedMaxSize.set(
                                     processLogLine(totalBytesRead, componentLogFileInformation.getDesiredLogLevel(),
                                             logStreamName, logStreamsMap, data, fileHash, startPosition,
-                                            componentLogFileInformation.getName(), tempStartPosition, lastModified,
+                                            componentLogFileInformation.getName(), lineEnds, lastModified,
                                             logFileGroup));
                             componentLogFileInformation.getLogFileInformationList().remove(0);
                             break;
@@ -181,13 +187,17 @@ public class CloudWatchAttemptLogsProcessor {
                             reachedMaxSize.set(
                                     processLogLine(totalBytesRead, componentLogFileInformation.getDesiredLogLevel(),
                                             logStreamName, logStreamsMap, data, fileHash, startPosition,
-                                            componentLogFileInformation.getName(), tempStartPosition, lastModified,
+                                            componentLogFileInformation.getName(), lineEnds, lastModified,
                                             logFileGroup));
                             data = new StringBuilder();
+                            lineEnds = new TreeMap<>();
+                            lineEnds.put(0, tempStartPosition);
                         }
 
                         // Need to read more lines until we get a complete log line. Let's add this to the SB.
                         data.append(partialLogLine);
+                        lineEnds.put(lineEnds.lastKey() + partialLogLine.getBytes(StandardCharsets.UTF_8).length,
+                                r.position());
                     } catch (ClosedByInterruptException e) {
                         Thread.currentThread().interrupt();
                         logger.atInfo().log("Interrupted while reading log");
@@ -228,6 +238,8 @@ public class CloudWatchAttemptLogsProcessor {
      * @param logStreamName   The log stream name.
      * @param logStreamsMap   The log stream name map for the group.
      * @param data            The raw string data of the log line.
+     * @param lineEnds        For each line of the entry, the UTF-8 length of data up to its end mapped to the file
+     *                        offset after its line terminator, which data does not contain.
      * @param lastModified    The last modified time of the file.
      */
     @SuppressWarnings("PMD.ExcessiveParameterList")
@@ -239,7 +251,7 @@ public class CloudWatchAttemptLogsProcessor {
                                    String fileHash,
                                    long startPosition,
                                    String componentName,
-                                   long currentPosition,
+                                   NavigableMap<Integer, Long> lineEnds,
                                    long lastModified,
                                    LogFileGroup logFileGroup) {
         String dataStr = data.toString();
@@ -288,8 +300,9 @@ public class CloudWatchAttemptLogsProcessor {
         boolean reachedMaxSize = addEventResult.getLeft();
         int actualAddedSize = addEventResult.getRight().get();
         if (actualAddedSize > 0) {
+            Map.Entry<Integer, Long> lineEnd = lineEnds.floorEntry(actualAddedSize);
             updateCloudWatchAttemptLogInformation(fileHash, startPosition,
-                    currentPosition - (dataSize - actualAddedSize), attemptLogInformation, lastModified);
+                    lineEnd.getValue() + actualAddedSize - lineEnd.getKey(), attemptLogInformation, lastModified);
         }
         return reachedMaxSize;
     }

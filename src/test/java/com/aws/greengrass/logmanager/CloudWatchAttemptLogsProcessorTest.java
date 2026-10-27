@@ -572,28 +572,47 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
     @Test
     void GIVEN_oversize_log_line_with_ascii_on_event_boundary_WHEN_split_THEN_text_intact(ExtensionContext ec)
             throws IOException {
-        assertOversizeLineSplitKeepsText(ec, "a");
+        assertOversizeLineSplitKeepsText(ec, "a", 1);
     }
 
     @Test
     void GIVEN_oversize_log_line_with_two_byte_char_on_event_boundary_WHEN_split_THEN_text_intact(
             ExtensionContext ec) throws IOException {
-        assertOversizeLineSplitKeepsText(ec, "\u00e9");
+        assertOversizeLineSplitKeepsText(ec, "\u00e9", 1);
     }
 
     @Test
     void GIVEN_oversize_log_line_with_three_byte_char_on_event_boundary_WHEN_split_THEN_text_intact(
             ExtensionContext ec) throws IOException {
-        assertOversizeLineSplitKeepsText(ec, "\u20ac");
+        assertOversizeLineSplitKeepsText(ec, "\u20ac", 1);
     }
 
     @Test
     void GIVEN_oversize_log_line_with_four_byte_char_on_event_boundary_WHEN_split_THEN_text_intact(
             ExtensionContext ec) throws IOException {
-        assertOversizeLineSplitKeepsText(ec, "\uD83D\uDE00");
+        assertOversizeLineSplitKeepsText(ec, "\uD83D\uDE00", 1);
     }
 
-    private void assertOversizeLineSplitKeepsText(ExtensionContext ec, String character) throws IOException {
+    @Test
+    void GIVEN_oversize_log_line_with_three_byte_char_cut_two_bytes_in_WHEN_split_THEN_text_intact(
+            ExtensionContext ec) throws IOException {
+        assertOversizeLineSplitKeepsText(ec, "\u20ac", 2);
+    }
+
+    @Test
+    void GIVEN_oversize_log_line_with_four_byte_char_cut_two_bytes_in_WHEN_split_THEN_text_intact(
+            ExtensionContext ec) throws IOException {
+        assertOversizeLineSplitKeepsText(ec, "\uD83D\uDE00", 2);
+    }
+
+    @Test
+    void GIVEN_oversize_log_line_with_four_byte_char_cut_three_bytes_in_WHEN_split_THEN_text_intact(
+            ExtensionContext ec) throws IOException {
+        assertOversizeLineSplitKeepsText(ec, "\uD83D\uDE00", 3);
+    }
+
+    private void assertOversizeLineSplitKeepsText(ExtensionContext ec, String character, int bytesBeforeCut)
+            throws IOException {
         ignoreExceptionOfType(ec, DateTimeParseException.class);
         File file = new File(directoryPath.resolve("greengrass_test.log").toUri());
         assertTrue(file.createNewFile());
@@ -601,8 +620,10 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
             SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd", Locale.ENGLISH);
             sdf.setTimeZone(TimeZone.getTimeZone("UTC"));
             String timestampPrefix = sdf.format(new Date(Instant.now().toEpochMilli())) + "T02:00:00Z [INFO] ";
-            // The character starts one byte before the first event boundary, so the cut falls after its first byte
-            String logLine = timestampPrefix + StringUtils.repeat("a", MAX_EVENT_LENGTH - 1 - timestampPrefix.length())
+            // The character starts bytesBeforeCut bytes before the first event boundary, so the cut falls that many
+            // bytes into it
+            String logLine = timestampPrefix
+                    + StringUtils.repeat("a", MAX_EVENT_LENGTH - bytesBeforeCut - timestampPrefix.length())
                     + StringUtils.repeat(character, 100) + "end";
             Files.write(file.toPath(), (logLine + "\n").getBytes(StandardCharsets.UTF_8));
 

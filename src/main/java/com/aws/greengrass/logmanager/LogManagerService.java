@@ -47,16 +47,15 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
+import java.util.function.Predicate;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
@@ -542,13 +541,13 @@ public class LogManagerService extends PluginService {
                 furthestStreamByFileHash.merge(fileHash, stream, (current, candidate) ->
                         readUpTo(candidate, fileHash) > readUpTo(current, fileHash) ? candidate : current)));
 
-        Map<String, Set<LogFile>> completedLogFilePerComponent = new HashMap<>();
         furthestStreamByFileHash.forEach((fileHash, stream) ->
-                processCloudWatchAttemptLogInformation(completedLogFilePerComponent, stream, fileHash,
+                processCloudWatchAttemptLogInformation(stream, fileHash,
                         stream.getAttemptLogFileInformationMap().get(fileHash)));
 
         logFileGroupPerComponent.forEach((componentName, logFileGroup) -> {
-            Set<LogFile> completedFiles = completedLogFilePerComponent.getOrDefault(componentName, new HashSet<>());
+            List<LogFile> completedFiles = logFileGroup.getLogFiles().stream()
+                    .filter(file -> isUploaded(componentName, logFileGroup, file)).collect(Collectors.toList());
 
             // If the component is not configured, delete the uploaded files along with their processing file info.
             // Otherwise, delete the file based on the component delete configuration.
@@ -667,8 +666,7 @@ public class LogManagerService extends PluginService {
         }
     }
 
-    private void processCloudWatchAttemptLogInformation(Map<String, Set<LogFile>> completedLogFilePerComponent,
-                                                        CloudWatchAttemptLogInformation attemptLogInformation,
+    private void processCloudWatchAttemptLogInformation(CloudWatchAttemptLogInformation attemptLogInformation,
                                                         String fileHash,
                                                         CloudWatchAttemptLogFileInformation
                                                                 cloudWatchAttemptLogFileInformation) {
@@ -681,19 +679,10 @@ public class LogManagerService extends PluginService {
             return;
         }
 
-        // If we have completely read the file, then we need add it to the completed files list and remove it
-        // (if necessary) for the current processing list.
         String componentName = attemptLogInformation.getComponentName();
         long bytesUploaded = cloudWatchAttemptLogFileInformation.getBytesRead()
                 + cloudWatchAttemptLogFileInformation.getStartPosition();
 
-        if (!logFileGroup.isActiveFile(file) && file.length() == bytesUploaded) {
-            Set<LogFile> completedFiles = completedLogFilePerComponent.getOrDefault(componentName,
-                    new HashSet<>());
-            completedFiles.add(file);
-            completedLogFilePerComponent.put(componentName, completedFiles);
-            // Do not add completed non-active file information to the list of processing files.
-        } else {
         // Track each file that got uploaded. So that if modified in the future we can still track upload
         // the new contents starting from the last upload position.
 
@@ -710,7 +699,22 @@ public class LogManagerService extends PluginService {
 
         ProcessingFiles processingFiles = processingFilesInformation.get(componentName);
         processingFiles.put(processingFileInformation);
-        }
+    }
+
+    /**
+     * A rotated file is uploaded once it and every listed file sharing its modification time are saved at their full
+     * length. Files modified at or before the watermark are never read again, so it may only move to a time all its
+     * files reached.
+     */
+    private boolean isUploaded(String componentName, LogFileGroup logFileGroup, LogFile file) {
+        ProcessingFiles processingFiles = processingFilesInformation.get(componentName);
+        Predicate<LogFile> savedAtFullLength = other -> {
+            CurrentProcessingFileInformation saved = processingFiles.get(other.hashString());
+            return saved != null && saved.getStartPosition() == other.length();
+        };
+        return processingFiles != null && !logFileGroup.isActiveFile(file) && savedAtFullLength.test(file)
+                && logFileGroup.getLogFiles().stream().filter(other -> other.lastModified() == file.lastModified())
+                .allMatch(savedAtFullLength);
     }
 
     /**
@@ -808,7 +812,7 @@ public class LogManagerService extends PluginService {
 
                         if (startPosition < file.length()) {
                             logFileInfo.getLogFileInformationList().add(logFileInformation);
-                        } else if (startPosition == file.length() && !logFileGroup.isActiveFile(file)) {
+                        } else if (isUploaded(componentName, logFileGroup, file)) {
                             updatelastComponentUploadedLogFile(lastComponentUploadedLogFileInstantMap,
                                     componentName, file);
 

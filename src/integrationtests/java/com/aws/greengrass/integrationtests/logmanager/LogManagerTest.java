@@ -566,15 +566,20 @@ class LogManagerTest extends BaseITCase {
 
         Runnable waitForActiveFileToBeProcessed = subscribeToActiveFileProcessed(logManagerService, 30);
         waitForActiveFileToBeProcessed.run();
+        // The files do not fit in one batch, so the second cycle uploads the rest
+        subscribeToActiveFileProcessed(logManagerService, 30).run();
         verify(cloudWatchLogsClient, atLeastOnce()).putLogEvents(captor.capture());
 
         // Then
 
+        assertEquals(numberOfFiles * DEFAULT_LOG_LINE_IN_FILE,
+                captor.getAllValues().stream().mapToInt(request -> request.logEvents().size()).sum());
         ProcessingFiles processingFiles = logManagerService.processingFilesInformation.get(componentName);
         assertNotNull(processingFiles);
         assertEquals(1, processingFiles.size()); // Active file not deleted
 
-        // Check runtime config gets cleared once the files have deleted
+        // Check runtime config gets cleared once the files have deleted, persisting it now instead of periodically
+        logManagerService.shutdown();
         Topics componentTopics =
                 logManagerService.getRuntimeConfig()
                         .lookupTopics(PERSISTED_COMPONENT_CURRENT_PROCESSING_FILE_INFORMATION_V2,

@@ -61,6 +61,7 @@ import static com.aws.greengrass.logmanager.CloudWatchAttemptLogsProcessor.DEFAU
 import static com.aws.greengrass.testcommons.testutilities.ExceptionLogProtector.ignoreExceptionOfType;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.hasSize;
+import static org.hamcrest.Matchers.lessThanOrEqualTo;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -563,6 +564,72 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
                     logEventsForStream1.getAttemptLogFileInformationMap().get(fileHash).getBytesRead());
             assertEquals("TestComponent", logEventsForStream1.getComponentName());
 
+        } finally {
+            assertTrue(file.delete());
+        }
+    }
+
+    @Test
+    void GIVEN_oversize_log_line_with_ascii_on_event_boundary_WHEN_split_THEN_text_intact(ExtensionContext ec)
+            throws IOException {
+        assertOversizeLineSplitKeepsText(ec, "a");
+    }
+
+    @Test
+    void GIVEN_oversize_log_line_with_two_byte_char_on_event_boundary_WHEN_split_THEN_text_intact(
+            ExtensionContext ec) throws IOException {
+        assertOversizeLineSplitKeepsText(ec, "\u00e9");
+    }
+
+    @Test
+    void GIVEN_oversize_log_line_with_three_byte_char_on_event_boundary_WHEN_split_THEN_text_intact(
+            ExtensionContext ec) throws IOException {
+        assertOversizeLineSplitKeepsText(ec, "\u20ac");
+    }
+
+    @Test
+    void GIVEN_oversize_log_line_with_four_byte_char_on_event_boundary_WHEN_split_THEN_text_intact(
+            ExtensionContext ec) throws IOException {
+        assertOversizeLineSplitKeepsText(ec, "\uD83D\uDE00");
+    }
+
+    private void assertOversizeLineSplitKeepsText(ExtensionContext ec, String character) throws IOException {
+        ignoreExceptionOfType(ec, DateTimeParseException.class);
+        File file = new File(directoryPath.resolve("greengrass_test.log").toUri());
+        assertTrue(file.createNewFile());
+        try {
+            SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd", Locale.ENGLISH);
+            sdf.setTimeZone(TimeZone.getTimeZone("UTC"));
+            String timestampPrefix = sdf.format(new Date(Instant.now().toEpochMilli())) + "T02:00:00Z [INFO] ";
+            // The character starts one byte before the first event boundary, so the cut falls after its first byte
+            String logLine = timestampPrefix + StringUtils.repeat("a", MAX_EVENT_LENGTH - 1 - timestampPrefix.length())
+                    + StringUtils.repeat(character, 100) + "end";
+            Files.write(file.toPath(), (logLine + "\n").getBytes(StandardCharsets.UTF_8));
+
+            LogFile logFile = LogFile.of(file);
+            List<LogFileInformation> logFileInformationSet = new ArrayList<>();
+            logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile)
+                    .fileHash(logFile.hashString()).build());
+            ComponentLogFileInformation componentLogFileInformation =
+                    ComponentLogFileInformation.builder().name("TestComponent")
+                            .desiredLogLevel(Level.INFO).componentType(ComponentType.GreengrassSystemComponent)
+                            .logFileInformationList(logFileInformationSet).build();
+
+            logsProcessor = new CloudWatchAttemptLogsProcessor(mockDeviceConfiguration, defaultClock);
+            CloudWatchAttempt attempt = logsProcessor.processLogFiles(componentLogFileInformation);
+
+            List<InputLogEvent> logEvents = attempt.getLogStreamsToLogEventsMap()
+                    .get(calculateLogStreamName("testThing")).getSortedLogEvents();
+            StringBuilder delivered = new StringBuilder();
+            logEvents.forEach(logEvent -> delivered.append(logEvent.message()));
+            int at = StringUtils.indexOfDifference(logLine, delivered);
+            assertEquals(-1, at, "first difference at char " + at + ": expected "
+                    + StringUtils.substring(logLine, at - 4, at + 4) + " but was "
+                    + StringUtils.substring(delivered.toString(), at - 4, at + 4));
+            for (InputLogEvent logEvent : logEvents) {
+                assertThat(logEvent.message().getBytes(StandardCharsets.UTF_8).length,
+                        lessThanOrEqualTo(MAX_EVENT_LENGTH));
+            }
         } finally {
             assertTrue(file.delete());
         }

@@ -437,9 +437,7 @@ public class CloudWatchAttemptLogsProcessor {
             if (Utils.isNotEmpty(partialData)) {
                 InputLogEvent inputLogEvent =
                         InputLogEvent.builder().message(partialData).timestamp(timestamp.toEpochMilli()).build();
-                attemptLogInformation.getLogEvents().add(inputLogEvent);
-                attemptLogInformation.setEarliestTimestamp(
-                        Math.min(attemptLogInformation.getEarliestTimestamp(), inputLogEvent.timestamp()));
+                attemptLogInformation.addLogEvent(inputLogEvent);
             }
 
             currChunk++;

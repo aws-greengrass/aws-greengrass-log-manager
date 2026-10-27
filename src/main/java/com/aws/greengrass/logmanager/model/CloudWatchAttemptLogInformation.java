@@ -5,6 +5,7 @@
 
 package com.aws.greengrass.logmanager.model;
 
+import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Data;
 import lombok.Getter;
@@ -28,11 +29,22 @@ public class CloudWatchAttemptLogInformation {
     @Builder.Default
     private Queue<InputLogEvent> logEvents = new ArrayDeque<>();
     @Builder.Default
+    @Setter(AccessLevel.NONE)
     private long earliestTimestamp = Long.MAX_VALUE;
     @Builder.Default
     private Map<String, CloudWatchAttemptLogFileInformation> attemptLogFileInformationMap = new HashMap<>();
     private String componentName;
     private LogFileGroup logFileGroup;
+
+    /**
+     * Add a log event and track the earliest timestamp.
+     *
+     * @param logEvent event to add
+     */
+    public void addLogEvent(InputLogEvent logEvent) {
+        logEvents.add(logEvent);
+        earliestTimestamp = Math.min(earliestTimestamp, logEvent.timestamp());
+    }
 
     /**
      * Get the log events in chronological order.

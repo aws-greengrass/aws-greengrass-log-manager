@@ -517,6 +517,9 @@ public class LogManagerService extends PluginService {
                     .log("Not all log streams were uploaded. The same logs will be read and uploaded again");
         }
 
+        // Runs even when streams failed. Safe because getProcessedLogFiles() only returns files at or before the
+        // watermark captured when this cycle's LogFileGroup was created, the exact complement of getLogFiles(), so no
+        // file with lines in this attempt can be deleted here.
         logFileGroupPerComponent.forEach((componentName, logFileGroup) -> {
             List<String> deletedHashes = this.diskSpaceManagementService.freeDiskSpace(logFileGroup);
 

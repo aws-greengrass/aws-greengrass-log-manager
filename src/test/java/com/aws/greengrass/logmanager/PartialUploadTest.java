@@ -204,6 +204,21 @@ class PartialUploadTest {
         });
     }
 
+    @Test
+    void GIVEN_disk_space_limit_WHEN_one_stream_fails_THEN_file_read_by_failed_stream_is_kept() throws Exception {
+        new Scenario().run("failed stream file kept", scenario ->
+                scenario.diskLimitWithFailingFile("failed",
+                        line(DAY_D, "21:00:00", "c"), line(DAY_D1, "00:00:01", "f")));
+    }
+
+    @Test
+    void GIVEN_disk_space_limit_WHEN_every_stream_fails_THEN_processed_file_freed_and_failed_file_kept()
+            throws Exception {
+        new Scenario().run("every stream fails", scenario ->
+                scenario.diskLimitWithFailingFile("failed",
+                        line(DAY_D1, "00:00:01", "f"), line(DAY_D1, "00:00:02", "g")));
+    }
+
     interface ScenarioBody {
         void accept(Scenario scenario) throws Exception;
     }
@@ -272,6 +287,25 @@ class PartialUploadTest {
                 assertEquals(!deleteAfterUpload, Files.exists(files.get("rotated")),
                         "rotated file deleted once fully uploaded only when delete-after-upload is on");
             }
+        }
+
+        void diskLimitWithFailingFile(String role, String... lines) throws Exception {
+            writeFile("older", "test.log.2", Instant.now().minusSeconds(600),
+                    line(DAY_D, "20:00:00", "a"), line(DAY_D, "20:00:01", "b"));
+            failing.set(false);
+            stubCloudWatch(FailingStream.LATER, streamFor(DAY_D1), Failure.SERVICE_ERROR_CONTINUES_BATCH);
+            configure(false);
+            component().createLeafChild(DISK_SPACE_LIMIT_CONFIG_TOPIC_NAME).withValue("1");
+
+            startService();
+            awaitCycles(1);
+            failing.set(true);
+            writeFile(role, "test.log.1", Instant.now().minusSeconds(300), lines);
+            writeFile("active", "test.log", Instant.now().minusSeconds(100), line(DAY_D1, "01:00:00", "z"));
+            awaitCycles(3);
+
+            assertFalse(Files.exists(files.get("older")), "uploaded file over the disk space limit deleted");
+            assertTrue(Files.exists(files.get(role)), "file read by a failed stream kept under the disk space limit");
         }
 
         void happyPath(Layout layout, boolean deleteAfterUpload) throws Exception {

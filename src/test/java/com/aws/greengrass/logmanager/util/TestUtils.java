@@ -11,6 +11,7 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.Random;
 
 public final class TestUtils {
@@ -26,6 +27,18 @@ public final class TestUtils {
             testStrings.append(testChars.charAt(charIdx));
         }
         return testStrings.toString();
+    }
+
+    /**
+     * A Greengrass JSON log entry whose message is padded so the line is long enough to hash a file.
+     */
+    public static String jsonLogLine(String level, Instant timestamp, String id) {
+        StringBuilder message = new StringBuilder(id).append(' ');
+        while (message.length() < LogFile.bytesNeeded) {
+            message.append('x');
+        }
+        return "{\"level\":\"" + level + "\",\"loggerName\":\"test\",\"message\":\"" + message
+                + "\",\"timestamp\":" + timestamp.toEpochMilli() + "}";
     }
 
     public static void writeFile(File file, byte[] byteArray) throws IOException {

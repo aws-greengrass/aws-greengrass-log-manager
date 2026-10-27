@@ -11,6 +11,7 @@ import com.aws.greengrass.config.Topics;
 import com.aws.greengrass.config.UnsupportedInputTypeException;
 import com.aws.greengrass.config.UpdateBehaviorTree;
 import com.aws.greengrass.dependency.Context;
+import com.aws.greengrass.deployment.DeviceConfiguration;
 import com.aws.greengrass.logging.impl.LogManager;
 import com.aws.greengrass.logging.impl.config.LogConfig;
 import com.aws.greengrass.logging.impl.config.LogStore;
@@ -64,16 +65,20 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.regex.Pattern;
 
 import static com.aws.greengrass.componentmanager.KernelConfigResolver.CONFIGURATION_CONFIG_KEY;
+import static com.aws.greengrass.deployment.DeviceConfiguration.DEVICE_PARAM_AWS_REGION;
+import static com.aws.greengrass.deployment.DeviceConfiguration.DEVICE_PARAM_THING_NAME;
 import static com.aws.greengrass.lifecyclemanager.GreengrassService.RUNTIME_STORE_NAMESPACE_TOPIC;
 import static com.aws.greengrass.logging.impl.config.LogConfig.newLogConfigFromRootConfig;
 import static com.aws.greengrass.logmanager.LogManagerService.COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME;
@@ -98,8 +103,10 @@ import static com.aws.greengrass.logmanager.LogManagerService.UPLOAD_TO_CW_CONFI
 import static com.aws.greengrass.logmanager.model.LogFile.bytesNeeded;
 import static com.aws.greengrass.logmanager.util.TestUtils.createLogFileWithSize;
 import static com.aws.greengrass.logmanager.util.TestUtils.givenAStringOfSize;
+import static com.aws.greengrass.logmanager.util.TestUtils.jsonLogLine;
 import static com.aws.greengrass.testcommons.testutilities.ExceptionLogProtector.ignoreExceptionOfType;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -141,6 +148,9 @@ class LogManagerServiceTest {
     private static final int TIED_FILE_BYTES = 2048;
     private static final int BATCH_BYTES = 3000;
     private final Map<String, Long> delivered = new ConcurrentHashMap<>();
+    private static final Pattern JSON_LINE_FILE = Pattern.compile(".*\"message\":\"([^\"]+)-\\d+ .*");
+    private final Map<String, Integer> reads = new ConcurrentHashMap<>();
+    private final List<String> sent = Collections.synchronizedList(new ArrayList<>());
 
     @BeforeAll
     static void setupBefore() throws IOException, InterruptedException {
@@ -892,6 +902,144 @@ class LogManagerServiceTest {
                 "tied.log", TIED_FILE_BYTES), delivered);
     }
 
+    @Test
+    void GIVEN_rotated_file_ending_below_minimum_level_WHEN_uploaded_THEN_it_is_read_once_and_deleted()
+            throws Exception {
+        uploadRotatedFileWithFilteredEntries("filteredTailDeleted", true, "INFO", "DEBUG", "INFO", "DEBUG");
+    }
+
+    @Test
+    void GIVEN_rotated_file_ending_below_minimum_level_WHEN_uploaded_without_delete_THEN_it_is_read_once_and_kept()
+            throws Exception {
+        uploadRotatedFileWithFilteredEntries("filteredTailKept", false, "INFO", "DEBUG", "INFO", "DEBUG");
+    }
+
+    @Test
+    void GIVEN_rotated_file_entirely_below_minimum_level_WHEN_uploaded_THEN_it_is_read_once_and_deleted()
+            throws Exception {
+        uploadRotatedFileWithFilteredEntries("allFilteredDeleted", true, "DEBUG", "TRACE");
+    }
+
+    @Test
+    void GIVEN_equal_mtime_rotated_files_larger_than_a_batch_WHEN_both_end_below_minimum_level_THEN_no_line_is_lost()
+            throws Exception {
+        Path dir = Files.createDirectories(directoryPath.resolve("tiedFilteredTail"));
+        Instant tied = Instant.now().minusSeconds(600).truncatedTo(ChronoUnit.SECONDS);
+        String[] moreThanOneBatchEndingInDebug = new String[1001];
+        Arrays.fill(moreThanOneBatchEndingInDebug, "INFO");
+        moreThanOneBatchEndingInDebug[1000] = "DEBUG";
+        List<String> expected = new ArrayList<>();
+        expected.addAll(writeJsonLogFile(dir.resolve("tied.log.2"), tied, moreThanOneBatchEndingInDebug));
+        expected.addAll(writeJsonLogFile(dir.resolve("tied.log.1"), tied, moreThanOneBatchEndingInDebug));
+        expected.addAll(writeJsonLogFile(dir.resolve("tied.log"), tied.plusSeconds(60), "INFO"));
+        configureTiedComponent("TiedFilteredTail", dir, true)
+                .createLeafChild(MIN_LOG_LEVEL_CONFIG_TOPIC_NAME).withValue("INFO");
+
+        runCyclesThroughProcessor();
+
+        assertAll(
+                () -> assertEquals(linesPerFile(expected), linesPerFile(sent), "lines sent per file"),
+                () -> assertEquals(sorted(expected), sorted(sent)));
+    }
+
+    @Test
+    void GIVEN_rotated_file_ending_in_later_dated_filtered_entry_WHEN_earlier_date_fails_THEN_file_is_kept()
+            throws Exception {
+        uploadTwoDateRotatedFileThroughOutage("outageFilteredTail", "INFO", "DEBUG");
+    }
+
+    @Test
+    void GIVEN_rotated_file_starting_with_earlier_dated_filtered_entry_WHEN_later_date_fails_THEN_file_is_kept()
+            throws Exception {
+        uploadTwoDateRotatedFileThroughOutage("outageFilteredHead", "DEBUG", "INFO");
+    }
+
+    /**
+     * The rotated file holds one entry dated two days ago and one dated a day ago, so each goes to its own stream.
+     * The filtered one leaves its stream empty, which uploads during the outage while the other fails.
+     */
+    private void uploadTwoDateRotatedFileThroughOutage(String componentName, String olderLevel, String newerLevel)
+            throws Exception {
+        Path dir = Files.createDirectories(directoryPath.resolve(componentName));
+        Path rotated = dir.resolve("tied.log.1");
+        Instant rotatedAt = Instant.now().minusSeconds(600).truncatedTo(ChronoUnit.SECONDS);
+        List<String> expected = new ArrayList<>();
+        expected.addAll(writeJsonLogFile(rotated, rotatedAt,
+                new Instant[]{rotatedAt.minus(2, ChronoUnit.DAYS), rotatedAt.minus(1, ChronoUnit.DAYS)},
+                olderLevel, newerLevel));
+        expected.addAll(writeJsonLogFile(dir.resolve("tied.log"), rotatedAt.plusSeconds(300), "INFO"));
+        configureTiedComponent(componentName, dir, true)
+                .createLeafChild(MIN_LOG_LEVEL_CONFIG_TOPIC_NAME).withValue("INFO");
+        int outageCycles = 3;
+        List<Boolean> keptThroughOutage = Collections.synchronizedList(new ArrayList<>());
+
+        runCyclesThroughProcessor(outageCycles, () -> {
+            if (keptThroughOutage.size() < outageCycles) {
+                keptThroughOutage.add(Files.exists(rotated));
+            }
+        });
+
+        assertAll(
+                () -> assertEquals(Arrays.asList(true, true, true), keptThroughOutage, "rotated file kept in outage"),
+                () -> assertEquals(sorted(expected), sorted(sent)));
+    }
+
+    private void uploadRotatedFileWithFilteredEntries(String componentName, boolean deleteAfterUpload,
+                                                      String... rotatedLevels) throws Exception {
+        Path dir = Files.createDirectories(directoryPath.resolve(componentName));
+        Instant rotatedAt = Instant.now().minusSeconds(600).truncatedTo(ChronoUnit.SECONDS);
+        List<String> expected = new ArrayList<>();
+        expected.addAll(writeJsonLogFile(dir.resolve("tied.log.1"), rotatedAt, rotatedLevels));
+        expected.addAll(writeJsonLogFile(dir.resolve("tied.log"), rotatedAt.plusSeconds(300), "INFO", "INFO"));
+        configureTiedComponent(componentName, dir, deleteAfterUpload)
+                .createLeafChild(MIN_LOG_LEVEL_CONFIG_TOPIC_NAME).withValue("INFO");
+
+        runCyclesThroughProcessor();
+
+        assertAll(
+                () -> assertEquals(sorted(expected), sorted(sent)),
+                () -> assertEquals(1, reads.get("tied.log.1"), "cycles that read the rotated file"),
+                () -> assertEquals(!deleteAfterUpload, Files.exists(dir.resolve("tied.log.1")), "rotated file kept"));
+    }
+
+    private static List<String> writeJsonLogFile(Path path, Instant lastModified, String... levels)
+            throws IOException {
+        Instant[] timestamps = new Instant[levels.length];
+        Arrays.fill(timestamps, lastModified.minusSeconds(1));
+        return writeJsonLogFile(path, lastModified, timestamps, levels);
+    }
+
+    /**
+     * Writes one JSON entry per level, dated by the matching timestamp, and returns the entries at or above INFO.
+     */
+    private static List<String> writeJsonLogFile(Path path, Instant lastModified, Instant[] timestamps,
+                                                 String... levels) throws IOException {
+        List<String> lines = new ArrayList<>();
+        List<String> info = new ArrayList<>();
+        for (int i = 0; i < levels.length; i++) {
+            String line = jsonLogLine(levels[i], timestamps[i], path.getFileName() + "-" + i);
+            lines.add(line);
+            if ("INFO".equals(levels[i])) {
+                info.add(line);
+            }
+        }
+        Files.write(path, lines, StandardCharsets.UTF_8);
+        Files.setLastModifiedTime(path, FileTime.from(lastModified));
+        return info;
+    }
+
+    private static Map<String, Long> linesPerFile(List<String> lines) {
+        Map<String, Long> counts = new HashMap<>();
+        lines.forEach(line -> counts.merge(JSON_LINE_FILE.matcher(line).replaceFirst("$1"), 1L, Long::sum));
+        return counts;
+    }
+
+    private static List<String> sorted(List<String> lines) {
+        List<String> copy = new ArrayList<>(lines);
+        Collections.sort(copy);
+        return copy;
+    }
+
     private static void writeLogFile(Path path, int size, Instant lastModified) throws IOException {
         createLogFileWithSize(path.toUri(), size);
         Files.setLastModifiedTime(path, FileTime.from(lastModified));
@@ -954,6 +1102,45 @@ class LogManagerServiceTest {
             attempt.setLogStreamUploadedSet(Collections.singleton("stream"));
             return attempt;
         });
+        runCycles(afterUpload);
+    }
+
+    private void runCyclesThroughProcessor() throws InterruptedException, IOException {
+        runCyclesThroughProcessor(0, () -> { });
+    }
+
+    /**
+     * Runs upload cycles through a real processor, recording each event uploaded and how many cycles list each file
+     * for reading. The first outageCycles attempts upload only their streams with no events, as CloudWatch accepts
+     * those without a request; after that every stream uploads. afterUpload runs once each attempt is committed.
+     */
+    private void runCyclesThroughProcessor(int outageCycles, ThrowingRunnable afterUpload)
+            throws InterruptedException, IOException {
+        AtomicInteger attempts = new AtomicInteger();
+        DeviceConfiguration deviceConfiguration = mock(DeviceConfiguration.class);
+        when(deviceConfiguration.getThingName()).thenReturn(Topic.of(context, DEVICE_PARAM_THING_NAME, "thing"));
+        when(deviceConfiguration.getAWSRegion()).thenReturn(Topic.of(context, DEVICE_PARAM_AWS_REGION, "region"));
+        CloudWatchAttemptLogsProcessor processor = new CloudWatchAttemptLogsProcessor(deviceConfiguration);
+        when(mockMerger.processLogFiles(any())).thenAnswer(invocation -> {
+            ComponentLogFileInformation component = invocation.getArgument(0);
+            component.getLogFileInformationList().forEach(file -> reads.merge(
+                    Paths.get(file.getLogFile().getSourcePath()).getFileName().toString(), 1, Integer::sum));
+            CloudWatchAttempt attempt = processor.processLogFiles(component);
+            boolean outage = attempts.getAndIncrement() < outageCycles;
+            Set<String> uploaded = new HashSet<>();
+            attempt.getLogStreamsToLogEventsMap().forEach((name, stream) -> {
+                if (!outage || stream.getLogEvents().isEmpty()) {
+                    uploaded.add(name);
+                    stream.getLogEvents().forEach(event -> sent.add(event.message()));
+                }
+            });
+            attempt.setLogStreamUploadedSet(uploaded);
+            return attempt;
+        });
+        runCycles(afterUpload);
+    }
+
+    private void runCycles(ThrowingRunnable afterUpload) throws InterruptedException, IOException {
         doNothing().when(mockUploader).registerAttemptStatus(anyString(), callbackCaptor.capture());
         doAnswer(invocation -> {
             callbackCaptor.getValue().accept(invocation.getArgument(0));

@@ -14,6 +14,8 @@ import software.amazon.awssdk.services.cloudwatchlogs.model.InputLogEvent;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
@@ -27,6 +29,7 @@ import java.util.Queue;
 public class CloudWatchAttemptLogInformation {
     public static final Comparator<InputLogEvent> EVENT_COMPARATOR = Comparator.comparing(InputLogEvent::timestamp);
     @Builder.Default
+    @Setter(AccessLevel.NONE)
     private Queue<InputLogEvent> logEvents = new ArrayDeque<>();
     @Builder.Default
     @Setter(AccessLevel.NONE)
@@ -44,6 +47,15 @@ public class CloudWatchAttemptLogInformation {
     public void addLogEvent(InputLogEvent logEvent) {
         logEvents.add(logEvent);
         earliestTimestamp = Math.min(earliestTimestamp, logEvent.timestamp());
+    }
+
+    /**
+     * Get a read-only view of the log events. Use {@link #addLogEvent} to add events.
+     *
+     * @return unmodifiable view of the events
+     */
+    public Collection<InputLogEvent> getLogEvents() {
+        return Collections.unmodifiableCollection(logEvents);
     }
 
     /**

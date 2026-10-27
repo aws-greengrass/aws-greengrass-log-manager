@@ -537,7 +537,7 @@ public class LogManagerService extends PluginService {
         Map<String, CloudWatchAttemptLogInformation> furthestStreamByFileHash = new HashMap<>();
         streams.forEach(stream -> stream.getAttemptLogFileInformationMap().keySet().forEach(fileHash ->
                 furthestStreamByFileHash.merge(fileHash, stream, (current, candidate) ->
-                        uploadedUpTo(candidate, fileHash) > uploadedUpTo(current, fileHash) ? candidate : current)));
+                        readUpTo(candidate, fileHash) > readUpTo(current, fileHash) ? candidate : current)));
 
         Map<String, Set<LogFile>> completedLogFilePerComponent = new HashMap<>();
         furthestStreamByFileHash.forEach((fileHash, stream) ->
@@ -561,7 +561,7 @@ public class LogManagerService extends PluginService {
         });
     }
 
-    private static long uploadedUpTo(CloudWatchAttemptLogInformation stream, String fileHash) {
+    private static long readUpTo(CloudWatchAttemptLogInformation stream, String fileHash) {
         CloudWatchAttemptLogFileInformation progress = stream.getAttemptLogFileInformationMap().get(fileHash);
         return progress.getStartPosition() + progress.getBytesRead();
     }

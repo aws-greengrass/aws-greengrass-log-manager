@@ -8,6 +8,7 @@ package com.aws.greengrass.logmanager.model;
 import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.Setter;
 import software.amazon.awssdk.services.cloudwatchlogs.model.InputLogEvent;
@@ -24,6 +25,7 @@ import java.util.Queue;
 
 @Builder
 @Data
+@EqualsAndHashCode(doNotUseGetters = true)
 @Getter
 @Setter
 public class CloudWatchAttemptLogInformation {

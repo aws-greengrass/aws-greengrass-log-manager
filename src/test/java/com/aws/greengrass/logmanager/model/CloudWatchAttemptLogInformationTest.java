@@ -24,4 +24,13 @@ class CloudWatchAttemptLogInformationTest {
         assertEquals(2, information.getLogEvents().size());
         assertEquals(1000L, information.getEarliestTimestamp());
     }
+
+    @Test
+    void GIVEN_log_information_WHEN_hash_code_called_twice_THEN_it_is_stable() {
+        CloudWatchAttemptLogInformation information = CloudWatchAttemptLogInformation.builder().build();
+        information.addLogEvent(InputLogEvent.builder().timestamp(1000L).message("a").build());
+
+        assertEquals(information.hashCode(), information.hashCode());
+        assertEquals(information, information);
+    }
 }

@@ -22,8 +22,10 @@ import com.aws.greengrass.logmanager.model.CloudWatchAttemptLogInformation;
 import com.aws.greengrass.logmanager.model.ComponentLogConfiguration;
 import com.aws.greengrass.logmanager.model.ComponentLogFileInformation;
 import com.aws.greengrass.logmanager.model.ComponentType;
+import com.aws.greengrass.logmanager.model.EventType;
 import com.aws.greengrass.logmanager.model.LogFile;
 import com.aws.greengrass.logmanager.model.LogFileGroup;
+import com.aws.greengrass.logmanager.model.LogFileInformation;
 import com.aws.greengrass.logmanager.model.ProcessingFiles;
 import com.aws.greengrass.testcommons.testutilities.GGExtension;
 import com.aws.greengrass.util.Coerce;
@@ -50,17 +52,24 @@ import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.attribute.FileTime;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import java.util.regex.Pattern;
 
@@ -99,6 +108,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
@@ -128,6 +138,9 @@ class LogManagerServiceTest {
     private final Context context = new Context();
     private final Configuration configuration = new Configuration(context);
     private final Topics config = configuration.lookupTopics("a");
+    private static final int TIED_FILE_BYTES = 2048;
+    private static final int BATCH_BYTES = 3000;
+    private final Map<String, Long> delivered = new ConcurrentHashMap<>();
 
     @BeforeAll
     static void setupBefore() throws IOException, InterruptedException {
@@ -804,6 +817,163 @@ class LogManagerServiceTest {
         componentLogFileInformation.getLogFileInformationList().forEach(logFileInformation ->
                 assertEquals(0, logFileInformation.getStartPosition()));
         verify(mockUploader, atLeastOnce()).upload(any(CloudWatchAttempt.class), anyInt());
+    }
+
+    @Test
+    void GIVEN_rotated_files_with_equal_mtime_WHEN_batch_fills_between_them_THEN_every_byte_is_uploaded()
+            throws Exception {
+        Path dir = Files.createDirectories(directoryPath.resolve("tiedOnCommit"));
+        Instant tied = Instant.now().minusSeconds(600).truncatedTo(ChronoUnit.SECONDS);
+        writeLogFile(dir.resolve("tied.log.2"), TIED_FILE_BYTES, tied);
+        writeLogFile(dir.resolve("tied.log.1"), TIED_FILE_BYTES, tied);
+        writeLogFile(dir.resolve("tied.log"), TIED_FILE_BYTES, tied.plusSeconds(60));
+        configureTiedComponent("TiedOnCommit", dir, true);
+
+        runCyclesUploadingInBatches(() -> { });
+
+        assertEquals(expectedBytes("tied.log.2", TIED_FILE_BYTES, "tied.log.1", TIED_FILE_BYTES,
+                "tied.log", TIED_FILE_BYTES), delivered);
+        assertFalse(Files.exists(dir.resolve("tied.log.2")));
+        assertFalse(Files.exists(dir.resolve("tied.log.1")));
+        assertTrue(Files.exists(dir.resolve("tied.log")));
+    }
+
+    @Test
+    void GIVEN_uploaded_active_file_rotates_WHEN_next_rotated_file_has_equal_mtime_THEN_every_byte_is_uploaded()
+            throws Exception {
+        Path dir = Files.createDirectories(directoryPath.resolve("tiedInLoop"));
+        Instant tied = Instant.now().minusSeconds(600).truncatedTo(ChronoUnit.SECONDS);
+        writeLogFile(dir.resolve("tied.log"), TIED_FILE_BYTES, tied);
+        configureTiedComponent("TiedInLoop", dir, true);
+
+        AtomicBoolean rotated = new AtomicBoolean();
+        runCyclesUploadingInBatches(() -> {
+            if (rotated.getAndSet(true)) {
+                return;
+            }
+            Files.move(dir.resolve("tied.log"), dir.resolve("tied.log.2"));
+            Files.setLastModifiedTime(dir.resolve("tied.log.2"), FileTime.from(tied));
+            delivered.put("tied.log.2", delivered.remove("tied.log"));
+            writeLogFile(dir.resolve("tied.log.1"), 2 * TIED_FILE_BYTES, tied);
+            writeLogFile(dir.resolve("tied.log"), TIED_FILE_BYTES, tied.plusSeconds(60));
+        });
+
+        assertEquals(expectedBytes("tied.log.2", TIED_FILE_BYTES, "tied.log.1", 2 * TIED_FILE_BYTES,
+                "tied.log", TIED_FILE_BYTES), delivered);
+        assertFalse(Files.exists(dir.resolve("tied.log.2")));
+        assertFalse(Files.exists(dir.resolve("tied.log.1")));
+        assertTrue(Files.exists(dir.resolve("tied.log")));
+    }
+
+    @Test
+    void GIVEN_disk_space_limit_WHEN_rotated_file_with_equal_mtime_is_partly_uploaded_THEN_it_is_not_deleted()
+            throws Exception {
+        Path dir = Files.createDirectories(directoryPath.resolve("tiedDiskSpace"));
+        Instant tied = Instant.now().minusSeconds(600).truncatedTo(ChronoUnit.SECONDS);
+        writeLogFile(dir.resolve("tied.log.2"), TIED_FILE_BYTES, tied);
+        writeLogFile(dir.resolve("tied.log.1"), TIED_FILE_BYTES, tied);
+        writeLogFile(dir.resolve("tied.log"), TIED_FILE_BYTES, tied.plusSeconds(60));
+        Topics component = configureTiedComponent("TiedDiskSpace", dir, false);
+        component.createLeafChild(DISK_SPACE_LIMIT_CONFIG_TOPIC_NAME).withValue("1");
+        component.createLeafChild(DISK_SPACE_LIMIT_UNIT_CONFIG_TOPIC_NAME).withValue("KB");
+
+        Map<String, Long> deletedBeforeUploaded = new ConcurrentHashMap<>();
+        runCyclesUploadingInBatches(() -> {
+            for (String name : Arrays.asList("tied.log.2", "tied.log.1")) {
+                long uploaded = delivered.getOrDefault(name, 0L);
+                if (!Files.exists(dir.resolve(name)) && uploaded < TIED_FILE_BYTES) {
+                    deletedBeforeUploaded.put(name, uploaded);
+                }
+            }
+        });
+
+        assertEquals(Collections.emptyMap(), deletedBeforeUploaded);
+        assertEquals(expectedBytes("tied.log.2", TIED_FILE_BYTES, "tied.log.1", TIED_FILE_BYTES,
+                "tied.log", TIED_FILE_BYTES), delivered);
+    }
+
+    private static void writeLogFile(Path path, int size, Instant lastModified) throws IOException {
+        createLogFileWithSize(path.toUri(), size);
+        Files.setLastModifiedTime(path, FileTime.from(lastModified));
+    }
+
+    private Topics configureTiedComponent(String componentName, Path dir, boolean deleteAfterUpload) {
+        config.lookup(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_PERIODIC_UPDATE_INTERVAL_SEC).withValue("0.2");
+        config.lookupTopics(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC,
+                SYSTEM_LOGS_CONFIG_TOPIC_NAME).createLeafChild(UPLOAD_TO_CW_CONFIG_TOPIC_NAME).withValue("false");
+        Topics component = config.lookupTopics(CONFIGURATION_CONFIG_KEY, LOGS_UPLOADER_CONFIGURATION_TOPIC,
+                COMPONENT_LOGS_CONFIG_MAP_TOPIC_NAME, componentName);
+        component.createLeafChild(FILE_DIRECTORY_PATH_CONFIG_TOPIC_NAME).withValue(dir.toString());
+        component.createLeafChild(FILE_REGEX_CONFIG_TOPIC_NAME).withValue("^tied\\.log.*");
+        component.createLeafChild(DELETE_LOG_FILES_AFTER_UPLOAD_CONFIG_TOPIC_NAME)
+                .withValue(Boolean.toString(deleteAfterUpload));
+        return component;
+    }
+
+    private static Map<String, Long> expectedBytes(String name1, long bytes1, String name2, long bytes2,
+                                                   String name3, long bytes3) {
+        Map<String, Long> expected = new HashMap<>();
+        expected.put(name1, bytes1);
+        expected.put(name2, bytes2);
+        expected.put(name3, bytes3);
+        return expected;
+    }
+
+    /**
+     * Runs upload cycles where each one reads the listed files in order until the batch is full and every stream
+     * uploads, recording the bytes uploaded per file name. afterUpload runs once each attempt is committed.
+     */
+    private void runCyclesUploadingInBatches(ThrowingRunnable afterUpload)
+            throws InterruptedException, IOException {
+        when(mockMerger.processLogFiles(any())).thenAnswer(invocation -> {
+            ComponentLogFileInformation component = invocation.getArgument(0);
+            Map<String, CloudWatchAttemptLogFileInformation> read = new HashMap<>();
+            long batchLeft = BATCH_BYTES;
+            for (LogFileInformation file : component.getLogFileInformationList()) {
+                long bytes = Math.min(batchLeft, file.getLogFile().length() - file.getStartPosition());
+                if (bytes == 0) {
+                    break;
+                }
+                batchLeft -= bytes;
+                read.put(file.getFileHash(), CloudWatchAttemptLogFileInformation.builder()
+                        .startPosition(file.getStartPosition())
+                        .bytesRead(bytes)
+                        .lastModifiedTime(file.getLogFile().lastModified())
+                        .fileHash(file.getFileHash())
+                        .build());
+                delivered.merge(Paths.get(file.getLogFile().getSourcePath()).getFileName().toString(), bytes,
+                        Long::sum);
+            }
+            CloudWatchAttempt attempt = new CloudWatchAttempt();
+            attempt.setLogStreamsToLogEventsMap(Collections.singletonMap("stream",
+                    CloudWatchAttemptLogInformation.builder()
+                            .componentName(component.getName())
+                            .attemptLogFileInformationMap(read)
+                            .logFileGroup(component.getLogFileGroup())
+                            .build()));
+            attempt.setLogStreamUploadedSet(Collections.singleton("stream"));
+            return attempt;
+        });
+        doNothing().when(mockUploader).registerAttemptStatus(anyString(), callbackCaptor.capture());
+        doAnswer(invocation -> {
+            callbackCaptor.getValue().accept(invocation.getArgument(0));
+            afterUpload.run();
+            return null;
+        }).when(mockUploader).upload(any(CloudWatchAttempt.class), anyInt());
+
+        logsUploaderService = new LogManagerService(config, mockUploader, mockMerger, nucleusPaths);
+        Semaphore cycles = new Semaphore(0);
+        logsUploaderService.registerEventStatusListener(event -> {
+            if (event == EventType.ALL_COMPONENTS_PROCESSED) {
+                cycles.release();
+            }
+        });
+        startServiceOnAnotherThread();
+        assertTrue(cycles.tryAcquire(8, 30, TimeUnit.SECONDS));
+    }
+
+    interface ThrowingRunnable {
+        void run() throws IOException;
     }
 
     @Test

@@ -49,9 +49,12 @@ import java.time.ZoneOffset;
 import java.time.format.DateTimeParseException;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.TimeZone;
 import java.util.regex.Pattern;
 
@@ -395,6 +398,40 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
         } finally {
             assertTrue(file.delete());
         }
+    }
+
+    @Test
+    void GIVEN_entry_split_into_events_WHEN_earlier_timestamp_follows_THEN_events_sorted_with_ties_in_file_order()
+            throws IOException {
+        String first = "2020-12-16T10:00:01Z [INFO] a";
+        String big = "2020-12-16T10:00:05Z [INFO] big " + StringUtils.repeat('y', 300 * 1024);
+        String later = "2020-12-16T10:00:02Z [INFO] d";
+
+        List<InputLogEvent> events = processSingleFile(first + "\n" + big + "\n" + later + "\n")
+                .getLogStreamsToLogEventsMap().get("/2020/12/16/thing/testThing").getSortedLogEvents();
+
+        Map<String, String> labels = new HashMap<>();
+        labels.put(first, "a");
+        labels.put(later, "d");
+        labels.put(big.substring(0, MAX_EVENT_LENGTH), "big part 1");
+        labels.put(big.substring(MAX_EVENT_LENGTH), "big part 2");
+        List<String> order = new ArrayList<>();
+        events.forEach(event -> order.add(labels.getOrDefault(event.message(), "unexpected event")));
+        assertEquals(Arrays.asList("a", "d", "big part 1", "big part 2"), order);
+    }
+
+    @Test
+    void GIVEN_entry_over_23_hours_after_earliest_WHEN_merge_THEN_batch_stops_before_it() throws IOException {
+        String first = "2020-12-16T10:00:00Z [INFO] first\n";
+        String earliest = "2020-12-16T00:30:00Z [INFO] earliest\n";
+        String tooLate = "2020-12-16T23:45:00Z [INFO] too late\n";
+
+        CloudWatchAttemptLogInformation logInformation = processSingleFile(first + earliest + tooLate)
+                .getLogStreamsToLogEventsMap().get("/2020/12/16/thing/testThing");
+
+        assertThat(logInformation.getLogEvents(), hasSize(2));
+        assertEquals((first + earliest).getBytes(StandardCharsets.UTF_8).length,
+                logInformation.getAttemptLogFileInformationMap().values().iterator().next().getBytesRead());
     }
 
     @Test
@@ -905,6 +942,27 @@ class CloudWatchAttemptLogsProcessorTest extends GGServiceTestUtil {
                 .replace("{componentType}", componentType.toString())
                 .replace("{region}", awsRegion)
                 .replace("{componentName}", componentName);
+    }
+
+    private CloudWatchAttempt processSingleFile(String content) throws IOException {
+        File file = directoryPath.resolve("greengrass_test.log").toFile();
+        Files.write(file.toPath(), content.getBytes(StandardCharsets.UTF_8));
+        try {
+            LogFile logFile = LogFile.of(file);
+            List<LogFileInformation> logFileInformationSet = new ArrayList<>();
+            logFileInformationSet.add(LogFileInformation.builder().startPosition(0).logFile(logFile)
+                    .fileHash(logFile.hashString()).build());
+            ComponentLogFileInformation componentLogFileInformation = ComponentLogFileInformation.builder()
+                    .name("TestComponent")
+                    .desiredLogLevel(Level.INFO)
+                    .componentType(ComponentType.GreengrassSystemComponent)
+                    .logFileInformationList(logFileInformationSet)
+                    .build();
+            logsProcessor = new CloudWatchAttemptLogsProcessor(mockDeviceConfiguration, defaultClock);
+            return logsProcessor.processLogFiles(componentLogFileInformation);
+        } finally {
+            assertTrue(file.delete());
+        }
     }
 
     private String calculateLogStreamName(String thingName) {
